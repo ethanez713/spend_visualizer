@@ -1,0 +1,20 @@
+# Secrets — never commit
+.env
+
+# Plaid local state (access tokens, cursors) — keep private
+tokens.json
+sync_cursors.json
+
+# Output
+transactions.csv
+transactions_raw.jsonl.xz
+transactions_raw.jsonl.xz.tmp
+
+# Logs
+*.log
+logs/
+
+# Python
+venv/
+__pycache__/
+*.pyc
