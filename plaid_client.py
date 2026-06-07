@@ -54,6 +54,7 @@ def _save_json(path: Path, data):
     tmp = path.with_suffix(path.suffix + ".tmp")
     with open(tmp, "w") as f:
         json.dump(data, f, indent=2, default=str)
+    os.chmod(tmp, 0o600)  # tokens.json holds access tokens — keep owner-only
     tmp.replace(path)  # atomic — don't lose access tokens on a crash mid-write
 
 

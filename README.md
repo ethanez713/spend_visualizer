@@ -25,7 +25,7 @@ production data, up to **10 connected banks (Items)**.
 
 ```bash
 python3 -m venv venv
-./venv/bin/pip install plaid-python python-dotenv flask
+./venv/bin/pip install -r requirements.txt
 ```
 
 `.env` is already created with your Production credentials and `PLAID_ENV=production`.
@@ -55,7 +55,7 @@ Stop the server with `Ctrl+C` when done linking.
 Prints a per-bank summary of added / modified / removed and writes
 `transactions.csv`.
 
-### CSV columns (53)
+### CSV columns (54)
 
 The file is intentionally wide — it captures essentially every populated field
 Plaid returns per transaction, plus per-account metadata, so a downstream
@@ -150,7 +150,7 @@ To prove the whole pipeline with fake data before linking real banks:
 2. Run `app.py`, link any bank, and use Plaid's test creds `user_good` / `pass_good`.
 3. Run `fetch_transactions.py` and inspect `transactions.csv`.
 4. Switch `.env` back to `production` + Production secret, then delete the sandbox
-   state files (`tokens.json`, `sync_cursors.json`, `transaction_store.json`,
+   state files (`tokens.json`, `sync_cursors.json`, `transactions_raw.jsonl.xz`,
    `transactions.csv`) so real data starts clean, and link your real banks.
 
 ## Notes / constraints

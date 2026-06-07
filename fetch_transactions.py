@@ -119,6 +119,18 @@ def _g(obj, key):
     return obj.get(key)
 
 
+# A leading =, +, -, @, tab, or CR makes a spreadsheet treat a cell as a formula.
+_CSV_INJECTION_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_safe(v):
+    """Neutralize spreadsheet formula injection in text cells by prefixing a quote.
+    Numeric cells are floats/bools (not str), so negative amounts stay numeric."""
+    if isinstance(v, str) and v[:1] in _CSV_INJECTION_PREFIXES:
+        return "'" + v
+    return v
+
+
 def get_account_meta(client, tokens) -> dict:
     """account_id -> {institution, account_name, account_mask, official_name, type, subtype}."""
     meta = {}
@@ -147,6 +159,7 @@ def txn_to_row(txn, account_meta: dict) -> dict:
     pm = txn.get("payment_meta")
     cps = txn.get("counterparties") or []
     primary_cp = cps[0] if cps else None
+    cp_type = _g(primary_cp, "type")  # guard on the value, not the dict (avoids "None")
     acct = account_meta.get(txn.get("account_id"), {})
 
     return {
@@ -205,7 +218,7 @@ def txn_to_row(txn, account_meta: dict) -> dict:
         "payment_reason": _v(_g(pm, "reason")),
 
         "counterparty_name": _v(_g(primary_cp, "name")),
-        "counterparty_type": _v(str(_g(primary_cp, "type")) if primary_cp else ""),
+        "counterparty_type": str(cp_type) if cp_type is not None else "",
         "counterparty_entity_id": _v(_g(primary_cp, "entity_id")),
         "counterparty_confidence": _v(_g(primary_cp, "confidence_level")),
         # cps are already plain dicts (raw store holds to_dict()ed objects).
@@ -266,7 +279,8 @@ def write_csv(raw_store: dict, account_meta: dict):
     with open(CSV_FILE, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS, extrasaction="ignore")
         writer.writeheader()
-        writer.writerows(rows)
+        for row in rows:
+            writer.writerow({k: _csv_safe(v) for k, v in row.items()})
 
 
 def main():

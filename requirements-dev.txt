@@ -1,0 +1,3 @@
+# Dev/test dependencies (not needed to run the pipeline itself).
+#   ./venv/bin/pip install -r requirements-dev.txt
+pytest==9.0.3

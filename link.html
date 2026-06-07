@@ -34,12 +34,19 @@
     const statusEl = document.getElementById("status");
     const listEl = document.getElementById("linked-list");
 
+    function li(text, className) {
+      const el = document.createElement("li");
+      el.textContent = text;
+      if (className) el.className = className;
+      return el;
+    }
+
     async function refreshLinked() {
       const res = await fetch("/linked");
       const names = await res.json();
-      listEl.innerHTML = names.length
-        ? names.map(n => `<li>${n}</li>`).join("")
-        : '<li class="muted">none yet</li>';
+      listEl.replaceChildren(
+        ...(names.length ? names.map(n => li(n)) : [li("none yet", "muted")])
+      );
     }
 
     async function startLink() {
@@ -57,13 +64,21 @@
             body: JSON.stringify({ public_token }),
           });
           const data = await r.json();
-          statusEl.innerHTML = `<span class="ok">Linked: ${data.institution}</span>`;
+          const ok = document.createElement("span");
+          ok.className = "ok";
+          ok.textContent = `Linked: ${data.institution}`;
+          statusEl.replaceChildren(ok);
           refreshLinked();
         },
         onExit: (err) => {
-          statusEl.innerHTML = err
-            ? `<span class="err">Exited: ${err.error_message || err.error_code}</span>`
-            : "Link closed.";
+          if (!err) {
+            statusEl.textContent = "Link closed.";
+            return;
+          }
+          const span = document.createElement("span");
+          span.className = "err";
+          span.textContent = `Exited: ${err.error_message || err.error_code}`;
+          statusEl.replaceChildren(span);
         },
       });
       handler.open();
