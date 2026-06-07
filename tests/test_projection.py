@@ -6,7 +6,7 @@ from datetime import date, datetime
 import pytest
 
 from conftest import ACCOUNT_META
-from fetch_transactions import CSV_COLUMNS, _csv_safe, _g, _v, txn_to_row, write_csv
+from src.fetch_transactions import CSV_COLUMNS, _csv_safe, _g, _v, txn_to_row, write_csv
 
 
 # --- _v: CSV-safe scalar coercion -------------------------------------------

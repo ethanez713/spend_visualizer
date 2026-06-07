@@ -8,8 +8,8 @@ from types import SimpleNamespace
 
 import pytest
 
-import fetch_transactions
-import plaid_client
+import src.fetch_transactions as fetch_transactions
+import src.plaid_client as plaid_client
 
 
 @pytest.fixture

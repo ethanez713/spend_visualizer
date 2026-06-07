@@ -3,8 +3,8 @@
 Uses a fake Plaid client that returns canned sync pages, so the loop logic
 (deltas, de-dup, pagination, first-run retry) is exercised without any network.
 """
-from plaid_client import load_cursors
-from fetch_transactions import sync_item
+from src.plaid_client import load_cursors
+from src.fetch_transactions import sync_item
 
 ENTRY = {"item_id": "it1", "access_token": "tok"}
 

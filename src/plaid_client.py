@@ -8,16 +8,21 @@ import plaid
 from dotenv import load_dotenv
 from plaid.api import plaid_api
 
-load_dotenv()
+BASE_DIR = Path(__file__).resolve().parent   # src/ package dir (also holds link.html)
+PROJECT_ROOT = BASE_DIR.parent
+VAR_DIR = PROJECT_ROOT / "var"                # gitignored, 0700: secrets + runtime state
 
-BASE_DIR = Path(__file__).resolve().parent
-TOKENS_FILE = BASE_DIR / "tokens.json"
-CURSORS_FILE = BASE_DIR / "sync_cursors.json"
-CSV_FILE = BASE_DIR / "transactions.csv"
+# Credentials live in var/.env (quarantined, never committed).
+load_dotenv(VAR_DIR / ".env")
+
+TOKENS_FILE = VAR_DIR / "tokens.json"
+CURSORS_FILE = VAR_DIR / "sync_cursors.json"
 # Single source of truth: the full raw Plaid object per transaction, keyed by
 # transaction_id, persisted as xz-compressed JSONL (one JSON object per line).
 # The CSV is a derived projection of this. Kept for audit / QC.
-RAW_FILE = BASE_DIR / "transactions_raw.jsonl.xz"
+RAW_FILE = VAR_DIR / "transactions_raw.jsonl.xz"
+# The CSV is the user-facing deliverable — kept at the project root.
+CSV_FILE = PROJECT_ROOT / "transactions.csv"
 
 _ENV_HOSTS = {
     "production": plaid.Environment.Production,
@@ -43,6 +48,12 @@ def get_client() -> plaid_api.PlaidApi:
     return plaid_api.PlaidApi(plaid.ApiClient(configuration))
 
 
+def _ensure_secure_dir(path: Path):
+    """Create `path` if needed and enforce owner-only (0700) perms — var/ holds secrets."""
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    path.chmod(0o700)
+
+
 def _load_json(path: Path, default):
     if path.exists():
         with open(path) as f:
@@ -51,6 +62,7 @@ def _load_json(path: Path, default):
 
 
 def _save_json(path: Path, data):
+    _ensure_secure_dir(path.parent)
     tmp = path.with_suffix(path.suffix + ".tmp")
     with open(tmp, "w") as f:
         json.dump(data, f, indent=2, default=str)
@@ -116,6 +128,7 @@ def load_raw_store() -> dict:
 
 def save_raw_store(store: dict):
     """Write {transaction_id: raw_dict} as xz-compressed JSONL (atomic, max compression)."""
+    _ensure_secure_dir(RAW_FILE.parent)
     rows = sorted(
         store.values(),
         key=lambda r: (r.get("date") or "", r.get("transaction_id") or ""),

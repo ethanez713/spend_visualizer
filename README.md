@@ -7,19 +7,31 @@ transactions (cursor-based incremental sync).
 Runs entirely on your machine. On the Plaid **Trial** plan this is free, real
 production data, up to **10 connected banks (Items)**.
 
-## Files
+## Layout
 
-| File | Purpose |
-|------|---------|
-| `app.py` | Flask backend for the Plaid Link flow (link token + token exchange) |
-| `link.html` | Browser page to log into a bank and capture its access token |
-| `fetch_transactions.py` | Core: `/transactions/sync` → `transactions.csv` |
-| `plaid_client.py` | Shared client + local state helpers |
-| `run_fetch.sh` | Wrapper for scheduled runs (logs to `logs/fetch.log`) |
-| `.env` | Your credentials (git-ignored) |
-| `tokens.json` | Access token + item_id + institution per bank (git-ignored) |
-| `sync_cursors.json` | `next_cursor` per item (git-ignored) |
-| `transactions_raw.jsonl.xz` | Lossless raw Plaid object per transaction, xz-compressed; source of truth + audit/QC (git-ignored) |
+```
+.
+├── app.py                      # entry-point shim → src/app.py
+├── fetch_transactions.py       # entry-point shim → src/fetch_transactions.py
+├── run_fetch.sh                # wrapper for scheduled runs (logs to var/logs/fetch.log)
+├── transactions.csv            # ← the deliverable (git-ignored, regenerated each run)
+├── requirements.txt            # pinned runtime deps  (requirements-dev.txt = test deps)
+├── src/
+│   ├── app.py                  # Flask backend for the Plaid Link flow
+│   ├── fetch_transactions.py   # core: /transactions/sync → transactions.csv
+│   ├── plaid_client.py         # shared client + local-state helpers
+│   └── link.html               # browser page to log into a bank
+├── tests/                      # pytest suite (offline, deterministic)
+└── var/                        # git-ignored, 0700: secrets + runtime state
+    ├── .env                    # your Plaid credentials (0600)
+    ├── tokens.json             # access_token + item_id + institution per bank (0600)
+    ├── sync_cursors.json       # next_cursor per item
+    ├── transactions_raw.jsonl.xz  # lossless raw Plaid objects; source of truth + audit/QC
+    └── logs/fetch.log          # scheduled-run output
+```
+
+Run the tool from the project root via the two shims (`app.py`, `fetch_transactions.py`);
+the importable code lives in `src/`.
 
 ## Setup (one time)
 
@@ -28,8 +40,9 @@ python3 -m venv venv
 ./venv/bin/pip install -r requirements.txt
 ```
 
-`.env` is already created with your Production credentials and `PLAID_ENV=production`.
-(See `.env.example` for the format.)
+`var/.env` is already created with your Production credentials and `PLAID_ENV=production`.
+(See `.env.example` for the format. The `var/` directory holds all secrets and runtime
+state, is git-ignored, and is locked to `0700`.)
 
 ## Step 1 — Link your banks
 
@@ -39,7 +52,7 @@ python3 -m venv venv
 
 Open <http://127.0.0.1:5000/> in a browser. Click **Connect a bank**, log in,
 and approve. On success the page shows "Linked: <bank>" and adds it to
-`tokens.json`. Repeat once per bank.
+`var/tokens.json`. Repeat once per bank.
 
 > ⚠️ **10 Items max**, and removing an Item does **not** free the slot. Only link
 > banks you actually want. Confirm before each.
@@ -102,7 +115,7 @@ is always de-duplicated by `transaction_id`.
 
 ### Raw archive (audit / QC)
 
-`transactions_raw.jsonl.xz` is the **source of truth**: the complete, untouched
+`var/transactions_raw.jsonl.xz` is the **source of truth**: the complete, untouched
 Plaid object for every transaction (keyed by `transaction_id`), stored as
 xz-compressed JSONL at max compression (~25× smaller than raw). `transactions.csv`
 is a derived projection of it, so the two can never drift. The archive is
@@ -111,14 +124,14 @@ lossless — it preserves every field Plaid returns, including ones the CSV omit
 Inspect it without decompressing to disk:
 
 ```bash
-xzcat transactions_raw.jsonl.xz | jq '.'                 # all records, pretty
-xzcat transactions_raw.jsonl.xz | jq 'select(.amount>100)'  # filter
-xzcat transactions_raw.jsonl.xz | wc -l                  # count
+xzcat var/transactions_raw.jsonl.xz | jq '.'                 # all records, pretty
+xzcat var/transactions_raw.jsonl.xz | jq 'select(.amount>100)'  # filter
+xzcat var/transactions_raw.jsonl.xz | wc -l                  # count
 ```
 
 ## Step 3 — Schedule (daily)
 
-A wrapper `run_fetch.sh` runs the fetch and appends output to `logs/fetch.log`.
+A wrapper `run_fetch.sh` runs the fetch and appends output to `var/logs/fetch.log`.
 
 Add a cron job (runs daily at 7am):
 
@@ -135,7 +148,7 @@ Add this line:
 Verify it works first by running the wrapper by hand:
 
 ```bash
-./run_fetch.sh && tail -n 20 logs/fetch.log
+./run_fetch.sh && tail -n 20 var/logs/fetch.log
 ```
 
 > **WSL note:** cron is not started automatically in WSL. Start it once per boot
@@ -146,16 +159,27 @@ Verify it works first by running the wrapper by hand:
 
 To prove the whole pipeline with fake data before linking real banks:
 
-1. In `.env` set `PLAID_ENV=sandbox` and `PLAID_SECRET=<your Sandbox secret>`.
+1. In `var/.env` set `PLAID_ENV=sandbox` and `PLAID_SECRET=<your Sandbox secret>`.
 2. Run `app.py`, link any bank, and use Plaid's test creds `user_good` / `pass_good`.
 3. Run `fetch_transactions.py` and inspect `transactions.csv`.
-4. Switch `.env` back to `production` + Production secret, then delete the sandbox
-   state files (`tokens.json`, `sync_cursors.json`, `transactions_raw.jsonl.xz`,
-   `transactions.csv`) so real data starts clean, and link your real banks.
+4. Switch `var/.env` back to `production` + Production secret, then delete the sandbox
+   state files (`var/tokens.json`, `var/sync_cursors.json`,
+   `var/transactions_raw.jsonl.xz`, `transactions.csv`) so real data starts clean, and
+   link your real banks.
 
 ## Notes / constraints
 
 - Trial = the `production` environment string (free, real data). Don't apply for
   full Production access — it's a one-way door off the free Trial.
 - Auth is `client_id` + `secret` in the request body (no client certificate).
-- Access tokens are persisted the instant they're issued; keep `tokens.json` safe.
+- Access tokens are persisted the instant they're issued; keep `var/tokens.json` safe.
+
+## Tests
+
+```bash
+./venv/bin/pip install -r requirements-dev.txt
+./venv/bin/python -m pytest
+```
+
+Fast, offline, and deterministic — they isolate all file I/O to a tmp dir and never touch
+`var/`, the real CSV, or the network.

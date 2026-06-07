@@ -1,25 +1,20 @@
-# Secrets — never commit (broad defensive patterns)
+# Runtime state, secrets, logs, raw archive — all quarantined here, never commit
+var/
+
+# Extra defensive secret patterns (in case a secret lands outside var/)
 .env*
 !.env.example
 *secret*.json
 token.json
-
-# Plaid local state (access tokens, cursors) — keep private
 tokens.json
 sync_cursors.json
-
-# Atomic-write temp files
 *.tmp
 
-# Output
+# Output deliverable (derived; regenerated each run)
 transactions.csv
-transactions_raw.jsonl.xz
 
-# Logs
-*.log
-logs/
-
-# Python
+# Python / tooling
 venv/
 __pycache__/
 *.pyc
+.pytest_cache/

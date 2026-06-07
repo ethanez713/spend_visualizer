@@ -2,8 +2,8 @@
 import pytest
 from plaid.api import plaid_api
 
-import plaid_client
-from plaid_client import (
+import src.plaid_client as plaid_client
+from src.plaid_client import (
     add_token,
     get_client,
     load_cursors,
