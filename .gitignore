@@ -1,0 +1,26 @@
+# Runtime state + secrets — quarantined here, 0700, NEVER committed.
+var/
+
+# Defensive secret patterns (catch a secret that lands outside var/).
+.env*
+!.env.example
+*secret*.json
+token.json
+drive_state.json
+*.tmp
+
+# Python / tooling
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+
+# Local integration creds (real Drive round-trip is manual + gitignored)
+integration_tests/var/
+
+# ⚠ NOTE: data/ is DELIBERATELY NOT ignored. The durable transaction store is
+# committed on purpose (git + Drive dual audit history). This repo MUST be private.
