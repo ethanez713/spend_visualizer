@@ -2,9 +2,10 @@
 
 Adapted from ``converter/src/reviewer.py`` ``LLMAuditor``: same runtime
 (``instructor.from_openai`` over Ollama's OpenAI-compatible endpoint, JSON mode),
-same model/sampling (``qwen2.5:7b``, temperature=0 seed=0), same ~35-row batching,
-the same ``_ensure_ready``/``_ping``/``_ensure_model`` startup, and the same TTY-aware
-``_spinner``. It runs on ALL selected rows (regardless of Stage 1) and is the final
+same model/sampling (``qwen2.5:7b``, temperature=0 seed=0), batching per
+``config.LLM_BATCH_SIZE`` (currently 1 — see config.py for why multi-row batches
+drifted), the same ``_ensure_ready``/``_ping``/``_ensure_model`` startup, and the same
+TTY-aware ``_spinner``. It runs on ALL selected rows (regardless of Stage 1) and is the final
 authority for them — it sees the most context. If Ollama is unavailable the whole stage
 skips gracefully (returns ``{}``) and the caller falls back to the mechanical result.
 
@@ -235,7 +236,10 @@ class CategoryLLM:
             return {}
         try:
             return self._categorize_inner(items)
-        except BaseException as e:  # noqa: BLE001 — LLM stage must never crash the pipeline
+        except Exception as e:  # noqa: BLE001 — LLM stage must never crash the pipeline.
+            # Exception, NOT BaseException: a Ctrl+C (KeyboardInterrupt) must ABORT the
+            # run — swallowing it would let the audit "complete" with no LLM review while
+            # still stamping rows as audited, silently skipping them on future runs.
             print(f"  LLM: unexpected error ({type(e).__name__}: {e}) — skipping LLM stage.")
             if _DEBUG:
                 traceback.print_exc()
