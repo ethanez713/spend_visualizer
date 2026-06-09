@@ -45,7 +45,9 @@ load ─▶ select (ALL rows by default) ─▶ Stage 1 mechanical rules ─▶ 
    *flag* writes `category_review_*` and leaves the category untouched.
 5. **Review** (`review.py`, `--review`) — walk the flagged rows interactively: **accept**
    (apply the suggestion + teach merchant memory so it's an `auto` hit next run), **reject**,
-   or **re-pick**. Keeps a human in the loop exactly where the model is unsure.
+   or **re-pick**. Keeps a human in the loop exactly where the model is unsure. A review
+   session re-persists locally **and pushes new Drive revisions** (unless `--no-drive`),
+   so local and remote stay in lock-step.
 6. **Persist** (`persister`) — `data/transactions_categorized.{jsonl,csv}` (committed),
    `data/flagged_for_review.csv` (the review worklist), optional Drive push of all three
    (default ON, `--no-drive`), `.secrets/{category_log,review_log}.jsonl`.
@@ -74,7 +76,10 @@ Change detection is a stable content hash of each row's *raw Plaid fields only* 
 provenance/review columns excluded), stamped on the record as `source_content_hash`. A safety
 guard: an **empty input** (e.g. a failed upstream fetch) is treated as a no-op, never as
 "everything was deleted". Use `--full` to force a complete re-audit (e.g. after editing the
-rules in `config.py`); it still prunes removed rows.
+rules in `config.py`); it still prunes removed rows. Note `--full` re-derives every row from
+the pristine input, so prior in-place corrections are recomputed — decisions you **accepted
+in review survive via merchant memory** (they re-apply as `auto` hits), but unadjudicated
+flags are re-raised fresh.
 
 ### The flagged-rows worklist
 

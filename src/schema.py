@@ -7,8 +7,8 @@ This module owns three concerns that the rest of the pipeline depends on:
    UNKNOWN / missing) is unreliable; HIGH / VERY_HIGH pass through untouched.
 
 2. **Schema** — the 54 base columns (mirrors
-   ``transactions/src/fetch_transactions.py`` ``CSV_COLUMNS`` exactly) plus the 6
-   new provenance columns. ``row_fn`` projects a raw record (with overwritten +
+   ``transactions/src/fetch_transactions.py`` ``CSV_COLUMNS`` exactly) plus the 12
+   new provenance/review columns. ``row_fn`` projects a raw record (with overwritten +
    provenance fields) into a flat CSV row.
 
 3. **Provenance** — ``set_provenance`` writes a correction in place: it copies the
@@ -17,7 +17,7 @@ This module owns three concerns that the rest of the pipeline depends on:
    sentinel, and records which stage made the change. See the decision rules below.
 
 The output record stays a full raw Plaid object (every original field preserved, so
-``persister`` can still persist it) PLUS the 6 nullable provenance fields, which are
+``persister`` can still persist it) PLUS the 12 nullable provenance/review fields,
 present on EVERY output record (null/empty when unchanged) so the schema is uniform.
 """
 from __future__ import annotations
@@ -178,7 +178,7 @@ BASE_COLUMNS = [
     "counterparty_confidence", "counterparties_json",
 ]
 
-# Derived-CSV column order: the 54 base columns + the 6 provenance columns.
+# Derived-CSV column order: the 54 base columns + the 12 provenance/review columns.
 COLUMNS = BASE_COLUMNS + NEW_COLUMNS
 
 
@@ -203,7 +203,7 @@ def row_fn(record: dict) -> dict:
 
     Mirrors ``transactions.txn_to_row`` so the 54 base columns match exactly; the
     nested ``personal_finance_category`` reflects any correction (set_provenance writes
-    it there), and the 6 provenance columns are read from the record's top level.
+    it there), and the 12 provenance/review columns are read from the record's top level.
     Account-identity columns are blank — the raw store carries no /accounts/get meta.
     """
     pfc = record.get("personal_finance_category")

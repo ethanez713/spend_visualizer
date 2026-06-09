@@ -377,28 +377,43 @@ def run(*, input_path: str, out_jsonl: str, out_csv: str, flags_csv: str, log_pa
         print(f"  {n_flagged} row(s) pending review — see {flags_csv}, or run --review.")
 
     if do_drive:
-        print("  ⚠ Drive sync ON — the categorized store will leave this machine "
-              "(Google Drive). Use --no-drive to keep it local.")
-        from persister import DriveSync
-        link = DriveSync(DRIVE_JSONL_NAME, folder_name=DRIVE_FOLDER,
-                         secrets_dir=_SECRETS_DIR).push(out_jsonl, mime="application/x-ndjson")
-        if link:
-            print(f"  Drive: pushed JSONL → {link}")
-        DriveSync("transactions_categorized.csv", folder_name=DRIVE_FOLDER,
-                  secrets_dir=_SECRETS_DIR).push(out_csv, mime="text/csv")
-        DriveSync("flagged_for_review.csv", folder_name=DRIVE_FOLDER,
-                  secrets_dir=_SECRETS_DIR).push(flags_csv, mime="text/csv")
+        _drive_push_outputs(out_jsonl, out_csv, flags_csv)
+
+
+def _drive_push_outputs(out_jsonl: str, out_csv: str, flags_csv: str) -> None:
+    """Push the three output files to Drive as new revisions (shared by run/review)."""
+    print("  ⚠ Drive sync ON — the categorized store will leave this machine "
+          "(Google Drive). Use --no-drive to keep it local.")
+    from persister import DriveSync
+    link = DriveSync(DRIVE_JSONL_NAME, folder_name=DRIVE_FOLDER,
+                     secrets_dir=_SECRETS_DIR).push(out_jsonl, mime="application/x-ndjson")
+    if link:
+        print(f"  Drive: pushed JSONL → {link}")
+    DriveSync("transactions_categorized.csv", folder_name=DRIVE_FOLDER,
+              secrets_dir=_SECRETS_DIR).push(out_csv, mime="text/csv")
+    DriveSync("flagged_for_review.csv", folder_name=DRIVE_FOLDER,
+              secrets_dir=_SECRETS_DIR).push(flags_csv, mime="text/csv")
 
 
 def review_run(*, out_jsonl: str, out_csv: str, flags_csv: str,
-               memory_path: str | None) -> None:
-    """Adjudicate the flags in an already-categorized store, then re-persist it locally."""
+               memory_path: str | None, do_drive: bool = True,
+               force_push: bool = False) -> None:
+    """Adjudicate the flags in an already-categorized store, then re-persist it.
+
+    Re-persists locally AND (unless ``--no-drive``) pushes new Drive revisions, so a
+    review session keeps local and remote in lock-step — otherwise the next
+    Drive-enabled run would trip the divergence gate on the locally-applied decisions.
+    The same gate runs first (before any human effort is spent) for the same reason
+    as ``run``: never clobber a remote copy that drifted.
+    """
     from .review import DEFAULT_REVIEW_LOG, run_review, write_review_log
 
     if not os.path.isfile(out_jsonl):
         sys.exit(f"ERROR: no categorized store to review at {out_jsonl}\n"
                  "Run the audit first (categorize.py) to produce flagged rows.")
     store = persister.load_jsonl(out_jsonl)
+    if do_drive:
+        check_drive_divergence(store, force_push=force_push)
     memory = MerchantMemory(memory_path) if memory_path else None
 
     summary = run_review(store, memory)
@@ -411,6 +426,8 @@ def review_run(*, out_jsonl: str, out_csv: str, flags_csv: str,
         write_review_log(DEFAULT_REVIEW_LOG, summary["log"])
         print(f"  Updated {out_jsonl}, {out_csv}, and {flags_csv} "
               f"({n_flagged} row(s) still pending).")
+        if do_drive:
+            _drive_push_outputs(out_jsonl, out_csv, flags_csv)
 
 
 def main():
@@ -464,6 +481,8 @@ def main():
             out_csv=args.out_csv,
             flags_csv=args.flags_csv,
             memory_path=None if args.no_memory else args.memory,
+            do_drive=not args.no_drive,
+            force_push=args.force_push,
         )
         return
 
