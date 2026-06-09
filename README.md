@@ -22,14 +22,20 @@ production data, up to **10 connected banks (Items)**.
 │   ├── plaid_client.py         # shared client + local-state helpers
 │   └── link.html               # browser page to log into a bank
 ├── tests/                      # pytest suite (offline, deterministic)
+├── requirements-persist.txt    # durable-persist extras: persister (editable) + Drive libs
 ├── .secrets/                   # git-ignored, 0700: secrets only
 │   ├── .env                    # your Plaid credentials (0600)
 │   └── tokens.json             # access_token + item_id + institution per bank (0600)
 └── data/                       # git-ignored, 0700: runtime state + raw archive
     ├── sync_cursors.json       # next_cursor per item
     ├── transactions_raw.jsonl.xz  # lossless raw Plaid objects; source of truth + audit/QC
+    ├── reconcile_log.jsonl     # 0600 audit trail of each persist reconcile
     └── logs/fetch.log          # scheduled-run output
 ```
+
+`src/` also holds the durable-persist orchestration: `persist_runner.py` (reconcile →
+golden repair → durable store + Drive push) and `fetch_window.py` (the bounded
+`/transactions/get` repair fetch). See **Durable persist** below.
 
 Run the tool from the project root via the two shims (`app.py`, `fetch_transactions.py`);
 the importable code lives in `src/`.
@@ -113,6 +119,30 @@ retries automatically. If it still shows no data, wait a few minutes and re-run.
 
 Safe to re-run anytime — only new/changed transactions are pulled, and the CSV
 is always de-duplicated by `transaction_id`.
+
+### Durable persist (the default `--persist` step)
+
+After each sync the fetch also maintains the **durable system-of-record store** in
+`../persister/data/transactions.jsonl` (a private repo that commits real data on
+purpose) and pushes new Google Drive revisions of it + a derived CSV:
+
+1. **reconcile** the local raw store against the Drive remote (via the `persister`
+   library) — classifies in-sync / local-only / remote-only / conflicts;
+2. **golden repair** — conflicting ids are re-fetched over a bounded window with
+   `/transactions/get`; Plaid's fresh answer overwrites (Plaid is golden **only on
+   success**). A conflict the re-fetch cannot confirm (aged out of Plaid's window,
+   or an item error) **stops the run non-zero before anything is written or
+   pushed** — callers like `finance_pipeline` halt instead of persisting divergence;
+3. **dedupe** settled pendings, write the durable JSONL + CSV, push Drive revisions
+   (the file is updated in place; old revisions survive — persister is append-only).
+
+Flags: `--no-persist` (sync + local CSV only), `--no-drive` (persist locally, no
+egress), `--no-refetch` (skip the repair fetch; conflicts then stop the run).
+One-time setup: `./venv/bin/pip install -r requirements-persist.txt`. Drive
+credentials live in `../persister/.secrets/` (see persister's README).
+
+The whole chain (fetch → categorize → analyze UI) is normally driven by the
+**`../finance_pipeline`** orchestrator (`./run.py`).
 
 ### Raw archive (audit / QC)
 
