@@ -9,8 +9,17 @@ Added here:
   * download   — ``files().get_media`` → bytes (to fetch the remote store for reconcile)
   * update-in-place — ``files().update(media_body=…)`` → a new *revision* of the same file
     (exact byte round-trip; we never convert to a Google Sheet, which is lossy)
-  * file_id persistence — ``var/drive_state.json`` (``{logical_name: file_id}``, 0600),
+  * file_id persistence — ``.secrets/drive_state.json`` (``{logical_name: file_id}``, 0600),
     required because the ``drive.file`` scope can only see files this app created.
+  * revision audit / rollback — ``list_revisions`` (``revisions().list``) +
+    ``pull_revision`` (``revisions().get_media`` → a prior revision's full bytes) +
+    ``restore_revision`` (re-push an old revision as a NEW head revision). The Drive API
+    returns whole revisions, not diffs; diff two with ``load_jsonl_bytes`` + ``reconcile``.
+
+**Append-only by design — this library can NEVER delete or trash a Drive file.** The real
+Drive service is wrapped in a guard (:class:`_GuardedService`) that blocks ``delete`` on
+files() and revisions() and rejects any ``trashed=True`` body. Rolling back appends a new
+revision; it never destroys history. Delete files yourself in the Drive UI if you must.
 
 All Google imports are lazy, so the core (non-Drive) library needs none of the
 ``google-*`` packages installed.
@@ -25,9 +34,9 @@ import tempfile
 # Least-privilege scope: the app only ever sees files it created.
 GOOGLE_SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 
-# var/ at the persister repo root: drive_sync.py → persister/ → src/ → <repo>.
-_DEFAULT_VAR_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "var"
+# .secrets/ at the persister repo root: drive_sync.py → persister/ → src/ → <repo>.
+_DEFAULT_SECRETS_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".secrets"
 )
 
 _SETUP_HINT = """\
@@ -35,7 +44,7 @@ _SETUP_HINT = """\
     1. console.cloud.google.com → project → Enable Google Drive API.
     2. OAuth consent screen → External → add your account as a Test User.
     3. Credentials → OAuth client ID → Desktop app → download JSON →
-       save it to {client_secret} (then: chmod 700 var && chmod 600 var/client_secret.json).
+       save it to {client_secret} (then: chmod 700 .secrets && chmod 600 .secrets/client_secret.json).
   Then re-run."""
 
 
@@ -101,26 +110,90 @@ def _get_or_create_folder(service, name: str) -> str:
     return folder["id"]
 
 
+# --- Append-only safety: the library must NEVER be able to destroy Drive data ------
+# persister only reads, creates, and updates-in-place (each update is a new revision;
+# Drive preserves the old ones). It must not hard-delete files/revisions or trash them.
+# The guard below wraps the REAL Drive service so that even a future code change — or a
+# caller poking at the raw service — cannot delete or trash: `delete` is blocked outright
+# and `create`/`update` reject a `trashed` body. Roll back by appending, never deleting.
+
+class AppendOnlyError(PermissionError):
+    """Raised when something attempts a destructive Drive op through the guarded service."""
+
+
+_FORBIDDEN_METHODS = frozenset({"delete"})
+
+
+def _no_trash(method, method_name: str):
+    """Wrap create/update so a request can't trash a file (trashing ≈ deletion)."""
+    def _wrapped(*args, **kwargs):
+        body = kwargs.get("body")
+        if isinstance(body, dict) and body.get("trashed"):
+            raise AppendOnlyError(
+                f"persister is append-only: Drive '{method_name}' may not set "
+                "trashed=True; trash/delete files manually in the Drive UI.")
+        return method(*args, **kwargs)
+    return _wrapped
+
+
+class _GuardedResource:
+    """Proxies a Drive collection (files()/revisions()), blocking destructive ops."""
+
+    def __init__(self, resource):
+        object.__setattr__(self, "_resource", resource)
+
+    def __getattr__(self, name):
+        if name in _FORBIDDEN_METHODS:
+            raise AppendOnlyError(
+                f"persister is append-only: Drive '{name}' is disabled by design; "
+                "delete files manually in the Drive UI if you must.")
+        attr = getattr(self._resource, name)
+        if name in ("create", "update"):
+            return _no_trash(attr, name)
+        return attr
+
+
+class _GuardedService:
+    """Read/append/update-only proxy over a Drive v3 service.
+
+    Blocks ``delete`` on ``files()`` and ``revisions()`` (no hard-delete; revision history
+    can never be destroyed) and rejects trashing via ``create``/``update``. Every other
+    call passes straight through.
+    """
+
+    def __init__(self, service):
+        object.__setattr__(self, "_service", service)
+
+    def files(self):
+        return _GuardedResource(self._service.files())
+
+    def revisions(self):
+        return _GuardedResource(self._service.revisions())
+
+    def __getattr__(self, name):
+        return getattr(self._service, name)
+
+
 class DriveSync:
     """Sync ONE logical file to a Drive file, in place, with native revision history.
 
     Lazy-imports the google libraries. Remembers the Drive ``file_id`` per logical name
-    in ``var/drive_state.json`` so subsequent pushes update the same file (new revision)
+    in ``.secrets/drive_state.json`` so subsequent pushes update the same file (new revision)
     rather than creating duplicates.
     """
 
     def __init__(self, file_name: str, folder_name: str = "transactions_archive",
-                 var_dir: str = _DEFAULT_VAR_DIR):
+                 secrets_dir: str = _DEFAULT_SECRETS_DIR):
         self.file_name = file_name
         self.folder_name = folder_name
-        self.var_dir = var_dir
-        self.client_secret = os.path.join(var_dir, "client_secret.json")
-        self.token_path = os.path.join(var_dir, "token.json")
-        self.state_path = os.path.join(var_dir, "drive_state.json")
+        self.secrets_dir = secrets_dir
+        self.client_secret = os.path.join(secrets_dir, "client_secret.json")
+        self.token_path = os.path.join(secrets_dir, "token.json")
+        self.state_path = os.path.join(secrets_dir, "drive_state.json")
         # Cached Drive service; tests inject a fake here to stub out the network.
         self._service = None
 
-    # --- file_id persistence (var/drive_state.json, 0600) -------------------------
+    # --- file_id persistence (.secrets/drive_state.json, 0600) -------------------------
 
     def _load_state(self) -> dict:
         if not os.path.exists(self.state_path):
@@ -133,8 +206,8 @@ class DriveSync:
             return {}
 
     def _save_state(self, state: dict) -> None:
-        os.makedirs(self.var_dir, mode=0o700, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(dir=self.var_dir, suffix=".tmp")
+        os.makedirs(self.secrets_dir, mode=0o700, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=self.secrets_dir, suffix=".tmp")
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 json.dump(state, f, indent=2)
@@ -177,7 +250,8 @@ class DriveSync:
             return None
 
         creds = _get_credentials(self.client_secret, self.token_path)
-        self._service = build("drive", "v3", credentials=creds)
+        # Wrap in the append-only guard so the library can never delete or trash a file.
+        self._service = _GuardedService(build("drive", "v3", credentials=creds))
         return self._service
 
     # --- public API ---------------------------------------------------------------
@@ -243,3 +317,86 @@ class DriveSync:
         except Exception as e:  # noqa: BLE001 — never let a push failure lose local data
             print(f"  drive: push failed for {self.file_name!r}: {type(e).__name__}: {e}")
             return None
+
+    # --- revision audit / rollback (read-only history; rollback appends) ----------
+
+    def list_revisions(self) -> list[dict]:
+        """List the synced file's revision history (Drive's order, oldest→newest).
+
+        Each entry: ``{id, modifiedTime, size, ...}``. Every in-place ``push`` leaves a
+        revision here, so this is the audit trail / rollback menu. Returns ``[]`` if
+        nothing has been pushed yet or on any error (never raises).
+        """
+        file_id = self._file_id()
+        if not file_id:
+            return []
+        try:
+            service = self._get_service()
+            if service is None:
+                return []
+            revisions: list[dict] = []
+            page_token = None
+            while True:
+                kwargs = dict(
+                    fileId=file_id,
+                    fields="nextPageToken,revisions(id,modifiedTime,size,"
+                           "keepForever,originalFilename)",
+                    pageSize=200,
+                )
+                if page_token:
+                    kwargs["pageToken"] = page_token
+                resp = service.revisions().list(**kwargs).execute()
+                revisions.extend(resp.get("revisions", []))
+                page_token = resp.get("nextPageToken")
+                if not page_token:
+                    break
+            return revisions
+        except Exception as e:  # noqa: BLE001 — audit must not crash the caller
+            print(f"  drive: list_revisions failed for {self.file_name!r}: "
+                  f"{type(e).__name__}: {e}")
+            return []
+
+    def pull_revision(self, revision_id: str) -> bytes | None:
+        """Download the full content of a SPECIFIC prior revision (audit / rollback source).
+
+        Returns the revision's bytes, or ``None`` if nothing pushed / not found / error
+        (never raises). Drive returns whole-revision content, not diffs — to diff two
+        revisions, ``load_jsonl_bytes`` each and pass them to ``reconcile``.
+        """
+        file_id = self._file_id()
+        if not file_id:
+            return None
+        try:
+            service = self._get_service()
+            if service is None:
+                return None
+            data = service.revisions().get_media(
+                fileId=file_id, revisionId=revision_id).execute()
+            if isinstance(data, str):
+                return data.encode("utf-8")
+            return bytes(data) if data is not None else None
+        except Exception as e:  # noqa: BLE001 — never let a revision pull crash the caller
+            print(f"  drive: pull_revision {revision_id!r} failed for {self.file_name!r}: "
+                  f"{type(e).__name__}: {e}")
+            return None
+
+    def restore_revision(self, revision_id: str) -> str | None:
+        """Roll back by re-pushing a prior revision's content as a NEW head revision.
+
+        Append-only: this does NOT delete or reorder anything — it pulls the chosen
+        revision and pushes its bytes back as the latest revision, so every prior
+        revision (including the one being rolled back from) remains for audit. Returns
+        the new revision's webViewLink, or ``None`` on error.
+        """
+        data = self.pull_revision(revision_id)
+        if data is None:
+            print(f"  drive: cannot restore — revision {revision_id!r} unavailable")
+            return None
+        fd, tmp = tempfile.mkstemp(suffix=".jsonl")
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(data)
+            return self.push(tmp)
+        finally:
+            if os.path.exists(tmp):
+                os.unlink(tmp)

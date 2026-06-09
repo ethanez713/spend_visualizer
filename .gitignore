@@ -1,7 +1,7 @@
 # Runtime state + secrets — quarantined here, 0700, NEVER committed.
-var/
+.secrets/
 
-# Defensive secret patterns (catch a secret that lands outside var/).
+# Defensive secret patterns (catch a secret that lands outside .secrets/).
 .env*
 !.env.example
 *secret*.json
@@ -20,7 +20,7 @@ build/
 dist/
 
 # Local integration creds (real Drive round-trip is manual + gitignored)
-integration_tests/var/
+integration_tests/.secrets/
 
 # ⚠ NOTE: data/ is DELIBERATELY NOT ignored. The durable transaction store is
 # committed on purpose (git + Drive dual audit history). This repo MUST be private.

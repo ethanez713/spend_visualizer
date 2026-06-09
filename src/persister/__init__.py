@@ -15,7 +15,7 @@ Public API (see PLAN.md):
 """
 from .audit import log_reconcile
 from .csv_safe import csv_safe
-from .drive_sync import DriveSync
+from .drive_sync import AppendOnlyError, DriveSync
 from .merge import merge_golden
 from .reconcile import ReconcileReport, reconcile
 from .store import (
@@ -39,6 +39,7 @@ __all__ = [
     "Window",
     "merge_golden",
     "DriveSync",
+    "AppendOnlyError",
     "log_reconcile",
     "csv_safe",
 ]

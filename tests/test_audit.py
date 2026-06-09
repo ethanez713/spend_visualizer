@@ -8,7 +8,7 @@ from persister.reconcile import reconcile
 
 
 def given_report_when_logged_then_line_appended_with_counts(tmp_path, make_record):
-    path = str(tmp_path / "var" / "reconcile_log.jsonl")
+    path = str(tmp_path / ".secrets" / "reconcile_log.jsonl")
     local = {"a": make_record(transaction_id="a"),
              "c": make_record(transaction_id="c", amount=1.0)}
     remote = {"b": make_record(transaction_id="b"),

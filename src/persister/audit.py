@@ -2,7 +2,7 @@
 
 A cheap, human-readable trail that complements git + Drive revision history: one JSONL
 line per reconcile run with counts, the conflicting keys, and a UTC timestamp. Lives in
-``var/reconcile_log.jsonl`` (0600) so it is gitignored and owner-only.
+``.secrets/reconcile_log.jsonl`` (0600) so it is gitignored and owner-only.
 """
 from __future__ import annotations
 

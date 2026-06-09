@@ -38,7 +38,7 @@ view of it — both audited through git + Drive revision history.
 |---|----------|--------|
 | 1 | Canonical store format | **Lossless JSONL** (one full Plaid object per line, uncompressed for clean git diffs). Derive a flat CSV for human/Sheets viewing. |
 | 2 | Refetch model | **`/transactions/sync` is the everyday path** (most consistent; never misses deltas; inherently avoids over-fetch). Add **windowed `/transactions/get`** as the *reconciliation/repair* path only, driven by the persister's computed date window. |
-| 3 | Google Drive object | **A file in Drive updated in place** (native revision history; exact byte round-trip for reconcile). Canonical = the JSONL file; ALSO push a derived CSV file. `drive.file` scope, `file_id` remembered in `var/`. |
+| 3 | Google Drive object | **A file in Drive updated in place** (native revision history; exact byte round-trip for reconcile). Canonical = the JSONL file; ALSO push a derived CSV file. `drive.file` scope, `file_id` remembered in `.secrets/`. |
 | 4 | Transformer taxonomy | **Plaid's PFC taxonomy** (correct `pf_category_primary`/`detailed` in-place; save originals to new nullable columns). |
 
 **Rationale for #2 (record for the executing agent):** `/transactions/sync` is Plaid's
@@ -58,7 +58,7 @@ drift the reconciler finds, over a tight window, treating Plaid as golden.
 - **Layout:** thin entry-point **shim at repo root** (e.g. `persist.py`, `categorize.py`)
   that does `from src.<module> import main; main()`. All real code in **`src/`**. A root
   **`conftest.py`** (or `pytest.ini` with `pythonpath=.`) puts `src/` on the import path.
-- **`var/`** at repo root: gitignored, `chmod 700`; holds secrets + runtime state, each
+- **`.secrets/`** at repo root: gitignored, `chmod 700`; holds secrets + runtime state, each
   secret file `chmod 600`. Atomic writes (temp file + `os.replace`); re-apply `0600` on
   every secret write. Pattern to copy: `transactions/src/plaid_client.py` `_ensure_secure_dir`,
   `_save_json`, `load_raw_store`/`save_raw_store`.
@@ -66,7 +66,7 @@ drift the reconciler finds, over a tight window, treating Plaid as golden.
   `requirements-dev.txt` (pytest). Consider hash-locked `requirements.lock` (converter does).
 - **Tests:** fast/offline/deterministic unit tests in `tests/`; slow LLM/network tests in
   `integration_tests/`. Isolate ALL file I/O to tmp dirs via a fixture (copy the `state`
-  fixture pattern in `transactions/tests/conftest.py`). **Never touch real `var/`, real
+  fixture pattern in `transactions/tests/conftest.py`). **Never touch real `.secrets/`, real
   data files, or the network in unit tests.**
 - **Self-documenting:** module-level docstring header on every file explaining its job.
 
@@ -75,8 +75,8 @@ drift the reconciler finds, over a tight window, treating Plaid as golden.
   Per user, Drive sync defaults **on** for these tools, but MUST be disable-able by a flag
   (`--no-drive` / `--no-persist`) and should print a one-line "data leaving machine" notice.
 - **Least privilege:** Google scope stays `drive.file` (app sees only files it created).
-- **Secrets in `var/`** (`token.json`, `client_secret.json`), `0600`; never logged/committed.
-  `.gitignore` must include `var/`, `.env*` (keep `!.env.example`), `*secret*.json`,
+- **Secrets in `.secrets/`** (`token.json`, `client_secret.json`), `0600`; never logged/committed.
+  `.gitignore` must include `.secrets/`, `.env*` (keep `!.env.example`), `*secret*.json`,
   `token.json`, `*.tmp`, `__pycache__/`, `*.pyc`, `.pytest_cache/`, `.venv/`.
 - **Formula-injection guard** on any derived CSV: prefix a `'` on text cells starting with
   `= + - @`/tab/CR; leave numerics alone. Copy `transactions/src/fetch_transactions.py`
@@ -84,7 +84,7 @@ drift the reconciler finds, over a tight window, treating Plaid as golden.
 - **Local LLM only:** Ollama at `http://localhost:11434`; warn if host is non-local.
 - **⚠ PRIVACY — committed financial data:** Both new repos commit real transaction data
   (the durable store) to git **on purpose** (audit/replication). Therefore **both repos MUST
-  be private**. `var/` (secrets) stays gitignored; `data/` (the store) is deliberately NOT
+  be private**. `.secrets/` (secrets) stays gitignored; `data/` (the store) is deliberately NOT
   gitignored. Create GitHub repos as **private** under account `<your-github-user>` (gh is
   authenticated as <your-github-user> with `repo` scope). Flag this to the user before first push.
 
@@ -118,7 +118,7 @@ drift the reconciler finds, over a tight window, treating Plaid as golden.
   - `sync_item(client, entry, raw_store)` (cursor sync loop) — the everyday path; unchanged.
   - `_csv_safe`, `_v`, `_g` helpers.
   - `transactions/src/plaid_client.py`: `load_raw_store()/save_raw_store()` (xz JSONL keyed
-    by `transaction_id`), `get_client()`, atomic/secure write helpers, `var/` paths.
+    by `transaction_id`), `get_client()`, atomic/secure write helpers, `.secrets/` paths.
 
 ### Plaid raw record shape (the unit of persistence)
 Each record = Plaid transaction `.to_dict()` (what `load_raw_store()` yields), keyed by
@@ -149,7 +149,7 @@ persister/
 ├── requirements.txt          # pinned: google-api-python-client, google-auth, google-auth-oauthlib
 ├── requirements-dev.txt      # pytest==9.0.3
 ├── README.md
-├── .gitignore                # var/, .venv/, __pycache__, *.tmp, *secret*.json, token.json, .pytest_cache/  (NOT data/)
+├── .gitignore                # .secrets/, .venv/, __pycache__, *.tmp, *secret*.json, token.json, .pytest_cache/  (NOT data/)
 ├── src/
 │   └── persister/            # importable package (pyproject maps package dir here)
 │       ├── __init__.py       # re-export public API (Store, DriveSync, reconcile, compute_window, merge_golden, dedupe_supersede)
@@ -265,9 +265,9 @@ def merge_golden(base: dict[str, dict], fresh: list[dict],
 ```python
 class DriveSync:
     """Sync ONE logical file to a Drive file, in place, with native revision history.
-    Lazy-imports google libs. Remembers file_id in var/drive_state.json (per logical name)."""
+    Lazy-imports google libs. Remembers file_id in .secrets/drive_state.json (per logical name)."""
     def __init__(self, file_name: str, folder_name: str = "transactions_archive",
-                 var_dir: str = "<repo>/var"): ...
+                 secrets_dir: str = "<repo>/.secrets"): ...
     def pull(self) -> bytes | None:
         """Download current Drive file content (files().get_media). None if no remembered
         file_id / not found. Used to get the remote store for reconcile."""
@@ -278,13 +278,13 @@ class DriveSync:
 ```
 - Reuse `_get_credentials`, `_get_or_create_folder` verbatim from `converter/src/uploader.py`
   (copy into this module; keep `GOOGLE_SCOPES=["…/auth/drive.file"]`).
-- `var/drive_state.json` shape: `{ "<file_name>": "<file_id>" }`, `0600`.
+- `.secrets/drive_state.json` shape: `{ "<file_name>": "<file_id>" }`, `0600`.
 - MIME: store the JSONL as a plain Drive file (`application/x-ndjson` or `text/plain`) — do
   **NOT** convert to a Google Sheet (conversion is lossy and breaks exact reconcile). The
   derived CSV is pushed as a SECOND Drive file (`text/csv`) for human viewing.
 
 **`audit.py`**: `log_reconcile(path, report, *, source)` → append one JSONL line per run with
-counts + conflict keys + timestamp (`var/reconcile_log.jsonl`, `0600`). Cheap audit trail to
+counts + conflict keys + timestamp (`.secrets/reconcile_log.jsonl`, `0600`). Cheap audit trail to
 complement git + Drive revisions.
 
 ### CLI (`src/cli.py`, shim `persist.py`)
@@ -304,7 +304,7 @@ persist window    --store data/transactions.jsonl     # prints computed (start,e
   empty-store default.
 - `merge.py`: fresh overwrites by key; base-only keys preserved; settled pendings dropped.
 - `drive_sync.py`: **stub the Drive service** (a fake object whose `files().get_media/create/
-  update` record calls); assert `file_id` persisted to `var/drive_state.json`, update-path vs
+  update` record calls); assert `file_id` persisted to `.secrets/drive_state.json`, update-path vs
   create-path chosen correctly, `pull` returns bytes, errors → `None` (never raise).
 - Copy the tmp-dir isolation fixture pattern from `transactions/tests/conftest.py`.
 
@@ -398,7 +398,7 @@ plaid_category_transformer/
 ├── requirements.txt          # pinned: pandas?, instructor, openai, pydantic, -e ../persister, google libs
 ├── requirements-dev.txt      # pytest
 ├── README.md
-├── .gitignore                # var/, .venv, __pycache__, *.tmp, *secret*.json, token.json, .pytest_cache/  (NOT data/)
+├── .gitignore                # .secrets/, .venv, __pycache__, *.tmp, *secret*.json, token.json, .pytest_cache/  (NOT data/)
 ├── src/
 │   ├── transformer.py        # engine + CLI main: select rows → mechanical → LLM → write provenance → persist
 │   ├── rules.py              # mechanical rules + merchant memory (keyed by merchant_entity_id, fallback normalized name)
@@ -426,7 +426,7 @@ Deterministic, runs first. Signals to exploit (richest first):
 - `name` / `original_description` keyword/token rules (copy converter's `contains_word`
   whole-token matcher; e.g. `TST*` prefix → `FOOD_AND_DRINK` / `FOOD_AND_DRINK_RESTAURANT`).
 - `payment_channel` (`in store` / `online` / `other`), `amount` sign/magnitude.
-- A `merchant_memory.json` in `var/` (keyed by `merchant_entity_id`, fallback normalized
+- A `merchant_memory.json` in `.secrets/` (keyed by `merchant_entity_id`, fallback normalized
   `merchant_name`; reuse converter `normalize_merchant`). `0600`, atomic write.
 - Each rule returns a candidate `(primary, detailed, rule_name)` or `None`. First hit wins.
 - Mechanical output is a **suggestion** carried into Stage 2 (the LLM sees it) AND recorded
@@ -514,7 +514,7 @@ and persistable by persister) **plus these new nullable fields** (empty/null whe
     row_fn=…)` where COLUMNS = the 54 base columns + the 6 new columns; `_csv_safe` applied.
   - `DriveSync("transactions_categorized.jsonl", folder_name="transactions_archive").push(...)`
     and a CSV push for the human/Sheets view. Default ON, `--no-drive` to disable.
-- Provenance/audit: append every change to `var/category_log.jsonl` (timestamp, txn id,
+- Provenance/audit: append every change to `.secrets/category_log.jsonl` (timestamp, txn id,
   original→new primary/detailed, step, reason) — mirrors converter's `correction_log.jsonl`.
 
 ### Tests
@@ -581,7 +581,7 @@ Drive path verified via the stubbed-service tests (no real network in CI).
   the first `git push`; create repos `--private` under `<your-github-user>`.
 - **Drive `drive.file` scope** means the app only sees files it created — the persister's
   create-then-remember-`file_id` flow is required (you can't "find" a pre-existing arbitrary
-  file). First run creates the folder + files; `var/drive_state.json` must persist the IDs.
+  file). First run creates the folder + files; `.secrets/drive_state.json` must persist the IDs.
 - **`/transactions/get` requires the data to be within the Item's `days_requested` window**
   (set to 730 at link time in `transactions/src/app.py`). The repair window is small, so this
   is fine; but a conflict on a very old txn outside the window can't be re-fetched — in that
