@@ -1,0 +1,13 @@
+# Durable-persist extras: the generic persister library + Google Drive client libs.
+# These are only needed for the --persist path (reconcile + Drive sync); the core
+# sync + local CSV pipeline needs only requirements.txt.
+#   ./venv/bin/pip install -r requirements-persist.txt
+#
+# persister is installed editable so local edits to the sibling repo propagate. If this
+# repo or persister is moved/renamed, rebuild the venv (the path below is absolute).
+-e ~/persister
+
+# Google Drive (lazy-imported inside persister.drive_sync). Versions match converter/.
+google-api-python-client==2.197.0
+google-auth==2.53.0
+google-auth-oauthlib==1.4.0

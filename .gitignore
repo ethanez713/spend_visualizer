@@ -1,7 +1,8 @@
-# Runtime state, secrets, logs, raw archive — all quarantined here, never commit
-var/
+# Secrets in .secrets/; runtime state, logs, raw archive in data/ — never commit
+.secrets/
+data/
 
-# Extra defensive secret patterns (in case a secret lands outside var/)
+# Extra defensive secret patterns (in case a secret lands outside .secrets/)
 .env*
 !.env.example
 *secret*.json

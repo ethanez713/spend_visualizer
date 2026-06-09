@@ -10,17 +10,18 @@ from plaid.api import plaid_api
 
 BASE_DIR = Path(__file__).resolve().parent   # src/ package dir (also holds link.html)
 PROJECT_ROOT = BASE_DIR.parent
-VAR_DIR = PROJECT_ROOT / "var"                # gitignored, 0700: secrets + runtime state
+SECRETS_DIR = PROJECT_ROOT / ".secrets"       # gitignored, 0700: secrets only
+DATA_DIR = PROJECT_ROOT / "data"              # gitignored, 0700: runtime state + raw archive
 
-# Credentials live in var/.env (quarantined, never committed).
-load_dotenv(VAR_DIR / ".env")
+# Credentials live in .secrets/.env (quarantined, never committed).
+load_dotenv(SECRETS_DIR / ".env")
 
-TOKENS_FILE = VAR_DIR / "tokens.json"
-CURSORS_FILE = VAR_DIR / "sync_cursors.json"
+TOKENS_FILE = SECRETS_DIR / "tokens.json"
+CURSORS_FILE = DATA_DIR / "sync_cursors.json"
 # Single source of truth: the full raw Plaid object per transaction, keyed by
 # transaction_id, persisted as xz-compressed JSONL (one JSON object per line).
 # The CSV is a derived projection of this. Kept for audit / QC.
-RAW_FILE = VAR_DIR / "transactions_raw.jsonl.xz"
+RAW_FILE = DATA_DIR / "transactions_raw.jsonl.xz"
 # The CSV is the user-facing deliverable — kept at the project root.
 CSV_FILE = PROJECT_ROOT / "transactions.csv"
 
@@ -49,7 +50,7 @@ def get_client() -> plaid_api.PlaidApi:
 
 
 def _ensure_secure_dir(path: Path):
-    """Create `path` if needed and enforce owner-only (0700) perms — var/ holds secrets."""
+    """Create `path` if needed and enforce owner-only (0700) perms — these dirs hold secrets + private data."""
     path.mkdir(mode=0o700, parents=True, exist_ok=True)
     path.chmod(0o700)
 

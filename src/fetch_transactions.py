@@ -12,6 +12,7 @@ with. The variable-length `counterparties` list is preserved as a JSON string.
 Run:  ./venv/bin/python fetch_transactions.py
 Safe to re-run / schedule — only new or changed transactions are pulled.
 """
+import argparse
 import csv
 import json
 import sys
@@ -283,7 +284,24 @@ def write_csv(raw_store: dict, account_meta: dict):
             writer.writerow({k: _csv_safe(v) for k, v in row.items()})
 
 
-def main():
+def _parse_args(argv=None):
+    p = argparse.ArgumentParser(description="Fetch Plaid transactions into transactions.csv.")
+    # Durable persist (reconcile + Drive sync via the persister library). On by default.
+    persist = p.add_mutually_exclusive_group()
+    persist.add_argument("--persist", dest="persist", action="store_true", default=True,
+                         help="after syncing, reconcile + persist the durable store (default).")
+    persist.add_argument("--no-persist", dest="persist", action="store_false",
+                         help="skip the durable persist step (sync + local CSV only).")
+    p.add_argument("--no-drive", dest="drive", action="store_false", default=True,
+                   help="persist locally but do NOT sync to Google Drive (no data egress).")
+    p.add_argument("--no-refetch", dest="refetch", action="store_false", default=True,
+                   help="do not run the /transactions/get repair fetch on reconcile conflicts.")
+    return p.parse_args(argv)
+
+
+def main(argv=None):
+    args = _parse_args(argv)
+
     client = get_client()
     tokens = load_tokens()
     if not tokens:
@@ -322,6 +340,13 @@ def main():
     size_kb = RAW_FILE.stat().st_size / 1024 if RAW_FILE.exists() else 0
     print(f"\nWrote {len(raw_store)} transactions to {CSV_FILE}")
     print(f"Raw archive: {RAW_FILE.name} ({size_kb:.0f} KB compressed)")
+
+    if args.persist:
+        # Imported lazily: persist_runner imports back from this module (avoid a circular
+        # import) and pulls in the persister library only when persistence is actually used.
+        from .persist_runner import run_persist
+        print("\nPersisting durable store…")
+        run_persist(do_drive=args.drive, allow_refetch=args.refetch)
 
 
 if __name__ == "__main__":
