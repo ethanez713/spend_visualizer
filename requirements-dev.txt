@@ -1,0 +1,2 @@
+# Test-only deps — the pipeline itself is stdlib-only (components bring their own venvs).
+pytest==9.0.3
