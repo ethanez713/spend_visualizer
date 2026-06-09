@@ -23,6 +23,8 @@ from plaid.exceptions import ApiException
 from plaid.model.transactions_get_request import TransactionsGetRequest
 from plaid.model.transactions_get_request_options import TransactionsGetRequestOptions
 
+from .plaid_client import normalize_txn
+
 # Plaid caps /transactions/get at 500 records per page.
 _PAGE_SIZE = 500
 
@@ -66,7 +68,7 @@ def fetch_window(client, tokens, start_date, end_date) -> list[dict]:
                 resp = client.transactions_get(req)
                 page = resp["transactions"]
                 for txn in page:
-                    collected.append(txn.to_dict())
+                    collected.append(normalize_txn(txn.to_dict()))
                 offset += len(page)
                 total = resp["total_transactions"]
                 # Stop once we've pulled the whole window (or Plaid returned an empty page).

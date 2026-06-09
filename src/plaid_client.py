@@ -113,6 +113,20 @@ def _json_default(o):
     return str(o)
 
 
+def normalize_txn(raw: dict) -> dict:
+    """JSON round-trip a fresh Plaid record (``.to_dict()``) into JSON-native values.
+
+    Plaid's models carry datetime.date / datetime objects, while records loaded back
+    from the xz archive carry ISO strings. Normalizing every record at the fetch
+    boundary keeps the in-memory store homogeneous: sorting never compares date-to-str
+    (a TypeError on delta runs over an existing archive), and a record serializes and
+    content-hashes identically everywhere it lands (xz archive, durable store, Drive
+    remote) — otherwise datetime fields would diverge ('T' vs space separator) and
+    raise permanent spurious reconcile conflicts.
+    """
+    return json.loads(json.dumps(raw, default=_json_default, ensure_ascii=False))
+
+
 def load_raw_store() -> dict:
     """Read the xz JSONL archive into {transaction_id: raw_dict}."""
     if not RAW_FILE.exists():
@@ -130,9 +144,11 @@ def load_raw_store() -> dict:
 def save_raw_store(store: dict):
     """Write {transaction_id: raw_dict} as xz-compressed JSONL (atomic, max compression)."""
     _ensure_secure_dir(RAW_FILE.parent)
+    # str() the keys defensively (mirrors persister.save_jsonl): a not-yet-normalized
+    # record holding a datetime.date must never break the sort against ISO strings.
     rows = sorted(
         store.values(),
-        key=lambda r: (r.get("date") or "", r.get("transaction_id") or ""),
+        key=lambda r: (str(r.get("date") or ""), str(r.get("transaction_id") or "")),
     )
     tmp = RAW_FILE.parent / (RAW_FILE.name + ".tmp")
     with lzma.open(tmp, "wt", encoding="utf-8", preset=9 | lzma.PRESET_EXTREME) as f:

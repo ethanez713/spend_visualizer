@@ -1,4 +1,6 @@
 """Tests for plaid_client local-state helpers and client construction."""
+import datetime
+
 import pytest
 from plaid.api import plaid_api
 
@@ -65,6 +67,22 @@ def given_store_when_saved_then_loads_identically(state):
 
 def given_no_archive_when_load_raw_store_then_empty(state):
     assert load_raw_store() == {}
+
+
+def given_mixed_date_types_when_saved_then_sorted_and_iso_serialized(state):
+    # Regression: a delta run used to mix archive records (ISO strings) with fresh
+    # Plaid records (datetime objects) in one store — sorting must not TypeError,
+    # and date/datetime values must land as ISO ('T'-separated) strings.
+    store = {
+        "t_old": {"transaction_id": "t_old", "date": "2026-01-02", "amount": 5.0},
+        "t_new": {"transaction_id": "t_new", "date": datetime.date(2026, 1, 1),
+                  "datetime": datetime.datetime(2026, 1, 1, 12, 30), "amount": 9.0},
+    }
+    save_raw_store(store)
+    loaded = load_raw_store()
+    assert loaded["t_new"]["date"] == "2026-01-01"
+    assert loaded["t_new"]["datetime"] == "2026-01-01T12:30:00"  # isoformat, not str()
+    assert loaded["t_old"] == store["t_old"]
 
 
 # --- get_client: env validation ----------------------------------------------

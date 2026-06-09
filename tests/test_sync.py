@@ -59,6 +59,24 @@ def given_removed_id_absent_when_sync_then_not_counted(state):
     assert raw_store == {}
 
 
+def given_plaid_object_values_when_sync_then_store_is_json_native(state):
+    # Plaid models carry datetime objects; the store must hold only JSON-native
+    # values so records from sync and from the archive are interchangeable
+    # (sortable together, identical content hashes for reconcile).
+    import datetime
+    raw_store = {}
+    pages = [_page(added=[FakeTxn(
+        transaction_id="a1",
+        date=datetime.date(2026, 1, 2),
+        authorized_datetime=datetime.datetime(2026, 1, 1, 12, 30),
+    )], next_cursor="cur1")]
+
+    sync_item(FakeClient(pages), ENTRY, raw_store)
+
+    assert raw_store["a1"]["date"] == "2026-01-02"
+    assert raw_store["a1"]["authorized_datetime"] == "2026-01-01T12:30:00"
+
+
 def given_first_run_history_not_ready_when_sync_then_retry_signal(state):
     # Empty page with no cursor on the first call => Plaid still pulling history.
     raw_store = {}

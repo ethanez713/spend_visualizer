@@ -30,6 +30,7 @@ from .plaid_client import (
     load_cursors,
     load_raw_store,
     load_tokens,
+    normalize_txn,
     save_cursor,
     save_raw_store,
 )
@@ -254,10 +255,10 @@ def sync_item(client, entry, raw_store) -> dict:
         first_call = False
 
         for txn in resp["added"]:
-            raw_store[txn["transaction_id"]] = txn.to_dict()
+            raw_store[txn["transaction_id"]] = normalize_txn(txn.to_dict())
             counts["added"] += 1
         for txn in resp["modified"]:
-            raw_store[txn["transaction_id"]] = txn.to_dict()
+            raw_store[txn["transaction_id"]] = normalize_txn(txn.to_dict())
             counts["modified"] += 1
         for removed in resp["removed"]:
             if raw_store.pop(removed["transaction_id"], None) is not None:
