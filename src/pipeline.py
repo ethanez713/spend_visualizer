@@ -240,13 +240,25 @@ def main(argv=None, cfg: Config | None = None) -> None:
     cfg = cfg or default_config()
     args = parse_args(argv, default_port=cfg.ui_port)
 
+    # When stdout is redirected (cron, `./run.py > log`), Python block-buffers it and
+    # the status lines below would only land at exit — AFTER the components' own
+    # (unbuffered) output, scrambling the log. Stream them line by line instead.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(line_buffering=True)
+
     mode = "OFFLINE (--no-drive)" if args.no_drive else "Drive sync ON"
     print(f"finance_pipeline — fetch → categorize → analyze   [{mode}]")
     preflight(cfg, args)
 
-    run_step("fetch (transactions)", fetch_cmd(cfg, args), cfg.transactions_dir)
-    run_step("categorize (plaid_category_transformer)",
-             categorize_cmd(cfg, args), cfg.transformer_dir)
+    try:
+        run_step("fetch (transactions)", fetch_cmd(cfg, args), cfg.transactions_dir)
+        run_step("categorize (plaid_category_transformer)",
+                 categorize_cmd(cfg, args), cfg.transformer_dir)
+    except KeyboardInterrupt:
+        # The subprocess got the same SIGINT and is already stopping; just exit cleanly
+        # instead of dumping a traceback. Nothing is half-written (components write
+        # atomically), so a plain re-run resumes from the durable state.
+        sys.exit("\n✖ Interrupted — pipeline stopped. Re-run ./run.py to resume.")
 
     if args.no_ui:
         print("\n✓ Data pipeline complete (--no-ui: skipping the Streamlit step).")
