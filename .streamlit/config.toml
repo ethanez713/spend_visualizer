@@ -1,0 +1,6 @@
+# Offline by default (security baseline): no telemetry leaving the machine.
+[browser]
+gatherUsageStats = false
+
+[server]
+headless = true
