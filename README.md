@@ -54,8 +54,13 @@ friendly `name`, and `type` (Plaid leaves `account_owner` null, so this is
 manual). Optionally tune category groupings in `config/taxonomy.yaml` — editing
 it **never recategorizes data**; only the rollup changes.
 
-Point `config/app.yaml → archive_paths` at the collector's
-`transactions_raw.jsonl.xz` (default `../transactions/...`).
+`config/app.yaml → archive_paths` points at the transaction archive to analyze.
+Default: the **category-corrected** store from `plaid_category_transformer`
+(`../plaid_category_transformer/data/transactions_categorized.jsonl`) — full raw
+Plaid records with audited `personal_finance_category` values applied in place,
+produced by the `../finance_pipeline` orchestrator (or by running `categorize.py`
+directly). To analyze the uncorrected feed instead, point it back at the
+collector's `../transactions/data/transactions_raw.jsonl.xz`.
 
 ## Run
 
@@ -63,11 +68,12 @@ Point `config/app.yaml → archive_paths` at the collector's
 ./venv/bin/streamlit run app.py
 ```
 
-Tabs: **Drilldown** (budget/spend heatmap table + derived cuts, sunburst/treemap,
-stacked trends with rolling avg) · **Merchants & recurring** (top merchants with
-logos + subscription burden) · **Cash flow** (monthly income vs spend vs net +
-cumulative) · **QC** (unmapped atoms, % in "Other", excluded totals, and a
-double-count tie-out check).
+Tabs: **Drilldown** (spend table with running avgs, sunburst/treemap/sankey with
+click-to-zoom + transaction detail) · **Budget** (budget vs actual heatmap) ·
+**Merchants & recurring** (top merchants with logos + subscription burden) ·
+**Cash flow** (monthly income vs spend vs net + cumulative) · **Corrections**
+(triage queue for miscategorizations: upstream vs taxonomy fixes) · **QC**
+(unmapped atoms, % in "Other", excluded totals, and a double-count tie-out check).
 
 Use the **Category level** slider (necessity → tier1 → tier2 → atom → merchant)
 and the global filters (date, person, account type, channel, flow, necessity).
