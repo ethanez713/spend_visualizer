@@ -61,6 +61,7 @@ DEFAULT_FLAGS_CSV = os.path.join(_PROJECT_ROOT, "data", "flagged_for_review.csv"
 DEFAULT_LOG = os.path.join(_SECRETS_DIR, "category_log.jsonl")
 
 DRIVE_FOLDER = "transactions_archive"
+DRIVE_JSONL_NAME = "transactions_categorized.jsonl"
 
 
 # ── Input loading ──────────────────────────────────────────────────────────────
@@ -262,11 +263,55 @@ def write_flags_file(path: str, store: dict[str, dict]) -> int:
     return len(flagged)
 
 
+# ── Drive divergence gate ─────────────────────────────────────────────────────
+
+def check_drive_divergence(prior: dict[str, dict], *, force_push: bool = False,
+                           secrets_dir: str = _SECRETS_DIR) -> None:
+    """Stop before any write if the Drive copy of the categorized store has diverged.
+
+    Invariant: every Drive-enabled run ends by pushing the full local store, so at the
+    START of a run the remote must hold nothing the local prior store doesn't already
+    have (equal, or behind after ``--no-drive`` runs). Divergence — content conflicts,
+    or remote-only ids — means the Drive copy was edited externally or the local store
+    was lost/reset; pushing now would clobber the remote audit history (including human
+    review decisions). Unlike the raw store there is no golden source to repair from
+    (the corrections ARE the value), so a human must arbitrate: restore the local store,
+    or re-run with ``--force-push`` to declare the local store authoritative.
+
+    A missing remote (nothing pushed yet, or Drive unreachable) passes the gate — the
+    later push degrades the same soft way.
+    """
+    from persister import DriveSync
+    remote = persister.load_jsonl_bytes(
+        DriveSync(DRIVE_JSONL_NAME, folder_name=DRIVE_FOLDER,
+                  secrets_dir=secrets_dir).pull())
+    if not remote:
+        return
+    report = persister.reconcile(prior, remote)
+    if not report.conflicts and not report.remote_only:
+        return
+    sample = ", ".join((report.conflicts + report.remote_only)[:10])
+    print(f"  drive gate: categorized store diverged from the Drive copy — "
+          f"{len(report.conflicts)} conflict(s), {len(report.remote_only)} remote-only "
+          f"row(s) (e.g. {sample}).", file=sys.stderr)
+    if force_push:
+        print("  drive gate: --force-push — treating the LOCAL store as authoritative; "
+              "the Drive copy will be overwritten (as a new revision; history survives).",
+              file=sys.stderr)
+        return
+    sys.exit(
+        "  drive gate: STOP — refusing to overwrite a diverged Drive copy. Nothing was "
+        "audited or written. If the local store is the correct one (e.g. after --no-drive "
+        "runs), re-run with --force-push; to inspect the remote, use persister's "
+        "DriveSync.pull()/list_revisions(), or run with --no-drive to stay local."
+    )
+
+
 # ── Orchestration (I/O) ───────────────────────────────────────────────────────
 
 def run(*, input_path: str, out_jsonl: str, out_csv: str, flags_csv: str, log_path: str,
         levels: set[str], memory_path: str | None, do_drive: bool,
-        no_llm: bool, debug: bool, full: bool = False) -> None:
+        no_llm: bool, debug: bool, full: bool = False, force_push: bool = False) -> None:
     input_store = load_input(input_path)
     if not input_store:
         # Guard against mass deletion: an empty input (e.g. a failed upstream fetch) must
@@ -279,6 +324,11 @@ def run(*, input_path: str, out_jsonl: str, out_csv: str, flags_csv: str, log_pa
     # Incremental delta: diff the input against the prior categorized store so we audit only
     # new/changed rows, carry the rest forward, and prune rows gone upstream.
     prior = persister.load_jsonl(out_jsonl) if os.path.isfile(out_jsonl) else {}
+
+    # Before any work (the LLM stage is expensive) or any write: make sure pushing at the
+    # end would not clobber a Drive copy that has drifted from what this store last knew.
+    if do_drive:
+        check_drive_divergence(prior, force_push=force_push)
     delta = classify(input_store, prior, full=full)
     print(f"  Delta vs prior store: {len(delta.new)} new, {len(delta.changed)} changed, "
           f"{len(delta.carryover)} unchanged (carried forward), "
@@ -330,7 +380,7 @@ def run(*, input_path: str, out_jsonl: str, out_csv: str, flags_csv: str, log_pa
         print("  ⚠ Drive sync ON — the categorized store will leave this machine "
               "(Google Drive). Use --no-drive to keep it local.")
         from persister import DriveSync
-        link = DriveSync("transactions_categorized.jsonl", folder_name=DRIVE_FOLDER,
+        link = DriveSync(DRIVE_JSONL_NAME, folder_name=DRIVE_FOLDER,
                          secrets_dir=_SECRETS_DIR).push(out_jsonl, mime="application/x-ndjson")
         if link:
             print(f"  Drive: pushed JSONL → {link}")
@@ -395,6 +445,10 @@ def main():
                     help="skip the LLM stage (mechanical rules only)")
     ap.add_argument("--no-drive", action="store_true",
                     help="do not push results to Google Drive (stay fully offline)")
+    ap.add_argument("--force-push", action="store_true",
+                    help="override the Drive divergence gate: treat the LOCAL categorized "
+                         "store as authoritative and overwrite a diverged Drive copy "
+                         "(pushed as a new revision; old revisions survive)")
     ap.add_argument("--review", action="store_true",
                     help="interactively adjudicate flagged rows in --out-jsonl "
                          "(accept/reject/re-pick); does not re-run the audit")
@@ -430,6 +484,7 @@ def main():
         no_llm=args.no_llm,
         debug=args.debug,
         full=args.full,
+        force_push=args.force_push,
     )
 
 

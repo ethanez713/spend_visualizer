@@ -50,6 +50,13 @@ load ─▶ select (ALL rows by default) ─▶ Stage 1 mechanical rules ─▶ 
    `data/flagged_for_review.csv` (the review worklist), optional Drive push of all three
    (default ON, `--no-drive`), `.secrets/{category_log,review_log}.jsonl`.
 
+When Drive sync is on, a **divergence gate** runs first: the remote categorized store is
+pulled and reconciled against the local prior store. Content conflicts or remote-only rows
+(an externally edited Drive copy, or a lost/reset local store) **stop the run before any
+audit or write** — there is no golden source to repair the corrections from, so a human
+must arbitrate. If the local store is the correct one (e.g. after `--no-drive` runs),
+re-run with `--force-push`.
+
 ## Incremental processing & pruning
 
 The audit is expensive (a local LLM call per row), so it does **not** re-process the whole
@@ -135,7 +142,8 @@ ollama pull qwen2.5:7b  # one-time model download
 
 Key flags: `--input`, `--out-jsonl`, `--out-csv`, `--flags-csv`, `--full`,
 `--confidence LOW,MEDIUM,HIGH,VERY_HIGH,UNKNOWN`, `--memory PATH` / `--no-memory`,
-`--no-llm`, `--no-drive`, `--review`, `--log PATH`, `--debug`.
+`--no-llm`, `--no-drive`, `--force-push` (override the Drive divergence gate),
+`--review`, `--log PATH`, `--debug`.
 
 ## Tests
 
