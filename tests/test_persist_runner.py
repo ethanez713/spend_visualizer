@@ -125,19 +125,41 @@ def given_no_drive_when_run_persist_then_no_pull_no_push_no_refetch(harness, mon
     assert set(store) == {"t1", "t2"}
 
 
-def given_conflict_but_no_refetch_when_run_persist_then_refetch_skipped(harness, monkeypatch):
+def given_conflict_but_no_refetch_when_run_persist_then_stops_before_persisting(
+        harness, monkeypatch):
     tmp_path, order, refetch_calls = harness
     _set_local(monkeypatch, {"t1": _rec("t1", amount=1.0)})
     remote = {"t1": _rec("t1", amount=2.0)}
     FakeDriveSync.remote_bytes = "\n".join(json.dumps(r) for r in remote.values()).encode()
 
-    pr.run_persist(do_drive=True, allow_refetch=False, data_dir=str(tmp_path))
+    # With the repair fetch disabled the conflict cannot be resolved → stop, don't persist.
+    with pytest.raises(SystemExit):
+        pr.run_persist(do_drive=True, allow_refetch=False, data_dir=str(tmp_path))
 
-    # No repair fetch; reconcile kept the remote value for the conflict.
     assert refetch_calls == []
     assert "refetch" not in order
-    store = _read_jsonl(tmp_path / "transactions.jsonl")
-    assert store["t1"]["amount"] == 2.0
+    assert not any(o.startswith("push:") for o in order)   # nothing pushed to Drive
+    assert not (tmp_path / "transactions.jsonl").exists()  # durable store untouched
+    assert os.path.exists(pr._RECONCILE_LOG)               # conflict still audited
+
+
+def given_refetch_misses_conflict_when_run_persist_then_stops_before_persisting(
+        harness, monkeypatch):
+    tmp_path, order, refetch_calls = harness
+    _set_local(monkeypatch, {"t1": _rec("t1", amount=1.0)})
+    remote = {"t1": _rec("t1", amount=2.0)}
+    FakeDriveSync.remote_bytes = "\n".join(json.dumps(r) for r in remote.values()).encode()
+    # Plaid's golden re-fetch does NOT return t1 (aged out / item error) → unresolved.
+    pr.fetch_window.fresh = []
+
+    with pytest.raises(SystemExit) as exc:
+        pr.run_persist(do_drive=True, allow_refetch=True, data_dir=str(tmp_path))
+
+    assert "t1" in str(exc.value)                          # names the unresolved id
+    assert len(refetch_calls) == 1                         # the repair fetch did run
+    assert "refetch" in order
+    assert not any(o.startswith("push:") for o in order)   # nothing pushed to Drive
+    assert not (tmp_path / "transactions.jsonl").exists()  # durable store untouched
 
 
 def given_settled_pending_when_run_persist_then_deduped(harness, monkeypatch):

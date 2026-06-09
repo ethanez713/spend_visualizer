@@ -43,6 +43,10 @@ def run_persist(*, do_drive: bool = True, allow_refetch: bool = True,
       4. On content conflicts (and allow_refetch): compute a tight repair window covering
          the conflicting ids, re-fetch them via /transactions/get, and let Plaid (golden)
          overwrite via merge_golden. A Plaid error skips the item — never deletes local data.
+         Any conflict the golden re-fetch does NOT confirm (or every conflict, when
+         allow_refetch is False) is unresolved → SystemExit (non-zero) BEFORE the durable
+         store is written or Drive is pushed, so callers (e.g. the finance_pipeline
+         orchestrator) stop instead of persisting divergent data.
       5. dedupe_supersede drops settled pendings.
       6. Write the durable JSONL store + derived CSV under data_dir.
       7. If do_drive: push new Drive revisions of both (prints an egress notice first).
@@ -69,15 +73,33 @@ def run_persist(*, do_drive: bool = True, allow_refetch: bool = True,
 
     merged = report.merged
 
-    # 4. Plaid is golden on conflicts: re-fetch a bounded window and overwrite.
-    if allow_refetch and report.conflicts:
-        win = persister.compute_window(merged, extra_tids=report.conflicts)
-        print(
-            f"  persist: repairing {len(report.conflicts)} conflict(s) via "
-            f"/transactions/get [{win.start_date} .. {win.end_date}]"
-        )
-        fresh = fetch_window(get_client(), load_tokens(), win.start_date, win.end_date)
-        merged = persister.merge_golden(merged, fresh)
+    # 4. Plaid is golden on conflicts: re-fetch a bounded window and overwrite. A conflict
+    #    the re-fetch cannot confirm (id absent from the response — aged out of Plaid's
+    #    window, or the item errored) is UNRESOLVED: stop before the durable store or
+    #    Drive is touched, rather than silently persisting divergent data.
+    if report.conflicts:
+        unresolved = sorted(report.conflicts)
+        if allow_refetch:
+            win = persister.compute_window(merged, extra_tids=report.conflicts)
+            print(
+                f"  persist: repairing {len(report.conflicts)} conflict(s) via "
+                f"/transactions/get [{win.start_date} .. {win.end_date}]"
+            )
+            fresh = fetch_window(get_client(), load_tokens(), win.start_date, win.end_date)
+            merged = persister.merge_golden(merged, fresh)
+            fresh_ids = {r.get("transaction_id") for r in fresh}
+            unresolved = sorted(set(report.conflicts) - fresh_ids)
+        if unresolved:
+            persister.log_reconcile(_RECONCILE_LOG, report, source="transactions")
+            shown = ", ".join(unresolved[:10]) + (", …" if len(unresolved) > 10 else "")
+            why = ("the repair re-fetch is disabled (--no-refetch)" if not allow_refetch
+                   else "the Plaid golden re-fetch could not confirm them")
+            raise SystemExit(
+                f"  persist: STOP — {len(unresolved)} unresolved conflict(s) between the "
+                f"local raw store and the Drive remote: {shown}. {why.capitalize()}. "
+                "Nothing was written to the durable store or Drive. Inspect the records "
+                "(e.g. ../persister: persist.py reconcile) and re-run."
+            )
 
     # 5. Drop pending rows superseded by a posted row.
     merged = persister.dedupe_supersede(merged)
