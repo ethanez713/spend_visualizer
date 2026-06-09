@@ -52,8 +52,8 @@ def _cmd_reconcile(args) -> int:
     print(f"conflicts   : {len(report.conflicts)}")
     if report.conflicts:
         print(f"  conflict keys: {', '.join(report.conflicts)}")
-    # Audit log lives next to the store-owner's var/; use the DriveSync default var dir.
-    log_path = os.path.join(DriveSync(_drive_file_name(args)).var_dir, "reconcile_log.jsonl")
+    # Audit log lives next to the store-owner's .secrets/; use the DriveSync default secrets dir.
+    log_path = os.path.join(DriveSync(_drive_file_name(args)).secrets_dir, "reconcile_log.jsonl")
     log_reconcile(log_path, report, source="cli")
     return 0
 

@@ -24,7 +24,7 @@ def given_window_cmd_when_run_then_prints_window(tmp_path, make_record, capsys):
 
 def given_reconcile_no_drive_when_run_then_local_only_counts(tmp_path, make_record,
                                                              capsys, monkeypatch):
-    # Redirect the audit log so the test never writes the repo's real var/.
+    # Redirect the audit log so the test never writes the repo's real .secrets/.
     import persister.cli as cli
     monkeypatch.setattr(cli, "log_reconcile", lambda *a, **k: None)
     store = _write_store(tmp_path, [make_record(transaction_id="a")])

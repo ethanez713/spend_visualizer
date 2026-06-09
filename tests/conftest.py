@@ -1,7 +1,7 @@
 """Shared test fixtures — everything offline, deterministic, tmp-isolated.
 
 Mirrors the `state` fixture pattern in transactions/tests/conftest.py: no test ever
-touches a real var/, a real data file, or the network.
+touches a real .secrets/, a real data file, or the network.
 """
 import pytest
 

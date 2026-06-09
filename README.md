@@ -9,7 +9,7 @@ a **durable archive** that lives in **git + Google Drive** (dual audit history),
 local ↔ remote, and remains the system of record even after data ages out upstream.
 
 > ⚠ **This repo commits real financial data** under `data/` on purpose (audit /
-> replication). It **MUST stay private.** `var/` (secrets + runtime state) is gitignored;
+> replication). It **MUST stay private.** `.secrets/` (secrets + runtime state) is gitignored;
 > `data/` (the durable store) is deliberately **not**.
 
 ## Install
@@ -36,7 +36,7 @@ from persister import (
     reconcile, ReconcileReport,                                              # reconcile
     compute_window, Window,                                                  # windows
     merge_golden,                                                            # merge
-    DriveSync,                                                               # drive_sync
+    DriveSync, AppendOnlyError,                                              # drive_sync
     log_reconcile,                                                           # audit
     csv_safe,                                                                # csv_safe
 )
@@ -52,8 +52,19 @@ from persister import (
 | `reconcile(local, remote, ...)` | Classify keys → `in_sync / local_only / remote_only / conflicts` + preserved `merged` union. |
 | `compute_window(store, extra_tids=())` | Bounded date window for a targeted repair fetch. |
 | `merge_golden(base, fresh, ...)` | Golden source overwrites by key; base-only keys kept; dedupe. |
-| `DriveSync(file_name, folder_name, var_dir).pull()/push()` | Sync ONE file to Drive in place (native revisions). |
-| `log_reconcile(path, report, *, source)` | Append one audit line to `var/reconcile_log.jsonl`. |
+| `DriveSync(file_name, folder_name, secrets_dir).pull()/push()` | Sync ONE file to Drive in place (native revisions). |
+| `DriveSync(...).list_revisions()` | List the file's revision history (`{id, modifiedTime, size}`) for audit / rollback. |
+| `DriveSync(...).pull_revision(rev_id)` | Download the full bytes of a **prior** revision. Diff two via `load_jsonl_bytes` + `reconcile`. |
+| `DriveSync(...).restore_revision(rev_id)` | Roll back by re-pushing an old revision as a **new** head revision (history preserved). |
+| `log_reconcile(path, report, *, source)` | Append one audit line to `.secrets/reconcile_log.jsonl`. |
+
+### Append-only — the library cannot delete Drive data
+
+`DriveSync` only reads, creates, and updates-in-place. The real Drive service is wrapped in
+a guard that **blocks `delete` on files and revisions and rejects any `trashed=True` body**
+(`AppendOnlyError`), so the tooling can never destroy a file or its revision history — even
+if a future code change tried to. Roll back by *appending* a revision (`restore_revision`);
+delete files yourself in the Drive UI if you ever need to.
 
 ## CLI
 
@@ -79,8 +90,10 @@ one-line "data leaving machine" notice. Least-privilege Google scope: `drive.fil
 ## Security
 
 - **Offline by default** — the core path makes zero network calls; Drive is opt-in.
-- **Secrets** (`client_secret.json`, `token.json`) live in `var/` (0700; files 0600),
+- **Secrets** (`client_secret.json`, `token.json`) live in `.secrets/` (0700; files 0600),
   gitignored. Atomic writes re-assert 0600 on every write.
 - **Least privilege** — `drive.file` scope: the app only sees files it created (hence the
-  `file_id` is remembered in `var/drive_state.json`).
+  `file_id` is remembered in `.secrets/drive_state.json`).
+- **Append-only Drive access** — the service is guarded so the library can never delete or
+  trash a file/revision (see above). Durable history is never destroyed by the tooling.
 - **Formula-injection guard** on every derived CSV cell.
