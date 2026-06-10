@@ -180,7 +180,7 @@ def enrich(
                 "person": acct.get("person", "Unknown"),
                 "channel": t.payment_channel or "unknown",
                 "account_type": acct.get("type", "unknown"),
-                "account_name": acct.get("name", t.account_id[:8]),
+                "account_name": acct.get("name", (t.account_id or "?")[:8]),
                 "institution": acct.get("institution", "Unknown"),
                 # presentation
                 "logo_url": t.logo_url,

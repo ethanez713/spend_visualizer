@@ -427,6 +427,9 @@ def _num_months(cube, spec) -> int:
 
 
 def _tier1_spend(cube, spec, tier1) -> float:
+    # Visible rows only (no include_hidden): these feed the "Less Mortgage/Home"
+    # metrics, which subtract from the visible Total — a hidden Mortgage is already
+    # out of that total, so subtracting its hidden spend would double-remove it.
     f = {**spec.filters, "tier1": tier1, "flow": "spend"}
     return cube.total(GroupingSpec(filters=f, date_from=spec.date_from,
-                                   date_to=spec.date_to, include_hidden=True))["spend"]
+                                   date_to=spec.date_to))["spend"]
