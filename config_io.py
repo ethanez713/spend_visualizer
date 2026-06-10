@@ -15,6 +15,7 @@ class AppConfig:
     archive_paths: list[str] = field(default_factory=list)
     trailing_avg_months: int = 3
     home_metro: str | None = None
+    transformer_root: str = "../plaid_category_transformer"
 
     @property
     def resolved_archive_paths(self) -> list[str]:
@@ -25,6 +26,13 @@ class AppConfig:
                 pp = (ROOT / p).resolve()
             out.append(str(pp))
         return out
+
+    @property
+    def resolved_transformer_root(self) -> str:
+        p = Path(self.transformer_root)
+        if not p.is_absolute():
+            p = (ROOT / self.transformer_root).resolve()
+        return str(p)
 
 
 def load_app_config(path: str | Path = CONFIG_DIR / "app.yaml") -> AppConfig:
@@ -37,6 +45,7 @@ def load_app_config(path: str | Path = CONFIG_DIR / "app.yaml") -> AppConfig:
         archive_paths=paths,
         trailing_avg_months=int(data.get("trailing_avg_months", 3)),
         home_metro=data.get("home_metro"),
+        transformer_root=data.get("transformer_root", "../plaid_category_transformer"),
     )
 
 

@@ -72,8 +72,20 @@ Tabs: **Drilldown** (spend table with running avgs, sunburst/treemap/sankey with
 click-to-zoom + transaction detail) · **Budget** (budget vs actual heatmap) ·
 **Merchants & recurring** (top merchants with logos + subscription burden) ·
 **Cash flow** (monthly income vs spend vs net + cumulative) · **Corrections**
-(triage queue for miscategorizations: upstream vs taxonomy fixes) · **QC**
+(manual recategorize intents + the triage queue: upstream vs taxonomy fixes) · **QC**
 (unmapped atoms, % in "Other", excluded totals, and a double-count tie-out check).
+
+### Recategorize (PFC) — manual edits that stick
+
+🚩 a transaction (Drilldown) or open a merchant detail (Merchants) → **Recategorize
+(PFC)**: pick the correct category from the transformer's vendored taxonomy, scoped to
+*just this transaction* or *ALL transactions from this merchant*. This app **never edits
+records** — the edit is appended as an **intent** to the transformer's append-only log
+(`transformer_root` in `config/app.yaml` → `data/manual_edits.jsonl`), which its pipeline
+replays on every categorize run: edits apply on the next run, survive full re-audits, and
+merchant-scope edits cover future transactions too. Pending intents are listed (and can
+be revoked) in the **Corrections** tab. The old report-only correction form remains for
+merchant-name / tier-grouping fixes.
 
 Use the **Category level** slider (necessity → tier1 → tier2 → atom → merchant)
 and the global filters (date, person, account type, channel, flow, necessity).

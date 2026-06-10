@@ -11,6 +11,11 @@
 archive_paths:
   - ../plaid_category_transformer/data/transactions_categorized.jsonl
 
+# The plaid_category_transformer repo root (relative paths resolve from this repo root).
+# Used by 'Recategorize (PFC)': edits append INTENTS to its data/manual_edits.jsonl,
+# which its pipeline replays on the next categorize run (nothing is edited here).
+transformer_root: ../plaid_category_transformer
+
 # Trailing running-average window (months) for the Budget/Spend table.
 trailing_avg_months: 3
 

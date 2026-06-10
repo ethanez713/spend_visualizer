@@ -7,7 +7,7 @@ import streamlit as st
 import state
 from cube import Cube, GroupingSpec
 from viz import blank_if_missing, money, style_table
-from views._widgets import correction_form, hide_button, transaction_detail
+from views._widgets import fix_categorization, hide_button, transaction_detail
 
 
 def _merchant_table(rows: pd.DataFrame) -> pd.DataFrame:
@@ -61,13 +61,10 @@ def render(cube: Cube, spec: GroupingSpec) -> None:
         with c1:
             hide_button("merchant_id", mid, pick, key=f"hide_merch_{mid}")
         with c2:
-            first = sub.iloc[0]
-            original = {"tier1": first.get("tier1"), "tier2": first.get("tier2"),
-                        "pfc_detailed": first.get("pfc_detailed"),
-                        "merchant_name": first.get("merchant")}
-            correction_form(scope="merchant", original=original,
-                            target={"label": pick, "merchant": pick, "merchant_id": str(mid)},
-                            key=f"merch_{mid}")
+            # Default scope 'merchant': recategorizing from here usually means
+            # "every transaction of this merchant", current and future.
+            fix_categorization(row=sub.iloc[0], label=pick, key=f"merch_{mid}",
+                               default_scope="merchant")
 
     # --- recurring / subscriptions ---
     st.subheader("Recurring & subscriptions")
