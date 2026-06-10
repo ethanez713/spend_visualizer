@@ -126,7 +126,8 @@ ollama pull qwen2.5:7b  # one-time model download
 ## Usage
 
 ```bash
-# Default: read ../persister/data/transactions.jsonl, audit ALL rows, write data/*, push to Drive.
+# Default: read ../transactions/data/transactions.jsonl (the collector's durable store),
+# audit ALL rows, write data/*, push to Drive.
 ./.venv/bin/python categorize.py
 
 # Fully offline (no Drive egress):

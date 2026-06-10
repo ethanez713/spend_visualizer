@@ -2,7 +2,7 @@
 
 Re-auditing the entire Plaid history every run is wasteful — the audit makes a local LLM
 call per row — and, worse, it would re-flag rows a human already adjudicated. This module
-diffs the current **input** (Plaid's truth, ``../persister/data/transactions.jsonl``)
+diffs the current **input** (Plaid's truth, ``../transactions/data/transactions.jsonl``)
 against the **prior categorized store** so the transformer:
 
   * runs the (expensive) audit ONLY on rows whose raw Plaid content is new or has changed;
