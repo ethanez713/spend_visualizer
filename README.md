@@ -20,7 +20,7 @@ repo root.
  1. fetch        ~/transactions          /transactions/sync (cursor-based: ALL new/changed
     │                                    rows since the last run) → raw xz archive →
     │                                    reconcile vs Drive remote (Plaid = golden repair)
-    │                                    → durable store in ~/persister/data → Drive push
+    │                                    → durable store in its own data/ → Drive push
     │                                    (transactions.jsonl + transactions.csv revisions)
     ▼
  2. categorize   ~/plaid_category_       Drive divergence gate → incremental audit of
@@ -62,8 +62,9 @@ directly when you want to work the queue:
 ## First-run notes
 
 - Banks must already be linked (`~/transactions`: `./venv/bin/python app.py`).
-- Google Drive credentials must exist in `~/persister/.secrets/` (see persister's
-  README). Preflight seeds `~/plaid_category_transformer/.secrets/` from there
+- Google Drive credentials must exist in `~/transactions/.secrets/` (see persister's
+  README for the one-time OAuth setup; persister itself is a pure library and holds
+  no state). Preflight seeds `~/plaid_category_transformer/.secrets/` from there
   (local copy, `0600`) so the transformer can push too.
 - If Ollama isn't running, the LLM stage is skipped gracefully (warning printed);
   `ollama serve` + the `qwen2.5:7b` model enable full audits.

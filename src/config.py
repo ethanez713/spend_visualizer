@@ -21,9 +21,10 @@ class Config:
     transformer_python: Path
     analyzer_streamlit: Path
 
-    # Drive credentials: persister/.secrets is the original (OAuth'd) set; the
-    # transformer keeps its own copy, seeded from persister's on first run.
-    persister_secrets: Path
+    # Drive credentials: each Drive-pushing repo owns its own .secrets (persister is a
+    # pure library). transactions/.secrets is the original (OAuth'd) set; the
+    # transformer keeps its own copy, seeded from there on first run.
+    transactions_secrets: Path
     transformer_secrets: Path
 
     ui_port: int = 8501
@@ -36,7 +37,6 @@ def default_config() -> Config:
     transactions = home / "transactions"
     transformer = home / "plaid_category_transformer"
     analyzer = home / "spend_analyzer"
-    persister = home / "persister"
     return Config(
         transactions_dir=transactions,
         transformer_dir=transformer,
@@ -44,6 +44,6 @@ def default_config() -> Config:
         transactions_python=transactions / "venv" / "bin" / "python",
         transformer_python=transformer / ".venv" / "bin" / "python",
         analyzer_streamlit=analyzer / "venv" / "bin" / "streamlit",
-        persister_secrets=persister / ".secrets",
+        transactions_secrets=transactions / ".secrets",
         transformer_secrets=transformer / ".secrets",
     )

@@ -5,7 +5,7 @@ venv from its own repo root, stopping at the first non-zero exit:
 
   1. ``transactions``  — /transactions/sync pulls everything new since the last run
      (cursor-based), reconciles the raw store against the Drive remote with Plaid as
-     the golden repair source, updates the durable store in ``../persister/data``,
+     the golden repair source, updates its durable store in ``data/``,
      and pushes new Drive revisions of the raw JSONL + CSV. Conflicts the golden
      re-fetch cannot resolve exit non-zero → the pipeline STOPS before persisting.
   2. ``plaid_category_transformer`` — audits the new/changed rows (mechanical rules
@@ -33,7 +33,7 @@ import webbrowser
 from .config import Config, default_config
 
 # Files that let persister's DriveSync authenticate; copied (locally) from
-# persister/.secrets into the transformer's .secrets on first Drive-enabled run.
+# transactions/.secrets into the transformer's .secrets on first Drive-enabled run.
 _DRIVE_CRED_FILES = ("client_secret.json", "token.json")
 
 
@@ -92,33 +92,34 @@ def ui_cmd(cfg: Config, args: argparse.Namespace) -> list[str]:
 def ensure_drive_creds(cfg: Config) -> None:
     """Seed the transformer's .secrets with Drive credentials if it has none.
 
-    Each Drive-pushing component keeps its own ``.secrets`` (and its own
-    ``drive_state.json`` file-id memory), but they share one OAuth app + account.
-    The original credentials live in ``persister/.secrets``; copy them over —
-    locally, owner-only — so the transformer's first Drive push doesn't silently
-    degrade to "no client_secret.json found".
+    Each Drive-pushing component keeps its own ``.secrets`` (credentials AND its own
+    ``drive_state.json`` file-id memory) — persister is a pure library and holds no
+    state of its own. The original OAuth'd credentials live in
+    ``transactions/.secrets``; copy them over — locally, owner-only — so the
+    transformer's first Drive push doesn't silently degrade to "no client_secret.json
+    found".
     """
     if (cfg.transformer_secrets / "client_secret.json").is_file():
         return
-    if not (cfg.persister_secrets / "client_secret.json").is_file():
+    if not (cfg.transactions_secrets / "client_secret.json").is_file():
         sys.exit(
             "✖ Drive sync is enabled but no Google credentials exist at "
-            f"{cfg.persister_secrets}/client_secret.json.\n"
-            "  Either set up Drive access (see persister/README.md) or run with "
-            "--no-drive for a fully local run."
+            f"{cfg.transactions_secrets}/client_secret.json.\n"
+            "  Either set up Drive access (see persister/README.md for the OAuth "
+            "steps) or run with --no-drive for a fully local run."
         )
     cfg.transformer_secrets.mkdir(mode=0o700, exist_ok=True)
     cfg.transformer_secrets.chmod(0o700)
     copied = []
     for name in _DRIVE_CRED_FILES:
-        src = cfg.persister_secrets / name
+        src = cfg.transactions_secrets / name
         if src.is_file():
             dst = cfg.transformer_secrets / name
             shutil.copy2(src, dst)
             dst.chmod(0o600)
             copied.append(name)
     print(f"  preflight: seeded {cfg.transformer_secrets} with {', '.join(copied)} "
-          "from persister/.secrets (local copy, 0600)")
+          "from transactions/.secrets (local copy, 0600)")
 
 
 def _ollama_reachable(port: int) -> bool:

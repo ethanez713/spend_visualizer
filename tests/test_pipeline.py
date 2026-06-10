@@ -81,7 +81,6 @@ def fake_world(tmp_path):
     transactions = tmp_path / "transactions"
     transformer = tmp_path / "transformer"
     analyzer = tmp_path / "analyzer"
-    persister_secrets = tmp_path / "persister" / ".secrets"
 
     cfg = Config(
         transactions_dir=transactions,
@@ -90,7 +89,7 @@ def fake_world(tmp_path):
         transactions_python=transactions / "venv" / "bin" / "python",
         transformer_python=transformer / ".venv" / "bin" / "python",
         analyzer_streamlit=analyzer / "venv" / "bin" / "streamlit",
-        persister_secrets=persister_secrets,
+        transactions_secrets=transactions / ".secrets",
         transformer_secrets=transformer / ".secrets",
         ui_port=_free_port(),
         ui_start_timeout_s=10.0,
@@ -100,13 +99,12 @@ def fake_world(tmp_path):
     _write_exe(cfg.transformer_python, component_python("categorize"))
     _write_exe(cfg.analyzer_streamlit, streamlit_body)
 
-    # Linked banks + existing Drive creds (preflight requirements).
-    tokens = transactions / ".secrets" / "tokens.json"
-    tokens.parent.mkdir(parents=True)
-    tokens.write_text("[]")
-    persister_secrets.mkdir(parents=True)
-    (persister_secrets / "client_secret.json").write_text("{}")
-    (persister_secrets / "token.json").write_text("{}")
+    # Linked banks + existing Drive creds (preflight requirements) — both live in
+    # transactions/.secrets, the repo that owns the raw store's Drive sync.
+    cfg.transactions_secrets.mkdir(parents=True)
+    (cfg.transactions_secrets / "tokens.json").write_text("[]")
+    (cfg.transactions_secrets / "client_secret.json").write_text("{}")
+    (cfg.transactions_secrets / "token.json").write_text("{}")
 
     return cfg, log
 
@@ -227,7 +225,7 @@ def given_missing_venv_when_preflight_then_all_problems_reported(fake_world):
 def given_empty_transformer_secrets_when_drive_run_then_creds_seeded_0600(fake_world):
     cfg, _ = fake_world
 
-    ensure_drive_creds(cfg)
+    ensure_drive_creds(cfg)  # seeds from transactions/.secrets
 
     for name in ("client_secret.json", "token.json"):
         f = cfg.transformer_secrets / name
@@ -250,7 +248,7 @@ def given_transformer_creds_already_present_when_drive_run_then_left_alone(fake_
 
 def given_no_drive_creds_anywhere_when_drive_run_then_stops_with_setup_hint(fake_world):
     cfg, log = fake_world
-    (cfg.persister_secrets / "client_secret.json").unlink()
+    (cfg.transactions_secrets / "client_secret.json").unlink()
 
     with pytest.raises(SystemExit) as exc:
         main(["--no-ui"], cfg=cfg)
@@ -261,7 +259,7 @@ def given_no_drive_creds_anywhere_when_drive_run_then_stops_with_setup_hint(fake
 
 def given_no_drive_flag_when_main_then_no_cred_seeding_needed(fake_world):
     cfg, log = fake_world
-    (cfg.persister_secrets / "client_secret.json").unlink()  # no creds at all
+    (cfg.transactions_secrets / "client_secret.json").unlink()  # no creds at all
 
     main(["--no-drive", "--no-ui"], cfg=cfg)                 # still fine offline
 
