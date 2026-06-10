@@ -54,7 +54,7 @@ from .schema import (
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _SECRETS_DIR = os.path.join(_PROJECT_ROOT, ".secrets")
 
-DEFAULT_INPUT = os.path.join(_PROJECT_ROOT, "..", "persister", "data", "transactions.jsonl")
+DEFAULT_INPUT = os.path.join(_PROJECT_ROOT, "..", "transactions", "data", "transactions.jsonl")
 DEFAULT_OUT_JSONL = os.path.join(_PROJECT_ROOT, "data", "transactions_categorized.jsonl")
 DEFAULT_OUT_CSV = os.path.join(_PROJECT_ROOT, "data", "transactions_categorized.csv")
 DEFAULT_FLAGS_CSV = os.path.join(_PROJECT_ROOT, "data", "flagged_for_review.csv")
@@ -448,7 +448,7 @@ def main():
     )
     ap.add_argument("--input", default=DEFAULT_INPUT, metavar="PATH",
                     help="input store: JSONL (persister) or .xz raw store "
-                         "(default: ../persister/data/transactions.jsonl)")
+                         "(default: ../transactions/data/transactions.jsonl)")
     ap.add_argument("--out-jsonl", default=DEFAULT_OUT_JSONL, metavar="PATH",
                     help="output categorized JSONL (default: data/transactions_categorized.jsonl)")
     ap.add_argument("--out-csv", default=DEFAULT_OUT_CSV, metavar="PATH",
