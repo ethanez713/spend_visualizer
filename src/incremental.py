@@ -36,6 +36,11 @@ SOURCE_HASH_FIELD = "source_content_hash"
 # the user's deliberate choice there.)
 HASH_PENDING_LLM = "pending:llm-stage-skipped"
 
+# Sentinel stamped when a row's manual-edit intent was REVOKED: the override is rolled
+# back to the pre-manual category, and the row must go through the full audit again next
+# run (the manual stage runs after the audit, so it cannot re-run Stages 1–2 itself).
+HASH_PENDING_REVOKED = "pending:manual-edit-revoked"
+
 # Fields that are OURS, not Plaid's — excluded from the content hash so our own edits (a
 # correction, a review flag, the hash itself) never masquerade as an upstream change.
 _NON_SOURCE_FIELDS = frozenset(NEW_COLUMNS) | {SOURCE_HASH_FIELD}

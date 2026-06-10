@@ -20,7 +20,13 @@ Pipeline (mirrors ``converter``'s architecture):
 Flagged rows are adjudicated later by the interactive ``review`` session (accept → applies
 the suggestion + teaches merchant memory so it's a ``trust="auto"`` hit next run; reject;
 or re-pick). The ``category_update_step`` of an applied change is ``"mechanical"`` (a rule),
-``"llm"`` (an LLM auto-apply), or ``"review"`` (a human-accepted flag).
+``"llm"`` (an LLM auto-apply), ``"review"`` (a human-accepted flag), or ``"manual"`` (a
+replayed edit intent).
+
+A final stage (``manual``) replays the human edit intents from ``data/manual_edits.jsonl``
+over the full store every run — the highest authority. Rows covered by an intent skip
+Stages 1–2 entirely (the verdict is predetermined; no LLM call is wasted), and the replay
+makes manual edits survive ``--full`` re-audits and upstream row changes.
 """
 from __future__ import annotations
 
@@ -37,6 +43,8 @@ import persister
 from .config import LLM_AUTHORITY, TRUSTED_CONFIDENCE_LEVELS
 from .incremental import HASH_PENDING_LLM, SOURCE_HASH_FIELD, classify, source_hash
 from .llm import CategoryLLM
+from .manual import DEFAULT_EDITS, ManualIndex, apply_manual_edits, load_intents, \
+    resolve_intents
 from .rules import DEFAULT_MEMORY, MerchantMemory, RuleHit, apply_rules
 from .schema import (
     COLUMNS,
@@ -170,16 +178,22 @@ def _build_item(idx: int, record: dict, mech: RuleHit | None) -> dict:
 # ── Engine (I/O-free; testable) ───────────────────────────────────────────────
 
 def transform(store: dict[str, dict], *, levels=PROCESS_CONFIDENCE,
-              memory: MerchantMemory | None = None, llm=None, authority=LLM_AUTHORITY):
+              memory: MerchantMemory | None = None, llm=None, authority=LLM_AUTHORITY,
+              manual: ManualIndex | None = None):
     """Audit ``store`` in place. Returns ``(store, changes, flags)``.
 
     ``changes`` — rows whose category was APPLIED (mechanical 'auto' rule, or an LLM
     auto-apply when ``LLM_AUTHORITY`` permits). ``flags`` — rows left untouched but carrying
     a pending suggestion for human review (the LLM, or a loose mechanical rule, disagreed).
     ``llm`` is any object with ``categorize(items) -> {row_index: decision}`` (tests inject a
-    fake); ``None`` means "no LLM stage" (mechanical rules only).
+    fake); ``None`` means "no LLM stage" (mechanical rules only). A row covered by a manual
+    edit intent (``manual``) skips the audit entirely — its verdict is predetermined, so an
+    LLM call (and a flag that would be instantly cleared) would be wasted; the manual stage
+    applies the intent after the audit.
     """
-    selected = [(tid, rec) for tid, rec in store.items() if should_process(rec, levels)]
+    selected = [(tid, rec) for tid, rec in store.items()
+                if should_process(rec, levels)
+                and (manual is None or manual.match(rec) is None)]
 
     # Stage 1 — mechanical (build the LLM batch with suggestions attached).
     items: list[dict] = []
@@ -311,7 +325,8 @@ def check_drive_divergence(prior: dict[str, dict], *, force_push: bool = False,
 
 def run(*, input_path: str, out_jsonl: str, out_csv: str, flags_csv: str, log_path: str,
         levels: set[str], memory_path: str | None, do_drive: bool,
-        no_llm: bool, debug: bool, full: bool = False, force_push: bool = False) -> None:
+        no_llm: bool, debug: bool, full: bool = False, force_push: bool = False,
+        edits_path: str | None = None) -> None:
     input_store = load_input(input_path)
     if not input_store:
         # Guard against mass deletion: an empty input (e.g. a failed upstream fetch) must
@@ -337,15 +352,27 @@ def run(*, input_path: str, out_jsonl: str, out_csv: str, flags_csv: str, log_pa
     memory = MerchantMemory(memory_path) if memory_path else None
     llm = None if no_llm else CategoryLLM(debug=debug)
 
+    # Manual edit intents (Stage 3): resolved up front so covered rows can skip the audit;
+    # replayed over the FULL store after assembly. ``None`` edits_path disables the stage.
+    manual_index = (ManualIndex(resolve_intents(load_intents(edits_path)))
+                    if edits_path is not None else None)
+
     # Capture the source hash of each row to audit BEFORE transform mutates it (a correction
     # overwrites the category in place); stamp it back on afterwards for next run's diff.
     hashes = {tid: source_hash(rec) for tid, rec in delta.to_process.items()}
 
     # Count selection BEFORE transform: a corrected row's confidence becomes the CORRECTED
-    # sentinel, which would otherwise drop it from a post-hoc count.
-    n_selected = sum(1 for r in delta.to_process.values() if should_process(r, levels))
+    # sentinel, which would otherwise drop it from a post-hoc count. Rows covered by a
+    # manual intent are counted separately — they skip the audit (and its LLM cost).
+    n_covered = (sum(1 for r in delta.to_process.values()
+                     if manual_index.match(r) is not None)
+                 if manual_index is not None else 0)
+    n_selected = sum(1 for r in delta.to_process.values()
+                     if should_process(r, levels)
+                     and (manual_index is None or manual_index.match(r) is None))
 
-    _, changes, flags = transform(delta.to_process, levels=levels, memory=memory, llm=llm)
+    _, changes, flags = transform(delta.to_process, levels=levels, memory=memory, llm=llm,
+                                  manual=manual_index)
 
     # Stamp each processed row's source hash — UNLESS the LLM stage was requested but
     # didn't actually run (Ollama down / crashed): stamping then would mark the rows as
@@ -366,13 +393,31 @@ def run(*, input_path: str, out_jsonl: str, out_csv: str, flags_csv: str, log_pa
     # pending row a posted row superseded within this same store.
     store = persister.dedupe_supersede({**delta.carryover, **delta.to_process})
 
+    # Stage 3 — replay the manual edit intents over the FULL store (highest authority;
+    # idempotent), so human edicts survive --full re-audits and upstream row changes.
+    manual_summary = (apply_manual_edits(store, manual_index)
+                      if manual_index is not None else None)
+    n_auto = len(changes)
+    if manual_summary is not None:
+        changes = changes + manual_summary["applied"]
+
     persister.save_jsonl(out_jsonl, store)
     persister.derive_csv(store, out_csv, COLUMNS, row_fn=row_fn)
     write_category_log(log_path, changes)
     n_flagged = write_flags_file(flags_csv, store)
 
-    print(f"  Audited {n_selected} row(s); auto-applied {len(changes)}; "
+    print(f"  Audited {n_selected} row(s); auto-applied {n_auto}; "
           f"flagged {len(flags)} new this run.")
+    if manual_summary is not None and (len(manual_index) or manual_summary["reverted"]):
+        ms = manual_summary
+        print(f"  Manual edits: {len(manual_index)} intent(s) → applied "
+              f"{len(ms['applied'])}, already satisfied {ms['already']}, reverted "
+              f"{len(ms['reverted'])} (revoked); skipped the audit on {n_covered} "
+              f"covered row(s).")
+        if ms["orphans"]:
+            print(f"  Manual edits: {len(ms['orphans'])} transaction-scope intent(s) "
+                  f"point at rows no longer in the store (inert): "
+                  f"{', '.join(ms['orphans'][:5])}")
     print(f"  Wrote {out_jsonl} ({len(store)} rows)")
     print(f"  Wrote {out_csv}")
     print(f"  Wrote {flags_csv} ({n_flagged} row(s) pending review)")
@@ -386,11 +431,17 @@ def run(*, input_path: str, out_jsonl: str, out_csv: str, flags_csv: str, log_pa
         print(f"  {n_flagged} row(s) pending review — see {flags_csv}, or run --review.")
 
     if do_drive:
-        _drive_push_outputs(out_jsonl, out_csv, flags_csv)
+        _drive_push_outputs(out_jsonl, out_csv, flags_csv, edits_path)
 
 
-def _drive_push_outputs(out_jsonl: str, out_csv: str, flags_csv: str) -> None:
-    """Push the three output files to Drive as new revisions (shared by run/review)."""
+def _drive_push_outputs(out_jsonl: str, out_csv: str, flags_csv: str,
+                        edits_path: str | None = None) -> None:
+    """Push the output files to Drive as new revisions (shared by run/review).
+
+    The manual-edits intent log rides along when present: it is SOURCE data the store is
+    rebuilt from, so it gets the same off-machine durability as the store itself. It is
+    locally authored and append-only, so it needs no divergence gate — a plain push.
+    """
     print("  ⚠ Drive sync ON — the categorized store will leave this machine "
           "(Google Drive). Use --no-drive to keep it local.")
     from persister import DriveSync
@@ -402,11 +453,14 @@ def _drive_push_outputs(out_jsonl: str, out_csv: str, flags_csv: str) -> None:
               secrets_dir=_SECRETS_DIR).push(out_csv, mime="text/csv")
     DriveSync("flagged_for_review.csv", folder_name=DRIVE_FOLDER,
               secrets_dir=_SECRETS_DIR).push(flags_csv, mime="text/csv")
+    if edits_path and os.path.isfile(edits_path):
+        DriveSync("manual_edits.jsonl", folder_name=DRIVE_FOLDER,
+                  secrets_dir=_SECRETS_DIR).push(edits_path, mime="application/x-ndjson")
 
 
 def review_run(*, out_jsonl: str, out_csv: str, flags_csv: str,
                memory_path: str | None, do_drive: bool = True,
-               force_push: bool = False) -> None:
+               force_push: bool = False, edits_path: str | None = None) -> None:
     """Adjudicate the flags in an already-categorized store, then re-persist it.
 
     Re-persists locally AND (unless ``--no-drive``) pushes new Drive revisions, so a
@@ -436,7 +490,44 @@ def review_run(*, out_jsonl: str, out_csv: str, flags_csv: str,
         print(f"  Updated {out_jsonl}, {out_csv}, and {flags_csv} "
               f"({n_flagged} row(s) still pending).")
         if do_drive:
-            _drive_push_outputs(out_jsonl, out_csv, flags_csv)
+            _drive_push_outputs(out_jsonl, out_csv, flags_csv, edits_path)
+
+
+def edit_run(*, out_jsonl: str, out_csv: str, flags_csv: str, log_path: str,
+             edits_path: str, do_drive: bool = True, force_push: bool = False) -> None:
+    """Capture manual edit intents interactively, then replay them into the store.
+
+    The session only APPENDS to the intent log; afterwards the full log is replayed
+    over the store (same stage as a normal run), so the new edits land immediately —
+    and, being intents, they re-apply on every future run too. Re-persists and pushes
+    Drive revisions exactly like a review session, behind the same divergence gate.
+    """
+    from .manual import run_edit_session
+
+    if not os.path.isfile(out_jsonl):
+        sys.exit(f"ERROR: no categorized store to edit at {out_jsonl}\n"
+                 "Run the audit first (categorize.py).")
+    store = persister.load_jsonl(out_jsonl)
+    if do_drive:
+        check_drive_divergence(store, force_push=force_push)
+
+    n_new = run_edit_session(store, edits_path)
+    index = ManualIndex(resolve_intents(load_intents(edits_path)))
+    summary = apply_manual_edits(store, index)
+
+    if not (n_new or summary["applied"] or summary["reverted"]):
+        print("No changes — store left untouched.")
+        return
+    persister.save_jsonl(out_jsonl, store)
+    persister.derive_csv(store, out_csv, COLUMNS, row_fn=row_fn)
+    n_flagged = write_flags_file(flags_csv, store)
+    write_category_log(log_path, summary["applied"])
+    print(f"  Replayed {len(index)} intent(s): applied {len(summary['applied'])}, "
+          f"already satisfied {summary['already']}, reverted {len(summary['reverted'])}.")
+    print(f"  Updated {out_jsonl}, {out_csv}, and {flags_csv} "
+          f"({n_flagged} row(s) pending review).")
+    if do_drive:
+        _drive_push_outputs(out_jsonl, out_csv, flags_csv, edits_path)
 
 
 def main():
@@ -478,11 +569,30 @@ def main():
     ap.add_argument("--review", action="store_true",
                     help="interactively adjudicate flagged rows in --out-jsonl "
                          "(accept/reject/re-pick); does not re-run the audit")
+    ap.add_argument("--edit", action="store_true",
+                    help="interactively capture manual category edits (search a row, "
+                         "pick a category, transaction- or merchant-scope) as intents "
+                         "in --edits, applied immediately and replayed every run")
+    ap.add_argument("--edits", default=DEFAULT_EDITS, metavar="PATH",
+                    help="manual-edit intents JSONL, replayed as the final stage every "
+                         "run (default: data/manual_edits.jsonl)")
     ap.add_argument("--log", default=DEFAULT_LOG, metavar="PATH",
                     help="JSONL change log (default: .secrets/category_log.jsonl)")
     ap.add_argument("--debug", action="store_true",
                     help="verbose LLM-stage debug output")
     args = ap.parse_args()
+
+    if args.edit:
+        edit_run(
+            out_jsonl=args.out_jsonl,
+            out_csv=args.out_csv,
+            flags_csv=args.flags_csv,
+            log_path=args.log,
+            edits_path=args.edits,
+            do_drive=not args.no_drive,
+            force_push=args.force_push,
+        )
+        return
 
     if args.review:
         review_run(
@@ -492,6 +602,7 @@ def main():
             memory_path=None if args.no_memory else args.memory,
             do_drive=not args.no_drive,
             force_push=args.force_push,
+            edits_path=args.edits,
         )
         return
 
@@ -513,6 +624,7 @@ def main():
         debug=args.debug,
         full=args.full,
         force_push=args.force_push,
+        edits_path=args.edits,
     )
 
 

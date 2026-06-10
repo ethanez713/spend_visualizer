@@ -22,9 +22,9 @@ what is auto-applied vs. flagged is readable at a glance.
 ## Pipeline
 
 ```
-load ─▶ select (ALL rows by default) ─▶ Stage 1 mechanical rules ─▶ Stage 2 local LLM (reviewer) ─▶ apply / flag ─▶ persist
-                                          auto: overwrite                disagreement: flag
-                                          flag: suggest                  concurrence: leave
+load ─▶ select (ALL rows by default) ─▶ Stage 1 mechanical rules ─▶ Stage 2 local LLM (reviewer) ─▶ apply / flag ─▶ Stage 3 manual overrides ─▶ persist
+                                          auto: overwrite                disagreement: flag           (replayed human edit intents;
+                                          flag: suggest                  concurrence: leave            highest authority, sticky)
 ```
 
 1. **Select** (`schema.py`, `config.AUDIT_CONFIDENCE_LEVELS`) — by default **every** row,
@@ -48,9 +48,43 @@ load ─▶ select (ALL rows by default) ─▶ Stage 1 mechanical rules ─▶ 
    or **re-pick**. Keeps a human in the loop exactly where the model is unsure. A review
    session re-persists locally **and pushes new Drive revisions** (unless `--no-drive`),
    so local and remote stay in lock-step.
-6. **Persist** (`persister`) — `data/transactions_categorized.{jsonl,csv}` (committed),
-   `data/flagged_for_review.csv` (the review worklist), optional Drive push of all three
-   (default ON, `--no-drive`), `.secrets/{category_log,review_log}.jsonl`.
+6. **Stage 3 — manual overrides** (`manual.py`) — replays the human edit intents from
+   **`data/manual_edits.jsonl`** over the full store, every run (see below).
+7. **Persist** (`persister`) — `data/transactions_categorized.{jsonl,csv}` (committed),
+   `data/flagged_for_review.csv` (the review worklist), `data/manual_edits.jsonl` (the
+   intent log), optional Drive push of all four (default ON, `--no-drive`),
+   `.secrets/{category_log,review_log}.jsonl`.
+
+## Manual edit intents (sticky human edits)
+
+A manual category edit is never written into the store directly — it is appended to
+**`data/manual_edits.jsonl`** as an **intent**, and the final pipeline stage replays every
+intent on every run. That makes edits sticky by construction: they survive `--full`
+re-audits, upstream row changes, even a rebuilt store. Capture surfaces:
+
+- **Spend Analyzer UI** (`../spend_analyzer`) — 🚩 a transaction → *Recategorize (PFC)*
+  (it appends to this repo's intent log directly; nothing applies until the next run);
+- **`--edit`** — interactive CLI: search a row, pick a category, pick scope, note. Applies
+  immediately (and re-persists + pushes Drive, behind the same divergence gate).
+
+Semantics:
+
+- two scopes: **transaction** (one row) and **merchant** (every row of that merchant —
+  entity-id match, normalized-name fallback, conflicting entity ids veto a name match;
+  covers the merchant's *future* transactions too);
+- precedence is **specificity first** (a transaction intent beats a merchant intent on its
+  row), then **recency** (latest appended wins within a scope);
+- a covered row **skips Stages 1–2** (no wasted LLM call) and any pending review flag on
+  it is cleared — the human outranks the reviewer;
+- **revoking** an intent (UI, or `revoke <id>` inside `--edit`) restores the row's prior
+  category and stamps it for a full re-audit next run — the pipeline decides again;
+- applied edits get `category_update_step = "manual"` with the intent id in the reason;
+- the manual stage **never** touches merchant memory or the `config.py` rules. Instead,
+  run **`analyze_edits.py`** occasionally: it mines the accumulated log (each intent
+  snapshots the row's signals and what the machines believed at edit time) for
+  rule-promotion candidates (paste-ready `config.py` snippets), rule-demotion candidates
+  (rules humans keep overriding), an LLM scorecard, and Plaid-confidence stats — so rule
+  changes stay periodic, targeted, and human-made.
 
 When Drive sync is on, a **divergence gate** runs first: the remote categorized store is
 pulled and reconciled against the local prior store. Content conflicts or remote-only rows
@@ -78,8 +112,8 @@ guard: an **empty input** (e.g. a failed upstream fetch) is treated as a no-op, 
 "everything was deleted". Use `--full` to force a complete re-audit (e.g. after editing the
 rules in `config.py`); it still prunes removed rows. Note `--full` re-derives every row from
 the pristine input, so prior in-place corrections are recomputed — decisions you **accepted
-in review survive via merchant memory** (they re-apply as `auto` hits), but unadjudicated
-flags are re-raised fresh.
+in review survive via merchant memory** (they re-apply as `auto` hits), **manual edit
+intents survive via the replay stage**, but unadjudicated flags are re-raised fresh.
 
 ### The flagged-rows worklist
 
@@ -96,8 +130,8 @@ The full raw Plaid record (every original field) **plus 12 columns**, present on
 | column | meaning |
 |---|---|
 | `original_pf_category_primary/detailed/confidence` | Plaid's original values (on an applied change) |
-| `category_update_step` | `"mechanical"` \| `"llm"` \| `"review"` \| `""` |
-| `category_update_reason` | rule name, LLM reason, or review note |
+| `category_update_step` | `"mechanical"` \| `"llm"` \| `"review"` \| `"manual"` \| `""` |
+| `category_update_reason` | rule name, LLM reason, review note, or manual intent id |
 | `category_update_confidence` | corrector's confidence |
 | `category_review_flag` | `"1"` when a suggestion is pending human review |
 | `category_review_primary/detailed` | the suggested category (not yet applied) |
@@ -144,12 +178,18 @@ ollama pull qwen2.5:7b  # one-time model download
 
 # Adjudicate the rows the audit flagged (accept / reject / re-pick), then re-persist:
 ./.venv/bin/python categorize.py --review --no-drive
+
+# Capture manual category edits (search a row → category → transaction/merchant scope):
+./.venv/bin/python categorize.py --edit --no-drive
+
+# Mine the accumulated manual edits for rule/LLM improvements (markdown to stdout):
+./.venv/bin/python analyze_edits.py
 ```
 
 Key flags: `--input`, `--out-jsonl`, `--out-csv`, `--flags-csv`, `--full`,
 `--confidence LOW,MEDIUM,HIGH,VERY_HIGH,UNKNOWN`, `--memory PATH` / `--no-memory`,
 `--no-llm`, `--no-drive`, `--force-push` (override the Drive divergence gate),
-`--review`, `--log PATH`, `--debug`.
+`--review`, `--edit`, `--edits PATH`, `--log PATH`, `--debug`.
 
 ## Tests
 
