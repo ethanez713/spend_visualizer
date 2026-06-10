@@ -29,6 +29,13 @@ from .schema import NEW_COLUMNS
 # Bookkeeping field stamped on every audited record: the hash of the input it came from.
 SOURCE_HASH_FIELD = "source_content_hash"
 
+# Sentinel stamped INSTEAD of the real hash when the LLM stage was requested but did not
+# actually run (Ollama down / crashed mid-run). It never equals a real hash, so ``classify``
+# re-processes the row next run — an implicit LLM outage must not silently mark rows as
+# fully audited forever. (An explicit ``--no-llm`` run stamps real hashes: rules-only was
+# the user's deliberate choice there.)
+HASH_PENDING_LLM = "pending:llm-stage-skipped"
+
 # Fields that are OURS, not Plaid's — excluded from the content hash so our own edits (a
 # correction, a review flag, the hash itself) never masquerade as an upstream change.
 _NON_SOURCE_FIELDS = frozenset(NEW_COLUMNS) | {SOURCE_HASH_FIELD}

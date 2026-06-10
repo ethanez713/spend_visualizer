@@ -106,9 +106,14 @@ def set_provenance(record: dict, primary: str, detailed: str,
     if (primary, detailed) == (orig_primary, orig_detailed):
         return False
 
-    record["original_pf_category_primary"] = orig_primary
-    record["original_pf_category_detailed"] = orig_detailed
-    record["original_pf_category_confidence"] = orig_conf
+    # Write the originals only ONCE: on a re-correction (e.g. a review re-pick over an
+    # earlier mechanical fix) the current values are themselves a correction, and
+    # overwriting original_* with them would lose Plaid's true original.
+    if (record.get("original_pf_category_primary") is None
+            and record.get("original_pf_category_detailed") is None):
+        record["original_pf_category_primary"] = orig_primary
+        record["original_pf_category_detailed"] = orig_detailed
+        record["original_pf_category_confidence"] = orig_conf
 
     pfc["primary"] = primary
     pfc["detailed"] = detailed
