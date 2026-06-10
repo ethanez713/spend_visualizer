@@ -21,9 +21,10 @@ class FakeDriveSync:
     order = None                 # shared list capturing call order across instances
     instances = None             # all constructed instances
 
-    def __init__(self, file_name, folder_name="transactions_archive"):
+    def __init__(self, file_name, folder_name="transactions_archive", secrets_dir=None):
         self.file_name = file_name
         self.folder_name = folder_name
+        self.secrets_dir = secrets_dir
         self.pulled = False
         self.pushes = []
         FakeDriveSync.instances.append(self)

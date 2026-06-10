@@ -29,9 +29,14 @@ production data, up to **10 connected banks (Items)**.
 └── data/                       # git-ignored, 0700: runtime state + raw archive
     ├── sync_cursors.json       # next_cursor per item
     ├── transactions_raw.jsonl.xz  # lossless raw Plaid objects; source of truth + audit/QC
+    ├── transactions.jsonl      # durable system-of-record store (Drive-synced revisions)
+    ├── transactions.csv        # derived projection of the durable store (Drive-synced)
     ├── reconcile_log.jsonl     # 0600 audit trail of each persist reconcile
     └── logs/fetch.log          # scheduled-run output
 ```
+
+(`.secrets/` also holds the Drive credentials + `drive_state.json` file-id memory once
+the persist step has run — see **Durable persist**.)
 
 `src/` also holds the durable-persist orchestration: `persist_runner.py` (reconcile →
 golden repair → durable store + Drive push) and `fetch_window.py` (the bounded
@@ -123,8 +128,10 @@ is always de-duplicated by `transaction_id`.
 ### Durable persist (the default `--persist` step)
 
 After each sync the fetch also maintains the **durable system-of-record store** in
-`../persister/data/transactions.jsonl` (a private repo that commits real data on
-purpose) and pushes new Google Drive revisions of it + a derived CSV:
+this repo's `data/transactions.jsonl` (gitignored; its audit history is Drive's
+append-only revision trail) and pushes new Google Drive revisions of it + a derived
+CSV. `persister` is a pure library — this repo owns its own data, Drive credentials,
+and Drive file-id state:
 
 1. **reconcile** the local raw store against the Drive remote (via the `persister`
    library) — classifies in-sync / local-only / remote-only / conflicts;
@@ -139,7 +146,8 @@ purpose) and pushes new Google Drive revisions of it + a derived CSV:
 Flags: `--no-persist` (sync + local CSV only), `--no-drive` (persist locally, no
 egress), `--no-refetch` (skip the repair fetch; conflicts then stop the run).
 One-time setup: `./venv/bin/pip install -r requirements-persist.txt`. Drive
-credentials live in `../persister/.secrets/` (see persister's README).
+credentials + file-id state live in this repo's `.secrets/` (`client_secret.json`,
+`token.json`, `drive_state.json` — see persister's README for the OAuth setup).
 
 The whole chain (fetch → categorize → analyze UI) is normally driven by the
 **`../finance_pipeline`** orchestrator (`./run.py`).

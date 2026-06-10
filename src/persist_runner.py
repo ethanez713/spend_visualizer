@@ -6,10 +6,11 @@ the Drive-synced remote, repairs any drift with a bounded /transactions/get fetc
 golden ONLY on success), dedupes settled pendings, then writes the durable JSONL store +
 derived CSV and pushes new Drive revisions.
 
-The durable system-of-record data lives in the **private** `persister` repo's data/ dir
-(it commits real financial data on purpose). `data_dir` is a parameter so it can be
-redirected (e.g. to a tmp dir in tests). This runner never auto-commits — it leaves the
-working tree dirty for the user to review/commit (house norm: commit only when asked).
+THIS repo owns its durable data and its Drive credentials/state — `persister` is a pure
+library (no data of its own; any consumer passes its own paths + secrets_dir). The
+durable store lives in this repo's gitignored data/ dir; its audit history is Drive's
+native revision trail (persister's Drive access is append-only). `data_dir` is a
+parameter so it can be redirected (e.g. to a tmp dir in tests).
 """
 import sys
 
@@ -17,10 +18,11 @@ import persister
 
 from .fetch_transactions import CSV_COLUMNS, get_account_meta, txn_to_row
 from .fetch_window import fetch_window
-from .plaid_client import DATA_DIR, get_client, load_raw_store, load_tokens
+from .plaid_client import DATA_DIR, SECRETS_DIR, get_client, load_raw_store, load_tokens
 
-# Default home of the durable store: the private persister repo's committed data/ dir.
-DEFAULT_DATA_DIR = "~/persister/data"
+# Default home of the durable store: this repo's data/ dir (gitignored, 0700) —
+# alongside the raw xz archive it is derived from.
+DEFAULT_DATA_DIR = str(DATA_DIR)
 
 # Logical Drive file names (one canonical JSONL + one human-viewable CSV), kept in place
 # with native Drive revision history under this folder.
@@ -51,7 +53,6 @@ def run_persist(*, do_drive: bool = True, allow_refetch: bool = True,
       6. Write the durable JSONL store + derived CSV under data_dir.
       7. If do_drive: push new Drive revisions of both (prints an egress notice first).
          Always append a reconcile-log line.
-      8. No auto-commit — the user reviews/commits the data repo themselves.
     """
     jsonl_path = f"{data_dir}/{_JSONL_NAME}"
     csv_path = f"{data_dir}/{_CSV_NAME}"
@@ -59,8 +60,10 @@ def run_persist(*, do_drive: bool = True, allow_refetch: bool = True,
     # 1. Local store (existing xz JSONL archive) as a keyed dict.
     local = load_raw_store()
 
-    # 2. Remote store from Drive (offline by default unless do_drive).
-    drive = persister.DriveSync(_JSONL_NAME, folder_name=_DRIVE_FOLDER)
+    # 2. Remote store from Drive (offline by default unless do_drive). Drive credentials
+    #    + file-id state are THIS repo's (.secrets/) — persister is a pure library.
+    drive = persister.DriveSync(_JSONL_NAME, folder_name=_DRIVE_FOLDER,
+                                secrets_dir=str(SECRETS_DIR))
     remote = persister.load_jsonl_bytes(drive.pull()) if do_drive else {}
 
     # 3. Classify local vs remote.
@@ -119,7 +122,6 @@ def run_persist(*, do_drive: bool = True, allow_refetch: bool = True,
         print("  persist: uploading transactions store to Google Drive (data leaving machine)…",
               file=sys.stderr)
         drive.push(jsonl_path, mime="application/x-ndjson")
-        persister.DriveSync(_CSV_NAME, folder_name=_DRIVE_FOLDER).push(csv_path, mime="text/csv")
+        persister.DriveSync(_CSV_NAME, folder_name=_DRIVE_FOLDER,
+                            secrets_dir=str(SECRETS_DIR)).push(csv_path, mime="text/csv")
     persister.log_reconcile(_RECONCILE_LOG, report, source="transactions")
-
-    # 8. Intentionally no git commit — leave the data repo dirty for the user to review.
