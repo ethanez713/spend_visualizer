@@ -22,5 +22,7 @@ dist/
 # Local integration creds (real Drive round-trip is manual + gitignored)
 integration_tests/.secrets/
 
-# ⚠ NOTE: data/ is DELIBERATELY NOT ignored. The durable transaction store is
-# committed on purpose (git + Drive dual audit history). This repo MUST be private.
+# persister is a PURE LIBRARY: it holds no data of its own. Consuming repos
+# (transactions, plaid_category_transformer) own their stores, Drive credentials,
+# and drive_state.json. Ignore data/ so nothing ever lands here by accident.
+data/
