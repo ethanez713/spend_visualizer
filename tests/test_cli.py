@@ -40,3 +40,26 @@ def given_push_no_drive_when_run_then_noop(tmp_path, make_record, capsys):
     rc = main(["push", "--store", store, "--no-drive"])
     assert rc == 0
     assert "nothing to push" in capsys.readouterr().out
+
+
+def given_secrets_dir_flag_when_push_then_owning_repos_secrets_used(tmp_path, make_record,
+                                                                    monkeypatch):
+    # The owning repo's .secrets (credentials + drive_state.json) must reach DriveSync —
+    # the library-default .secrets would create a duplicate Drive file.
+    import persister.cli as cli
+    seen = {}
+
+    class FakeDriveSync:
+        def __init__(self, file_name, secrets_dir=None):
+            seen["file_name"], seen["secrets_dir"] = file_name, secrets_dir
+
+        def push(self, path):
+            return "https://drive.example/x"
+
+    monkeypatch.setattr(cli, "DriveSync", FakeDriveSync)
+    store = _write_store(tmp_path, [make_record()])
+
+    rc = main(["push", "--store", store, "--secrets-dir", "/owner/.secrets"])
+
+    assert rc == 0
+    assert seen == {"file_name": "store.jsonl", "secrets_dir": "/owner/.secrets"}

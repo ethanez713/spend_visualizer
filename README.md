@@ -5,12 +5,15 @@ Google-Drive-synced **JSONL stores**. No Plaid knowledge — it operates on list
 records keyed by a configurable `key_field` (default `transaction_id`).
 
 It exists so a bounded-history upstream (e.g. Plaid's transaction window) can be backed by
-a **durable archive** that lives in **git + Google Drive** (dual audit history), reconciles
-local ↔ remote, and remains the system of record even after data ages out upstream.
+a **durable, Google-Drive-replicated archive** (Drive's append-only revision trail is the
+audit history) that reconciles local ↔ remote and remains the system of record even after
+data ages out upstream.
 
-> ⚠ **This repo commits real financial data** under `data/` on purpose (audit /
-> replication). It **MUST stay private.** `.secrets/` (secrets + runtime state) is gitignored;
-> `data/` (the durable store) is deliberately **not**.
+> **Pure library — no data lives here.** Consuming repos (`transactions`,
+> `plaid_category_transformer`) own their stores, their Drive credentials, and their
+> `drive_state.json` file-id memory, passing their own paths + ``secrets_dir`` to this
+> library. This repo's gitignored `.secrets/` is used only by the manual CLI below and
+> the optional integration tests.
 
 ## Install
 
@@ -71,10 +74,16 @@ delete files yourself in the Drive UI if you ever need to.
 Standalone, mostly for testing / manual ops (real callers use the library API):
 
 ```bash
-./.venv/bin/python persist.py window    --store data/transactions.jsonl
-./.venv/bin/python persist.py reconcile --store data/transactions.jsonl [--no-drive]
-./.venv/bin/python persist.py push      --store data/transactions.jsonl [--no-drive]
+./.venv/bin/python persist.py window    --store ../transactions/data/transactions.jsonl
+./.venv/bin/python persist.py reconcile --store ../transactions/data/transactions.jsonl \
+                                        --secrets-dir ../transactions/.secrets [--no-drive]
+./.venv/bin/python persist.py push      --store ../transactions/data/transactions.jsonl \
+                                        --secrets-dir ../transactions/.secrets [--no-drive]
 ```
+
+For Drive ops always pass the **owning repo's** `--secrets-dir` (its credentials +
+`drive_state.json` file-id memory) — pushing with this repo's default `.secrets/`
+would create a *new* Drive file instead of a revision of the existing one.
 
 Drive sync is **ON by default** but disable-able with `--no-drive`; when on, it prints a
 one-line "data leaving machine" notice. Least-privilege Google scope: `drive.file`.
