@@ -175,6 +175,10 @@ class CategoryLLM:
                  debug: bool = False):
         self.model = model or LLM_MODEL
         self.host = host or LLM_HOST
+        # True once categorize() completed a full pass (every batch executed). The caller
+        # uses this to distinguish "the LLM reviewed these rows" from "the stage skipped"
+        # (Ollama down / crash) — skipped rows must not be stamped as audited.
+        self.ran_ok = False
         global _DEBUG
         _DEBUG = debug
 
@@ -232,7 +236,9 @@ class CategoryLLM:
         (or whose detailed doesn't belong to its primary) are dropped. Returns ``{}`` if
         Ollama is unavailable or any unexpected error occurs (caller falls back).
         """
+        self.ran_ok = False
         if not items:
+            self.ran_ok = True  # nothing to review is a complete (trivial) pass
             return {}
         try:
             return self._categorize_inner(items)
@@ -296,4 +302,5 @@ class CategoryLLM:
                     d.detailed = other
                 out.setdefault(d.row_index, d)
             _dbg(f"batch {b + 1}/{n_batches}: {len(res.decisions)} decision(s)")
+        self.ran_ok = True  # every batch executed — a complete pass
         return out

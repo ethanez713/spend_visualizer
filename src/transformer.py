@@ -35,7 +35,7 @@ from datetime import datetime
 import persister
 
 from .config import LLM_AUTHORITY, TRUSTED_CONFIDENCE_LEVELS
-from .incremental import SOURCE_HASH_FIELD, classify, source_hash
+from .incremental import HASH_PENDING_LLM, SOURCE_HASH_FIELD, classify, source_hash
 from .llm import CategoryLLM
 from .rules import DEFAULT_MEMORY, MerchantMemory, RuleHit, apply_rules
 from .schema import (
@@ -346,8 +346,17 @@ def run(*, input_path: str, out_jsonl: str, out_csv: str, flags_csv: str, log_pa
     n_selected = sum(1 for r in delta.to_process.values() if should_process(r, levels))
 
     _, changes, flags = transform(delta.to_process, levels=levels, memory=memory, llm=llm)
+
+    # Stamp each processed row's source hash — UNLESS the LLM stage was requested but
+    # didn't actually run (Ollama down / crashed): stamping then would mark the rows as
+    # fully audited and silently skip LLM review forever. The sentinel forces a re-audit
+    # next run. An explicit --no-llm run stamps normally (rules-only was deliberate).
+    llm_skipped = llm is not None and not llm.ran_ok
+    if llm_skipped:
+        print("  ⚠ LLM stage did not run — rows from this run will be re-audited "
+              "(with the LLM) on the next run.")
     for tid, rec in delta.to_process.items():
-        rec[SOURCE_HASH_FIELD] = hashes[tid]
+        rec[SOURCE_HASH_FIELD] = HASH_PENDING_LLM if llm_skipped else hashes[tid]
 
     if memory is not None:
         memory.save()

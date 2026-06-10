@@ -31,6 +31,24 @@ def given_a_change_when_provenance_set_then_originals_saved_and_value_overwritte
     assert rec["category_update_confidence"] == "HIGH"
 
 
+def given_second_correction_when_provenance_set_then_true_originals_preserved(make_record):
+    # A re-correction (e.g. a review re-pick over an earlier fix) must not overwrite
+    # original_* with the intermediate corrected values — Plaid's original survives.
+    rec = make_record(personal_finance_category={
+        "primary": "GENERAL_MERCHANDISE",
+        "detailed": "GENERAL_MERCHANDISE_OTHER_GENERAL_MERCHANDISE",
+        "confidence_level": "LOW"})
+
+    set_provenance(rec, "FOOD_AND_DRINK", "FOOD_AND_DRINK_COFFEE", "mechanical", "rule", "MEDIUM")
+    set_provenance(rec, "FOOD_AND_DRINK", "FOOD_AND_DRINK_RESTAURANT", "review", "re-pick", "HIGH")
+
+    assert rec["original_pf_category_primary"] == "GENERAL_MERCHANDISE"
+    assert rec["original_pf_category_detailed"] == "GENERAL_MERCHANDISE_OTHER_GENERAL_MERCHANDISE"
+    assert rec["original_pf_category_confidence"] == "LOW"
+    assert rec["personal_finance_category"]["detailed"] == "FOOD_AND_DRINK_RESTAURANT"
+    assert rec["category_update_step"] == "review"
+
+
 def given_no_change_when_provenance_set_then_columns_stay_empty(make_record):
     rec = make_record(personal_finance_category={
         "primary": "FOOD_AND_DRINK", "detailed": "FOOD_AND_DRINK_COFFEE",
