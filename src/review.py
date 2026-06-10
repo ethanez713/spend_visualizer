@@ -104,8 +104,11 @@ def _render(rec: dict, n: int, total: int, out) -> None:
     out(f"  reason        : {rec.get('category_review_reason')}")
 
 
-def _prompt_repick(input_fn, out) -> tuple[str, str] | None:
-    """Prompt for a valid (primary, detailed); None if the user backs out."""
+def prompt_pick_category(input_fn, out) -> tuple[str, str] | None:
+    """Prompt for a valid (primary, detailed); None if the user backs out.
+
+    Public: the manual --edit session reuses this picker.
+    """
     for i, p in enumerate(PRIMARY):
         out(f"    {i:2}. {p}")
     raw = input_fn("  primary # (or blank to cancel): ").strip()
@@ -150,7 +153,7 @@ def run_review(store: dict[str, dict], memory: MerchantMemory | None = None, *,
             accept_flag(rec, memory)
             action = "accepted"
         elif choice == "e":
-            picked = _prompt_repick(input_fn, out)
+            picked = prompt_pick_category(input_fn, out)
             if picked is None:
                 out("  (cancelled — left flagged)")
                 summary["skipped"] += 1

@@ -67,8 +67,8 @@ NEW_COLUMNS = [
     "original_pf_category_primary",
     "original_pf_category_detailed",
     "original_pf_category_confidence",
-    "category_update_step",        # "mechanical" | "llm" | "review" | "" (none)
-    "category_update_reason",      # rule name or LLM/review reason
+    "category_update_step",        # "mechanical" | "llm" | "review" | "manual" | "" (none)
+    "category_update_reason",      # rule name, LLM/review reason, or manual intent id
     "category_update_confidence",  # corrector's confidence (HIGH for entity-id memory; LLM self-rating)
     "category_review_flag",        # "1" when a suggestion is pending human review, else ""
     "category_review_primary",     # suggested primary (not yet applied)
