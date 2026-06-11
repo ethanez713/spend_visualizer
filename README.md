@@ -1,4 +1,4 @@
-# spend_vizualiser
+# spend_visualizer
 
 Personal finance app: fetch bank/card transactions from Plaid, audit and correct their
 categories, and explore spending in a local web UI. Formerly five separate repos,
