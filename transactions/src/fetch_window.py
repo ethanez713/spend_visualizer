@@ -15,6 +15,10 @@ CSV-projection time via txn_to_row(txn, account_meta). Mixing account meta into 
 here would make get-path records differ byte-for-byte from sync-path records and trigger
 permanent spurious reconcile conflicts. persist_runner fetches account meta separately for the
 derived CSV, so keeping records pure preserves reconcile parity with the sync path.
+
+The ONE exception is ``txn_owner`` (who the Item belongs to): it is stamped on every record
+at every fetch boundary — here AND in the sync path — with the same value from the token
+entry, so the two paths still produce byte-identical records.
 """
 import sys
 from datetime import date
@@ -62,7 +66,11 @@ def _fetch_window_items(client, tokens, start: date, end: date):
                 resp = client.transactions_get(req)
                 page = resp["transactions"]
                 for txn in page:
-                    records.append(normalize_txn(txn.to_dict()))
+                    # Stamp ownership exactly like the sync path does: a golden
+                    # overwrite must never strip txn_owner, and get-path records must
+                    # stay byte-identical to sync-path ones (reconcile parity).
+                    records.append({**normalize_txn(txn.to_dict()),
+                                    "txn_owner": t["owner"]})
                 offset += len(page)
                 total = resp["total_transactions"]
                 # Stop once we've pulled the whole window (or Plaid returned an empty page).

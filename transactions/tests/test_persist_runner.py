@@ -59,7 +59,7 @@ def harness(tmp_path, monkeypatch):
     monkeypatch.setattr(persister, "DriveSync", FakeDriveSync)
     monkeypatch.setattr(pr, "get_client", lambda: object())
     monkeypatch.setattr(pr, "load_tokens", lambda: [{"access_token": "tok", "item_id": "it1",
-                                                     "institution": "Chase"}])
+                                                     "institution": "Chase", "owner": "u1"}])
     monkeypatch.setattr(pr, "get_account_meta", lambda client, tokens: {})
     # Redirect the audit log off the real data/ dir.
     monkeypatch.setattr(pr, "_RECONCILE_LOG", str(tmp_path / "reconcile_log.jsonl"))
@@ -161,6 +161,24 @@ def given_refetch_misses_conflict_when_run_persist_then_stops_before_persisting(
     assert "refetch" in order
     assert not any(o.startswith("push:") for o in order)   # nothing pushed to Drive
     assert not (tmp_path / "transactions.jsonl").exists()  # durable store untouched
+
+
+def given_remote_unstamped_when_run_persist_then_no_conflict_and_stamp_survives(
+        harness, monkeypatch):
+    # The post-migration scenario: the local store carries txn_owner stamps but the
+    # Drive remote predates the field. That difference is OUR metadata, not Plaid
+    # content — it must NOT register as a store-wide conflict (which would trigger a
+    # giant repair fetch), and the stamped local copy must win in the durable store.
+    tmp_path, order, refetch_calls = harness
+    _set_local(monkeypatch, {"t1": {**_rec("t1"), "txn_owner": "u1"}})
+    remote = {"t1": _rec("t1")}  # identical Plaid content, no stamp
+    FakeDriveSync.remote_bytes = "\n".join(json.dumps(r) for r in remote.values()).encode()
+
+    pr.run_persist(do_drive=True, allow_refetch=True, data_dir=str(tmp_path))
+
+    assert refetch_calls == []  # no spurious conflict repair
+    store = _read_jsonl(tmp_path / "transactions.jsonl")
+    assert store["t1"]["txn_owner"] == "u1"  # local (stamped) copy persisted + pushed
 
 
 def given_settled_pending_when_run_persist_then_deduped(harness, monkeypatch):

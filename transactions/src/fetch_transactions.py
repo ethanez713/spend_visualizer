@@ -39,6 +39,7 @@ from .plaid_client import (
 CSV_COLUMNS = [
     # --- account identity (from /accounts/get) ---
     "institution",
+    "txn_owner",            # who the Item belongs to (stamped at fetch from tokens.json)
     "account_id",
     "account_name",
     "account_mask",
@@ -167,6 +168,7 @@ def txn_to_row(txn, account_meta: dict) -> dict:
 
     return {
         "institution": acct.get("institution", ""),
+        "txn_owner": _v(txn.get("txn_owner")),
         "account_id": _v(txn.get("account_id")),
         "account_name": acct.get("account_name", ""),
         "account_mask": acct.get("account_mask", ""),
@@ -229,10 +231,25 @@ def txn_to_row(txn, account_meta: dict) -> dict:
     }
 
 
+def filter_tokens(tokens: list, user: str | None) -> list:
+    """Restrict the token list to one user's Items (--user); None means everyone."""
+    if user is None:
+        return tokens
+    known = sorted({t["owner"] for t in tokens})
+    if user not in known:
+        raise SystemExit(f"Unknown user {user!r} — known users: {', '.join(known)}")
+    return [t for t in tokens if t["owner"] == user]
+
+
 def sync_item(client, entry, raw_store) -> dict:
-    """Pull all pending deltas for one Item; mutate `raw_store` (full raw objects) in place."""
+    """Pull all pending deltas for one Item; mutate `raw_store` (full raw objects) in place.
+
+    Every stored record is stamped with ``txn_owner`` (the linking user, from the token
+    entry) so ownership survives in the data itself, not just in tokens.json.
+    """
     item_id = entry["item_id"]
     access_token = entry["access_token"]
+    owner = entry["owner"]
 
     cursor = load_cursors().get(item_id)
     counts = {"added": 0, "modified": 0, "removed": 0}
@@ -256,10 +273,12 @@ def sync_item(client, entry, raw_store) -> dict:
         first_call = False
 
         for txn in resp["added"]:
-            raw_store[txn["transaction_id"]] = normalize_txn(txn.to_dict())
+            raw_store[txn["transaction_id"]] = {**normalize_txn(txn.to_dict()),
+                                                "txn_owner": owner}
             counts["added"] += 1
         for txn in resp["modified"]:
-            raw_store[txn["transaction_id"]] = normalize_txn(txn.to_dict())
+            raw_store[txn["transaction_id"]] = {**normalize_txn(txn.to_dict()),
+                                                "txn_owner": owner}
             counts["modified"] += 1
         for removed in resp["removed"]:
             if raw_store.pop(removed["transaction_id"], None) is not None:
@@ -305,6 +324,8 @@ def _parse_args(argv=None):
                            "(default: automatically every 30 days).")
     over.add_argument("--no-overfetch", dest="overfetch", action="store_false",
                       help="skip the safety-net overfetch even if due.")
+    p.add_argument("--user", default=None, metavar="NAME",
+                   help="sync only this user's linked banks (default: everyone's).")
     return p.parse_args(argv)
 
 
@@ -314,8 +335,9 @@ def main(argv=None):
     client = get_client()
     tokens = load_tokens()
     if not tokens:
-        print("No linked banks yet. Run app.py and link a bank first.")
+        print("No linked banks yet. Run app.py --user <name> and link a bank first.")
         return
+    tokens = filter_tokens(tokens, args.user)
 
     account_meta = get_account_meta(client, tokens)
     raw_store = load_raw_store()

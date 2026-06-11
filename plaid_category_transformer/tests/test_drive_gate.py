@@ -65,6 +65,17 @@ def given_local_ahead_with_new_rows_when_gate_then_passes(store_of):
     tr.check_drive_divergence(prior)  # no exit
 
 
+def given_remote_unstamped_when_gate_then_passes(store_of):
+    # Post-migration: local rows carry the collector's txn_owner stamp; the Drive copy
+    # predates the field. That is OUR metadata, not audit drift — the gate must pass
+    # (no --force-push needed after the multi-user migration).
+    prior = store_of({"transaction_id": "t1", "txn_owner": "Alice"})
+    remote = {"t1": {k: v for k, v in prior["t1"].items() if k != "txn_owner"}}
+    FakeDriveSync.remote_bytes = _jsonl(remote)
+
+    tr.check_drive_divergence(prior)  # no exit
+
+
 def given_content_conflict_when_gate_then_stops(store_of):
     prior = store_of({"transaction_id": "t1", "amount": 1.0})
     remote = {"t1": dict(prior["t1"], amount=2.0)}

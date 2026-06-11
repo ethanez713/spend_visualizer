@@ -77,6 +77,7 @@ def given_full_txn_when_projected_then_fields_flattened(make_txn):
     row = txn_to_row(make_txn(), ACCOUNT_META)
 
     assert row["institution"] == "Chase"
+    assert row["txn_owner"] == "u1"
     assert row["account_name"] == "Checking"
     assert row["transaction_id"] == "txn_1"
     assert row["amount"] == 42.5  # numeric preserved, not stringified

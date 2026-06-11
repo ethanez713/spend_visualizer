@@ -6,7 +6,7 @@ This module owns three concerns that the rest of the pipeline depends on:
    ``personal_finance_category.confidence_level`` of LOW / MEDIUM (and
    UNKNOWN / missing) is unreliable; HIGH / VERY_HIGH pass through untouched.
 
-2. **Schema** — the 54 base columns (mirrors
+2. **Schema** — the 55 base columns (mirrors
    ``transactions/src/fetch_transactions.py`` ``CSV_COLUMNS`` exactly) plus the 12
    new provenance/review columns. ``row_fn`` projects a raw record (with overwritten +
    provenance fields) into a flat CSV row.
@@ -157,10 +157,11 @@ def clear_review_flag(record: dict) -> None:
             record[col] = ""
 
 
-# ── Base schema (54 cols, mirrors transactions/src/fetch_transactions.py) ──────
+# ── Base schema (55 cols, mirrors transactions/src/fetch_transactions.py) ──────
 BASE_COLUMNS = [
-    # --- account identity (blank here: raw store carries no /accounts/get meta) ---
-    "institution", "account_id", "account_name", "account_mask",
+    # --- account identity (blank here: raw store carries no /accounts/get meta,
+    #     EXCEPT txn_owner, which the collector stamps into every record) ---
+    "institution", "txn_owner", "account_id", "account_name", "account_mask",
     "account_official_name", "account_type", "account_subtype",
     # --- transaction core ---
     "transaction_id", "pending", "pending_transaction_id", "date", "authorized_date",
@@ -183,7 +184,7 @@ BASE_COLUMNS = [
     "counterparty_confidence", "counterparties_json",
 ]
 
-# Derived-CSV column order: the 54 base columns + the 12 provenance/review columns.
+# Derived-CSV column order: the 55 base columns + the 12 provenance/review columns.
 COLUMNS = BASE_COLUMNS + NEW_COLUMNS
 
 
@@ -219,7 +220,8 @@ def row_fn(record: dict) -> dict:
     cp_type = _g(primary_cp, "type")
 
     row = {
-        "institution": "", "account_id": _v(record.get("account_id")),
+        "institution": "", "txn_owner": _v(record.get("txn_owner")),
+        "account_id": _v(record.get("account_id")),
         "account_name": "", "account_mask": "", "account_official_name": "",
         "account_type": "", "account_subtype": "",
 
@@ -285,7 +287,7 @@ def row_fn(record: dict) -> dict:
 # flagged rows can be triaged in bulk (in a spreadsheet, or via ``--review``). Far fewer
 # columns than the full store — just what's needed to decide a category at a glance.
 FLAG_COLUMNS = [
-    "transaction_id", "date", "merchant_name", "name", "amount",
+    "transaction_id", "txn_owner", "date", "merchant_name", "name", "amount",
     "current_primary", "current_detailed", "current_confidence",
     "suggested_primary", "suggested_detailed",
     "review_source", "review_confidence", "review_reason",
@@ -297,6 +299,7 @@ def flag_row_fn(record: dict) -> dict:
     pfc = record.get("personal_finance_category") or {}
     return {
         "transaction_id": _v(record.get("transaction_id")),
+        "txn_owner": _v(record.get("txn_owner")),
         "date": _v(record.get("date")),
         "merchant_name": _v(record.get("merchant_name")),
         "name": _v(record.get("name")),

@@ -11,7 +11,7 @@ from viz import blank_if_missing, humanize_atom, money
 
 # Columns shown in a raw transaction-detail table.
 _TXN_COLS = ["date_resolved", "name", "merchant", "tier1", "tier2", "atom_display",
-             "abs_amount", "account_name", "confidence"]
+             "abs_amount", "person", "account_name", "confidence"]
 
 
 def transaction_detail(rows: pd.DataFrame, title: str = "Transactions",
@@ -44,6 +44,7 @@ def transaction_detail(rows: pd.DataFrame, title: str = "Transactions",
             "merchant": "Merchant",
             "atom_display": "Atom",
             "abs_amount": st.column_config.NumberColumn("Amount", format="$%.2f"),
+            "person": "Person",
             "account_name": "Account",
         },
     )

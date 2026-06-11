@@ -43,6 +43,7 @@ def make_txn():
         txn = {
             "transaction_id": "txn_1",
             "account_id": "acc_1",
+            "txn_owner": "u1",
             "pending": False,
             "date": "2026-01-15",
             "authorized_date": "2026-01-14",

@@ -2,6 +2,7 @@
 import json
 import lzma
 import os
+import re
 from pathlib import Path
 
 import plaid
@@ -74,21 +75,49 @@ def _save_json(path: Path, data):
     tmp.replace(path)  # atomic — don't lose access tokens on a crash mid-write
 
 
-# --- tokens.json: list of {access_token, item_id, institution} ---------------
+# --- tokens.json: list of {access_token, item_id, institution, owner} --------
 
-def load_tokens() -> list:
-    return _load_json(TOKENS_FILE, [])
+# Owner names are rendered in the UI and compared against CLI args; keep them to
+# safe, unambiguous identifiers.
+_OWNER_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
-def add_token(access_token: str, item_id: str, institution: str):
-    tokens = load_tokens()
+def validate_owner(owner: str) -> str:
+    if not owner or not _OWNER_RE.match(owner):
+        raise SystemExit(
+            f"Invalid user name {owner!r} — use letters, digits, '_' or '-' only."
+        )
+    return owner
+
+
+def load_tokens(*, require_owner: bool = True) -> list:
+    """All linked-Item entries. Every entry must carry an ``owner`` (who the Item's
+    transactions belong to); entries from before multi-user support fail loudly so
+    a fetch can never produce un-attributed records."""
+    tokens = _load_json(TOKENS_FILE, [])
+    if require_owner:
+        unowned = [t.get("institution", t.get("item_id", "?"))
+                   for t in tokens if not t.get("owner")]
+        if unowned:
+            raise SystemExit(
+                f"tokens.json has {len(unowned)} entr(ies) with no 'owner' "
+                f"({', '.join(unowned)}). Run finance_pipeline/tools/migrate_multiuser.py "
+                "to stamp existing data, then re-run."
+            )
+    return tokens
+
+
+def add_token(access_token: str, item_id: str, institution: str, owner: str):
+    validate_owner(owner)
+    tokens = load_tokens(require_owner=False)
     for entry in tokens:
         if entry.get("item_id") == item_id:
-            entry.update(access_token=access_token, institution=institution)
+            entry.update(access_token=access_token, institution=institution, owner=owner)
             break
     else:
         tokens.append(
-            {"access_token": access_token, "item_id": item_id, "institution": institution}
+            {"access_token": access_token, "item_id": item_id,
+             "institution": institution, "owner": owner}
         )
     _save_json(TOKENS_FILE, tokens)
     return tokens

@@ -37,6 +37,16 @@ def given_record_when_plaid_field_changes_then_hash_changes(make_record):
     assert source_hash(rec) != source_hash(make_record(merchant_name="Someone Else"))
 
 
+def given_record_when_txn_owner_added_or_changed_then_hash_unchanged(make_record):
+    # txn_owner is the collector's ownership stamp, not categorization input. Excluding
+    # it means stamping existing history (the multi-user migration) keeps every stored
+    # hash valid — i.e. it cannot trigger a mass LLM re-audit of the whole store.
+    rec = make_record()
+    base = source_hash(rec)
+    assert source_hash(dict(rec, txn_owner="Alice")) == base
+    assert source_hash(dict(rec, txn_owner="someone_else")) == base
+
+
 # ── classify ──────────────────────────────────────────────────────────────────
 
 def given_input_key_absent_from_prior_then_new_and_to_process(make_record):

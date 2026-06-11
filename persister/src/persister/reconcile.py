@@ -13,8 +13,15 @@ import json
 from dataclasses import dataclass
 
 
-def _content_hash(record: dict) -> str:
-    """Stable content hash of a record (canonical JSON, key order independent)."""
+def _content_hash(record: dict, metadata_fields: tuple = ()) -> str:
+    """Stable content hash of a record (canonical JSON, key order independent).
+
+    ``metadata_fields`` are stripped before hashing: locally-stamped bookkeeping
+    (e.g. an owner tag) must not register as a content difference against a remote
+    written before the field existed.
+    """
+    if metadata_fields:
+        record = {k: v for k, v in record.items() if k not in metadata_fields}
     blob = json.dumps(record, sort_keys=True, ensure_ascii=False, default=str)
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
@@ -29,7 +36,8 @@ class ReconcileReport:
 
 
 def reconcile(local: dict[str, dict], remote: dict[str, dict],
-              key_field: str = "transaction_id") -> ReconcileReport:
+              key_field: str = "transaction_id",
+              *, metadata_fields: tuple = ()) -> ReconcileReport:
     """Classify keys by membership + content hash and build the preserved union.
 
     - in both & equal  → in_sync   (keep either; we keep local)
@@ -39,6 +47,10 @@ def reconcile(local: dict[str, dict], remote: dict[str, dict],
 
     ``key_field`` is accepted for API symmetry; both inputs are already keyed dicts.
     Lists are sorted for deterministic, diff-friendly reports.
+
+    ``metadata_fields`` names caller-owned bookkeeping fields (e.g. an owner tag)
+    excluded from conflict detection. Records equal modulo those fields are in_sync,
+    and merged keeps the LOCAL copy — the side that carries the stamps.
     """
     in_sync: list[str] = []
     local_only: list[str] = []
@@ -50,7 +62,8 @@ def reconcile(local: dict[str, dict], remote: dict[str, dict],
         in_local = key in local
         in_remote = key in remote
         if in_local and in_remote:
-            if _content_hash(local[key]) == _content_hash(remote[key]):
+            if (_content_hash(local[key], metadata_fields)
+                    == _content_hash(remote[key], metadata_fields)):
                 in_sync.append(key)
                 merged[key] = local[key]
             else:

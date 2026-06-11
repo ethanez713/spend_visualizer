@@ -38,8 +38,9 @@ class FakeClient:
         return {"transactions": page, "total_transactions": len(data)}
 
 
-def _token(access_token, institution="Chase", item_id="it1"):
-    return {"access_token": access_token, "item_id": item_id, "institution": institution}
+def _token(access_token, institution="Chase", item_id="it1", owner="u1"):
+    return {"access_token": access_token, "item_id": item_id,
+            "institution": institution, "owner": owner}
 
 
 def _days_ago(n):
@@ -57,8 +58,13 @@ def _txn(tid, days_ago=10, account_id="acc_1", pending=False, amount=1.0):
 
 
 def _rec(tid, **over):
-    """A raw-store record (plain dict, the shape normalize_txn emits)."""
-    return dict(_txn(tid, **over))
+    """A raw-store record: normalize_txn shape PLUS the txn_owner fetch-boundary stamp.
+
+    The fake Plaid response (_txn) stays stamp-free — Plaid never returns txn_owner;
+    our fetch code adds it — so an in-sync store must already carry the stamp or the
+    fresh (stamped) record would falsely register as 'changed'.
+    """
+    return {**dict(_txn(tid, **over)), "txn_owner": "u1"}
 
 
 # --- cadence -------------------------------------------------------------------------
@@ -99,6 +105,7 @@ def given_record_missing_locally_when_overfetch_then_added(state):
 
     assert counts == {"added": 1, "changed": 0, "stale": 0, "items_ok": 1}
     assert raw["a"]["transaction_id"] == "a"
+    assert raw["a"]["txn_owner"] == "u1"  # golden merge keeps the owner stamp
     # The cadence clock advanced and a log entry was appended.
     assert load_overfetch_state()["last_overfetch"] == date.today().isoformat()
     assert state.overfetch_log.exists()
