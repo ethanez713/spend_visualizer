@@ -32,6 +32,8 @@ production data, up to **10 connected banks (Items)**.
     ├── transactions.jsonl      # durable system-of-record store (Drive-synced revisions)
     ├── transactions.csv        # derived projection of the durable store (Drive-synced)
     ├── reconcile_log.jsonl     # 0600 audit trail of each persist reconcile
+    ├── overfetch_state.json    # last safety-net overfetch date (30-day cadence)
+    ├── overfetch_log.jsonl     # 0600 health trail of each overfetch (counts + stale ids)
     └── logs/fetch.log          # scheduled-run output
 ```
 
@@ -151,6 +153,28 @@ credentials + file-id state live in this repo's `.secrets/` (`client_secret.json
 
 The whole chain (fetch → categorize → analyze UI) is normally driven by the
 **`../finance_pipeline`** orchestrator (`./run.py`).
+
+### Safety-net overfetch (automatic, every ~30 days)
+
+The cursor sync is the only thing keeping the store correct — a missed `added`
+delta silently loses a transaction, a missed `removed` delta silently leaves a
+stale one. As a safety net, every **30 days** the fetch also re-pulls the full
+last **90 days** via `/transactions/get` (so each transaction is independently
+re-fetched 3–4 times over its life) and reconciles it against the raw store
+**before** the save/persist steps:
+
+- records Plaid returns that are missing locally are **added** (a caught sync miss);
+- records whose content changed are **overwritten** (Plaid is golden);
+- in-window posted records Plaid no longer returns are **flagged as stale —
+  never auto-deleted** — in `data/overfetch_log.jsonl` for manual review.
+  (The last 3 days are excluded from stale detection: pending churn.)
+
+A bank whose fetch errors is never treated as covered, so its records can't be
+falsely flagged; if every bank fails, nothing merges and the 30-day clock does
+not advance. In steady state every count in the log is ~0 — any nonzero
+`added`/`stale` count means the cursor path missed a delta.
+
+Flags: `--overfetch` (force it now), `--no-overfetch` (skip even if due).
 
 ### Raw archive (audit / QC)
 
