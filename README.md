@@ -60,15 +60,25 @@ each component's gitignored `.secrets/` (0700, files 0600), machine-local only.
 
 ### 0. Clone + per-component venvs
 
+Every component installs from its **hash-locked** `requirements.lock.txt`
+(`--require-hashes` verifies each downloaded artifact against pinned SHA-256s —
+supply-chain hardening). The sibling `persister` library is installed editable in a
+separate `--no-deps` step because editables can't be hash-pinned; its dependencies
+are already in each consumer's lock.
+
 ```bash
 git clone <this repo> spend_visualizer && cd spend_visualizer
 
-(cd persister && python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt -r requirements-dev.txt && ./.venv/bin/pip install -e .)
-(cd transactions && python3 -m venv venv && ./venv/bin/pip install -r requirements.txt -r requirements-persist.txt -r requirements-dev.txt)
-(cd plaid_category_transformer && python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt -r requirements-dev.txt)
-(cd spend_analyzer && python3 -m venv venv && ./venv/bin/pip install -r requirements.txt)
-(cd finance_pipeline && python3 -m venv venv && ./venv/bin/pip install -r requirements-dev.txt)
+(cd persister && python3 -m venv .venv && ./.venv/bin/pip install --require-hashes -r requirements.lock.txt && ./.venv/bin/pip install --no-deps -e .)
+(cd transactions && python3 -m venv venv && ./venv/bin/pip install --require-hashes -r requirements.lock.txt && ./venv/bin/pip install --no-deps -e ../persister)
+(cd plaid_category_transformer && python3 -m venv .venv && ./.venv/bin/pip install --require-hashes -r requirements.lock.txt && ./.venv/bin/pip install --no-deps -e ../persister)
+(cd spend_analyzer && python3 -m venv venv && ./venv/bin/pip install --require-hashes -r requirements.lock.txt)
+(cd finance_pipeline && python3 -m venv venv && ./venv/bin/pip install --require-hashes -r requirements.lock.txt)
 ```
+
+After a deliberate pin bump in a component's `requirements*.txt`, regenerate its lock:
+`pip install pip-tools && pip-compile --generate-hashes --allow-unsafe
+<the component's requirements*.txt files> -o requirements.lock.txt`.
 
 Create the data root (step above), or edit `data_root` to point somewhere else.
 

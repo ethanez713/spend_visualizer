@@ -148,8 +148,8 @@ in the CSV).
 ```bash
 python3 -m venv .venv
 . .venv/bin/activate
-pip install -r requirements.txt        # installs -e ../persister too
-pip install -r requirements-dev.txt    # pytest (for the test suite)
+pip install --require-hashes -r requirements.lock.txt   # hash-locked full tree (incl. pytest)
+pip install --no-deps -e ../persister                    # editable sibling (not hash-pinnable)
 ```
 
 Local LLM (optional but recommended):

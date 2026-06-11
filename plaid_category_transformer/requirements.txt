@@ -3,22 +3,21 @@
 # Bump deliberately; review changelogs before upgrading.
 #
 # Install into a DEDICATED virtualenv so a compromised global package can't reach this
-# project's OAuth token / committed financial data:
+# project's OAuth token / committed financial data. Installs come from the HASH-LOCKED
+# tree (requirements.lock.txt — regenerate after editing pins here), then the sibling
+# persister library goes in editable; editables can't be hash-pinned, so it is a
+# separate, hash-free step (its deps are already pinned+locked below):
 #     python3 -m venv .venv && . .venv/bin/activate
-#     pip install -r requirements.txt && pip install -e ../persister
+#     pip install --require-hashes -r requirements.lock.txt
+#     pip install --no-deps -e ../persister
 #
-# STRONGER (recommended for financial data): hash-lock the full transitive tree:
+# Regenerate the lock after a deliberate upgrade:
 #     pip install pip-tools
-#     pip-compile --generate-hashes --allow-unsafe -o requirements.lock requirements.txt
-#     pip install --require-hashes -r requirements.lock
+#     pip-compile --generate-hashes --allow-unsafe -o requirements.lock.txt \
+#         requirements.txt requirements-dev.txt
 #
 # NOTE: the core path (load → mechanical rules → write provenance) needs only persister.
 # instructor/openai are used by the LLM stage; google-* are lazy in persister's Drive sync.
-
-# ── persister (Project A): the persistence/reconcile/Drive-sync library ───────
-# Installed editable so local edits propagate. If this repo is moved/renamed, rebuild
-# the venv (the editable path is absolute).
--e ../persister
 
 # ── Local LLM stage via Ollama (OpenAI-compatible client → localhost) ─────────
 instructor==1.15.1

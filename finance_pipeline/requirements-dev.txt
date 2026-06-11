@@ -1,2 +1,4 @@
 # Test-only deps — the pipeline itself is stdlib-only (components bring their own venvs).
+# Install from the hash-locked tree: pip install --require-hashes -r requirements.lock.txt
+# Regenerate: pip-compile --generate-hashes --allow-unsafe requirements-dev.txt -o requirements.lock.txt
 pytest==9.0.3

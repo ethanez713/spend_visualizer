@@ -3,14 +3,17 @@
 # Bump deliberately; review changelogs before upgrading.
 #
 # Install into a DEDICATED virtualenv so a compromised global package can't reach
-# this project's OAuth token / committed financial data:
+# this project's OAuth token / committed financial data. Installs come from the
+# HASH-LOCKED tree (requirements.lock.txt); the editable self-install is a separate
+# hash-free step (editables can't be hash-pinned):
 #     python3 -m venv .venv && . .venv/bin/activate
-#     pip install -r requirements.txt && pip install -e .
+#     pip install --require-hashes -r requirements.lock.txt
+#     pip install --no-deps -e .
 #
-# STRONGER (recommended for financial data): hash-lock the full transitive tree:
+# Regenerate the lock after a deliberate upgrade:
 #     pip install pip-tools
-#     pip-compile --generate-hashes --allow-unsafe -o requirements.lock requirements.txt
-#     pip install --require-hashes -r requirements.lock
+#     pip-compile --generate-hashes --allow-unsafe -o requirements.lock.txt \
+#         requirements.txt requirements-dev.txt
 #
 # NOTE: the core library (load/save/reconcile/window/merge) needs NONE of these —
 # they are imported lazily inside drive_sync.py and only required for the Drive path.

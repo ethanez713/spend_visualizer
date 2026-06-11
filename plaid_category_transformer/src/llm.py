@@ -175,6 +175,11 @@ class CategoryLLM:
                  debug: bool = False):
         self.model = model or LLM_MODEL
         self.host = host or LLM_HOST
+        # Security baseline: a non-loopback host means transaction text leaves this
+        # machine — that must never happen silently.
+        if not any(h in self.host for h in ("localhost", "127.0.0.1", "[::1]")):
+            print(f"  ⚠ LLM host {self.host!r} is NOT local — transaction data will "
+                  "leave this machine on every LLM call.", file=sys.stderr)
         # True once categorize() completed a full pass (every batch executed). The caller
         # uses this to distinguish "the LLM reviewed these rows" from "the stage skipped"
         # (Ollama down / crash) — skipped rows must not be stamped as audited.

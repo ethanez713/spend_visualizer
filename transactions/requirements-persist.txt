@@ -1,12 +1,14 @@
-# Durable-persist extras: the generic persister library + Google Drive client libs.
-# These are only needed for the --persist path (reconcile + Drive sync); the core
-# sync + local CSV pipeline needs only requirements.txt.
-#   ./venv/bin/pip install -r requirements-persist.txt
+# Durable-persist extras: Google Drive client libs for the persister library.
+# Only needed for the --persist path (reconcile + Drive sync); the core sync +
+# local CSV pipeline needs only requirements.txt.
 #
-# persister is installed editable so local edits to the sibling component propagate.
-# The path below is relative — run pip from this component's root. If this component
-# or persister is moved/renamed, rebuild the venv.
--e ../persister
+# Install from the hash-locked tree (see requirements.lock.txt), then add the
+# sibling persister library editable — editables can't be hash-pinned, so it is
+# a separate, hash-free step (its own deps are already locked here):
+#   ./venv/bin/pip install --require-hashes -r requirements.lock.txt
+#   ./venv/bin/pip install --no-deps -e ../persister
+# (relative path — run pip from this component's root; rebuild the venv if either
+# component is moved/renamed)
 
 # Google Drive (lazy-imported inside persister.drive_sync). Versions match converter/.
 google-api-python-client==2.197.0

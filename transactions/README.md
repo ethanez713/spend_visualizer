@@ -53,8 +53,14 @@ the importable code lives in `src/`.
 
 ```bash
 python3 -m venv venv
-./venv/bin/pip install -r requirements.txt
+./venv/bin/pip install --require-hashes -r requirements.lock.txt   # hash-locked full tree
+./venv/bin/pip install --no-deps -e ../persister                   # editable sibling (not hash-pinnable)
 ```
+
+The lock covers requirements.txt + requirements-persist.txt + requirements-dev.txt;
+regenerate it after a deliberate pin bump:
+`pip install pip-tools && pip-compile --generate-hashes --allow-unsafe
+requirements.txt requirements-persist.txt requirements-dev.txt -o requirements.lock.txt`.
 
 `.secrets/.env` is already created with your Production credentials and `PLAID_ENV=production`.
 (See `.env.example` for the format. The `.secrets/` directory holds all secrets,
@@ -157,7 +163,8 @@ and Drive file-id state:
 
 Flags: `--no-persist` (sync + local CSV only), `--no-drive` (persist locally, no
 egress), `--no-refetch` (skip the repair fetch; conflicts then stop the run).
-One-time setup: `./venv/bin/pip install -r requirements-persist.txt`. Drive
+One-time setup: covered by the hash-locked install above (the lock includes the
+persist extras; persister itself is the editable `--no-deps` step). Drive
 credentials + file-id state live in this repo's `.secrets/` (`client_secret.json`,
 `token.json`, `drive_state.json` — see persister's README for the OAuth setup).
 
@@ -252,8 +259,7 @@ To prove the whole pipeline with fake data before linking real banks:
 ## Tests
 
 ```bash
-./venv/bin/pip install -r requirements-dev.txt
-./venv/bin/python -m pytest
+./venv/bin/python -m pytest   # pytest is in the hash-locked install above
 ```
 
 Fast, offline, and deterministic — they isolate all file I/O to a tmp dir and never touch

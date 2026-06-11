@@ -141,8 +141,9 @@ chromium` is the cleaner permanent fix.
   `.streamlit/config.toml`.
 - **No secrets in this repo.** Broad `.gitignore` patterns; the archive and any
   CSVs are git-ignored (never vendored in).
-- **Pinned dependencies** in an isolated venv. To hash-lock the full tree:
-  `pip-compile --generate-hashes requirements.txt` → `pip install --require-hashes`.
+- **Pinned + hash-locked dependencies** in an isolated venv:
+  `pip install --require-hashes -r requirements.lock.txt` (regenerate via
+  `pip-compile --generate-hashes --allow-unsafe requirements.txt -o requirements.lock.txt`).
 
 ## Not in v1 (designed-for)
 

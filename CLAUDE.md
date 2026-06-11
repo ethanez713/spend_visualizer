@@ -57,8 +57,11 @@ self-contained): `transactions/src/plaid_client.py:_data_root`,
 
 Conventions: tests are named `given_<precondition>_when_<action>_then_<result>`
 (pytest.ini adds `given_*`), except spend_analyzer which uses plain `test_*`.
-Dependencies are pinned `==` in per-component requirements files; persister is
-installed editable into the venvs that use it. Plain stdlib in finance_pipeline.
+Dependencies are pinned `==` in per-component requirements files AND hash-locked
+(`requirements.lock.txt`, installed with `--require-hashes`; regenerate via
+`pip-compile --generate-hashes --allow-unsafe` after a deliberate pin bump).
+persister is installed editable (`--no-deps`, separate step — editables can't be
+hash-pinned) into the venvs that use it. Plain stdlib in finance_pipeline.
 
 ## Data flow + invariants (don't rediscover these)
 

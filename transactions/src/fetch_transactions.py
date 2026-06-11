@@ -295,14 +295,24 @@ def sync_item(client, entry, raw_store) -> dict:
 
 
 def write_csv(raw_store: dict, account_meta: dict):
-    """Derive the flat CSV from the raw store (the single source of truth)."""
+    """Derive the flat CSV from the raw store (the single source of truth).
+
+    Atomic (temp file + replace), matching every other writer in the repo: a crash
+    mid-write must never leave a truncated deliverable behind.
+    """
     rows = [txn_to_row(txn, account_meta) for txn in raw_store.values()]
     rows.sort(key=lambda r: (r.get("date") or "", r.get("institution") or ""))
-    with open(CSV_FILE, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS, extrasaction="ignore")
-        writer.writeheader()
-        for row in rows:
-            writer.writerow({k: _csv_safe(v) for k, v in row.items()})
+    tmp = CSV_FILE.with_suffix(CSV_FILE.suffix + ".tmp")
+    try:
+        with open(tmp, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS, extrasaction="ignore")
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({k: _csv_safe(v) for k, v in row.items()})
+        tmp.replace(CSV_FILE)
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def _parse_args(argv=None):
