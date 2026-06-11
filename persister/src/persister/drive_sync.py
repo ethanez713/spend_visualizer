@@ -121,6 +121,16 @@ class AppendOnlyError(PermissionError):
     """Raised when something attempts a destructive Drive op through the guarded service."""
 
 
+class DrivePullError(RuntimeError):
+    """A remote IS known (file_id remembered) but its content could not be fetched.
+
+    Callers must treat this as "remote state unknown" and STOP any reconcile-then-push
+    flow: silently proceeding as if there were no remote would rebuild stores without
+    the remote-only rows (durable history) and overwrite the Drive head with that loss.
+    Distinct from ``pull()`` returning ``None``, which means nothing was ever pushed.
+    """
+
+
 _FORBIDDEN_METHODS = frozenset({"delete"})
 
 
@@ -259,8 +269,11 @@ class DriveSync:
     def pull(self) -> bytes | None:
         """Download the current Drive file content as bytes.
 
-        Returns None if no file_id is remembered yet (nothing pushed) or on any error —
-        a failed pull must degrade to "no remote" for reconcile, never crash.
+        Returns None ONLY when no file_id is remembered yet (nothing ever pushed —
+        genuinely no remote). When a remote IS known but cannot be fetched (service
+        unavailable, API error), raises :class:`DrivePullError`: reconcile flows must
+        not mistake a transient failure for an empty remote, or remote-only durable
+        history silently drops out of the rebuilt stores and the next push.
         """
         file_id = self._file_id()
         if not file_id:
@@ -268,14 +281,18 @@ class DriveSync:
         try:
             service = self._get_service()
             if service is None:
-                return None
+                raise DrivePullError(
+                    f"remote {self.file_name!r} is known (file_id {file_id}) but the "
+                    "Drive service is unavailable — remote state unknown")
             data = service.files().get_media(fileId=file_id).execute()
             if isinstance(data, str):
                 return data.encode("utf-8")
             return bytes(data) if data is not None else None
-        except Exception as e:  # noqa: BLE001 — never let a pull failure crash the caller
-            print(f"  drive: pull failed for {self.file_name!r}: {type(e).__name__}: {e}")
-            return None
+        except DrivePullError:
+            raise
+        except Exception as e:
+            raise DrivePullError(
+                f"pull failed for {self.file_name!r}: {type(e).__name__}: {e}") from e
 
     def push(self, local_path: str, mime: str = "application/x-ndjson") -> str | None:
         """Upload ``local_path`` to Drive, in place when the file_id is known.

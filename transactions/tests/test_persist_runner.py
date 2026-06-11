@@ -181,6 +181,24 @@ def given_remote_unstamped_when_run_persist_then_no_conflict_and_stamp_survives(
     assert store["t1"]["txn_owner"] == "u1"  # local (stamped) copy persisted + pushed
 
 
+def given_pull_failure_when_run_persist_then_stops_before_persisting(harness, monkeypatch):
+    # A KNOWN remote that cannot be read is "remote state unknown", not "no remote":
+    # proceeding would rebuild the durable store without the remote-only rows and
+    # push that loss over the Drive head. The run must stop before writing anything.
+    tmp_path, order, _ = harness
+    _set_local(monkeypatch, {"t1": _rec("t1")})
+    monkeypatch.setattr(
+        FakeDriveSync, "pull",
+        lambda self: (_ for _ in ()).throw(persister.DrivePullError("remote unreadable")))
+
+    with pytest.raises(SystemExit) as exc:
+        pr.run_persist(do_drive=True, allow_refetch=True, data_dir=str(tmp_path))
+
+    assert "STOP" in str(exc.value)
+    assert not (tmp_path / "transactions.jsonl").exists()  # durable store untouched
+    assert not any(o.startswith("push:") for o in order)   # nothing pushed to Drive
+
+
 def given_settled_pending_when_run_persist_then_deduped(harness, monkeypatch):
     tmp_path, _order, _ = harness
     # A pending row superseded by a posted row that references it → dropped by dedupe.

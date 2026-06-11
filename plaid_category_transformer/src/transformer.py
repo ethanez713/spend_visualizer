@@ -295,13 +295,28 @@ def check_drive_divergence(prior: dict[str, dict], *, force_push: bool = False,
     (the corrections ARE the value), so a human must arbitrate: restore the local store,
     or re-run with ``--force-push`` to declare the local store authoritative.
 
-    A missing remote (nothing pushed yet, or Drive unreachable) passes the gate — the
-    later push degrades the same soft way.
+    A missing remote (nothing pushed yet) passes the gate. A pull FAILURE (remote
+    known but unreadable) stops the run — an unreadable remote might be diverged, and
+    this gate is the only thing standing between it and the end-of-run push.
+    ``--force-push`` bypasses that stop with a loud warning, same as it bypasses a
+    detected divergence: the human has declared the local store authoritative.
     """
-    from persister import DriveSync
-    remote = persister.load_jsonl_bytes(
-        DriveSync(DRIVE_JSONL_NAME, folder_name=DRIVE_FOLDER,
-                  secrets_dir=secrets_dir).pull())
+    from persister import DrivePullError, DriveSync
+    try:
+        remote = persister.load_jsonl_bytes(
+            DriveSync(DRIVE_JSONL_NAME, folder_name=DRIVE_FOLDER,
+                      secrets_dir=secrets_dir).pull())
+    except DrivePullError as e:
+        if force_push:
+            print(f"  drive gate: could not read the Drive remote ({e}); --force-push "
+                  "— proceeding with the LOCAL store as authoritative.", file=sys.stderr)
+            return
+        sys.exit(
+            f"  drive gate: STOP — could not read the Drive remote ({e}), so divergence "
+            "cannot be checked and the end-of-run push might clobber it. Nothing was "
+            "audited or written. Retry when Drive is reachable, run --no-drive to stay "
+            "local, or --force-push to declare the local store authoritative."
+        )
     if not remote:
         return
     # txn_owner is collector metadata, not audit content: a remote written before the

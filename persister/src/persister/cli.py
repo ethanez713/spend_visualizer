@@ -23,7 +23,7 @@ import os
 import sys
 
 from .audit import log_reconcile
-from .drive_sync import DriveSync
+from .drive_sync import DrivePullError, DriveSync
 from .reconcile import reconcile
 from .store import load_jsonl, load_jsonl_bytes
 from .windows import compute_window
@@ -56,7 +56,12 @@ def _cmd_reconcile(args) -> int:
     remote: dict = {}
     if not args.no_drive:
         print(_EGRESS_NOTICE)
-        remote = load_jsonl_bytes(_drive_sync(args).pull())
+        try:
+            remote = load_jsonl_bytes(_drive_sync(args).pull())
+        except DrivePullError as e:
+            print(f"✖ {e} — cannot reconcile against an unreadable remote. "
+                  "Retry, or use --no-drive for a local-only view.", file=sys.stderr)
+            return 1
     report = reconcile(local, remote)
     print(f"in_sync     : {len(report.in_sync)}")
     print(f"local_only  : {len(report.local_only)}")

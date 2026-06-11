@@ -26,7 +26,7 @@ itself: it is SOURCE data the store is rebuilt from, not a runtime log. Each ent
 snapshots the row's signals and what the machines believed at edit time, so accumulated
 intents double as labeled examples for the periodic rule/LLM analysis. This stage never
 touches merchant memory or the rule tables — rules change only via that periodic,
-human-driven analysis (``tools/analyze_edits.py``), not automatically per run.
+human-driven analysis (``analyze_edits.py`` at the repo root), not automatically per run.
 """
 from __future__ import annotations
 

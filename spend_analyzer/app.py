@@ -63,7 +63,9 @@ def _config_signature(app) -> tuple:
 
 
 @st.cache_data(show_spinner="Loading & enriching transactions…")
-def _load(_signature: tuple):
+def _load(signature: tuple):
+    # `signature` must NOT be underscore-prefixed: st.cache_data skips hashing
+    # `_`-named params, which would pin the cache to the first load forever.
     res = build_cube()
     return res.df, res.qc
 
