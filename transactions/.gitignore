@@ -1,0 +1,21 @@
+# Secrets in .secrets/; runtime state, logs, raw archive in data/ — never commit
+.secrets/
+data/
+
+# Extra defensive secret patterns (in case a secret lands outside .secrets/)
+.env*
+!.env.example
+*secret*.json
+token.json
+tokens.json
+sync_cursors.json
+*.tmp
+
+# Output deliverable (derived; regenerated each run)
+transactions.csv
+
+# Python / tooling
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/

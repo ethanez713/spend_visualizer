@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Link a bank — Transactions Exporter</title>
+  <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 3rem auto; padding: 0 1rem; }
+    button { font-size: 1.1rem; padding: 0.75rem 1.5rem; cursor: pointer; border-radius: 8px;
+             border: 1px solid #2a5; background: #2a5; color: #fff; }
+    button:disabled { opacity: 0.5; cursor: default; }
+    #status { margin-top: 1.25rem; font-size: 1rem; min-height: 1.5em; }
+    ul { padding-left: 1.25rem; }
+    .muted { color: #666; font-size: 0.9rem; }
+    .ok { color: #2a5; }
+    .err { color: #c33; }
+  </style>
+</head>
+<body>
+  <h1>Link a bank</h1>
+  <p class="muted">
+    Trial plan allows <strong>10 connected banks (Items) max</strong>, and removing one
+    does <strong>not</strong> free a slot. Only link banks you actually want.
+  </p>
+
+  <button id="link-button">Connect a bank</button>
+  <div id="status"></div>
+
+  <h2>Linked banks</h2>
+  <ul id="linked-list"><li class="muted">none yet</li></ul>
+
+  <script>
+    const statusEl = document.getElementById("status");
+    const listEl = document.getElementById("linked-list");
+
+    function li(text, className) {
+      const el = document.createElement("li");
+      el.textContent = text;
+      if (className) el.className = className;
+      return el;
+    }
+
+    async function refreshLinked() {
+      const res = await fetch("/linked");
+      const names = await res.json();
+      listEl.replaceChildren(
+        ...(names.length ? names.map(n => li(n)) : [li("none yet", "muted")])
+      );
+    }
+
+    async function startLink() {
+      statusEl.textContent = "Requesting link token…";
+      const res = await fetch("/create_link_token", { method: "POST" });
+      const { link_token } = await res.json();
+
+      const handler = Plaid.create({
+        token: link_token,
+        onSuccess: async (public_token) => {
+          statusEl.textContent = "Exchanging token…";
+          const r = await fetch("/exchange", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ public_token }),
+          });
+          const data = await r.json();
+          const ok = document.createElement("span");
+          ok.className = "ok";
+          ok.textContent = `Linked: ${data.institution}`;
+          statusEl.replaceChildren(ok);
+          refreshLinked();
+        },
+        onExit: (err) => {
+          if (!err) {
+            statusEl.textContent = "Link closed.";
+            return;
+          }
+          const span = document.createElement("span");
+          span.className = "err";
+          span.textContent = `Exited: ${err.error_message || err.error_code}`;
+          statusEl.replaceChildren(span);
+        },
+      });
+      handler.open();
+    }
+
+    document.getElementById("link-button").addEventListener("click", startLink);
+    refreshLinked();
+  </script>
+</body>
+</html>
