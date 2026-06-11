@@ -1,0 +1,6 @@
+# Where ALL personal financial data lives: transaction stores, categorized data,
+# manual edits, corrections, accounts.yaml, budget.yaml. Keep it OUTSIDE this repo
+# (ideally its own PRIVATE git repo) so this project can be shared without exposing
+# any data. First non-comment line wins; '~' is expanded.
+# Override per-shell with the SPEND_VISUALIZER_DATA environment variable.
+~/finance_data

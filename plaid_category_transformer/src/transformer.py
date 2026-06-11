@@ -45,6 +45,7 @@ from .incremental import HASH_PENDING_LLM, SOURCE_HASH_FIELD, classify, source_h
 from .llm import CategoryLLM
 from .manual import DEFAULT_EDITS, ManualIndex, apply_manual_edits, load_intents, \
     resolve_intents
+from .paths import DATA_DIR as _DATA_DIR, DATA_ROOT as _DATA_ROOT
 from .rules import DEFAULT_MEMORY, MerchantMemory, RuleHit, apply_rules
 from .schema import (
     COLUMNS,
@@ -62,10 +63,12 @@ from .schema import (
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _SECRETS_DIR = os.path.join(_PROJECT_ROOT, ".secrets")
 
-DEFAULT_INPUT = os.path.join(_PROJECT_ROOT, "..", "transactions", "data", "transactions.jsonl")
-DEFAULT_OUT_JSONL = os.path.join(_PROJECT_ROOT, "data", "transactions_categorized.jsonl")
-DEFAULT_OUT_CSV = os.path.join(_PROJECT_ROOT, "data", "transactions_categorized.csv")
-DEFAULT_FLAGS_CSV = os.path.join(_PROJECT_ROOT, "data", "flagged_for_review.csv")
+# Data lives OUTSIDE the repo (paths.DATA_ROOT mirrors the monorepo layout);
+# only secrets/state stay in .secrets/.
+DEFAULT_INPUT = str(_DATA_ROOT / "transactions" / "data" / "transactions.jsonl")
+DEFAULT_OUT_JSONL = str(_DATA_DIR / "transactions_categorized.jsonl")
+DEFAULT_OUT_CSV = str(_DATA_DIR / "transactions_categorized.csv")
+DEFAULT_FLAGS_CSV = str(_DATA_DIR / "flagged_for_review.csv")
 DEFAULT_LOG = os.path.join(_SECRETS_DIR, "category_log.jsonl")
 
 DRIVE_FOLDER = "transactions_archive"
@@ -541,14 +544,14 @@ def main():
     )
     ap.add_argument("--input", default=DEFAULT_INPUT, metavar="PATH",
                     help="input store: JSONL (persister) or .xz raw store "
-                         "(default: ../transactions/data/transactions.jsonl)")
+                         "(default: <data root>/transactions/data/transactions.jsonl)")
     ap.add_argument("--out-jsonl", default=DEFAULT_OUT_JSONL, metavar="PATH",
-                    help="output categorized JSONL (default: data/transactions_categorized.jsonl)")
+                    help="output categorized JSONL (default: under the data root)")
     ap.add_argument("--out-csv", default=DEFAULT_OUT_CSV, metavar="PATH",
-                    help="output categorized CSV (default: data/transactions_categorized.csv)")
+                    help="output categorized CSV (default: under the data root)")
     ap.add_argument("--flags-csv", default=DEFAULT_FLAGS_CSV, metavar="PATH",
                     help="dedicated worklist of rows pending review "
-                         "(default: data/flagged_for_review.csv)")
+                         "(default: under the data root)")
     ap.add_argument("--full", action="store_true",
                     help="re-audit EVERY input row, ignoring the incremental delta "
                          "(use after changing rules/config); still prunes removed rows")
@@ -577,7 +580,7 @@ def main():
                          "in --edits, applied immediately and replayed every run")
     ap.add_argument("--edits", default=DEFAULT_EDITS, metavar="PATH",
                     help="manual-edit intents JSONL, replayed as the final stage every "
-                         "run (default: data/manual_edits.jsonl)")
+                         "run (default: <data root>/…/manual_edits.jsonl)")
     ap.add_argument("--log", default=DEFAULT_LOG, metavar="PATH",
                     help="JSONL change log (default: .secrets/category_log.jsonl)")
     ap.add_argument("--debug", action="store_true",

@@ -16,26 +16,17 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import yaml  # noqa: E402
-
+from config_io import PERSONAL_CONFIG_DIR, load_app_config  # noqa: E402
 from ingest import ingest  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
-ACCOUNTS = ROOT / "config" / "accounts.yaml"
+# accounts.yaml is personal data: it lives under the external data root.
+ACCOUNTS = PERSONAL_CONFIG_DIR / "accounts.yaml"
 
 
 def _archive_paths(app_path: Path) -> list[str]:
-    data = yaml.safe_load(app_path.read_text(encoding="utf-8")) or {}
-    paths = data.get("archive_paths") or [data.get("archive_path")]
-    out = []
-    for p in paths:
-        if not p:
-            continue
-        pp = Path(p)
-        if not pp.is_absolute():
-            pp = (app_path.parent.parent / p).resolve()
-        out.append(str(pp))
-    return out
+    # Reuse config_io's resolution (relative paths resolve from the data root).
+    return load_app_config(app_path).resolved_archive_paths
 
 
 def main() -> int:
