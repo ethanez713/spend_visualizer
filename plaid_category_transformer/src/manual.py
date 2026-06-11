@@ -37,12 +37,14 @@ import uuid
 from datetime import datetime
 
 from .incremental import HASH_PENDING_REVOKED, SOURCE_HASH_FIELD
+from .paths import DATA_DIR
 from .pfc_taxonomy import is_valid
 from .rules import normalize_merchant
 from .schema import clear_review_flag, set_provenance
 
-_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DEFAULT_EDITS = os.path.join(_PROJECT_ROOT, "data", "manual_edits.jsonl")
+# The intent log is SOURCE data the store is rebuilt from — it lives with the data,
+# outside the repo.
+DEFAULT_EDITS = str(DATA_DIR / "manual_edits.jsonl")
 
 # The match keys each scope understands. An intent whose match block carries any OTHER
 # key was written by a future version with richer predicates — skip it (with a warning)

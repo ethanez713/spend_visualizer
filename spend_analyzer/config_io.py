@@ -8,9 +8,39 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parent
+MONOREPO_ROOT = ROOT.parent
+
+
+def data_root() -> Path:
+    """Where ALL personal financial data lives — never inside this repo.
+
+    Priority: $SPEND_VISUALIZER_DATA, else the first non-comment line of the
+    monorepo-root ``data_root`` file, else ``~/finance_data``. The directory
+    mirrors the monorepo layout.
+    """
+    env = os.environ.get("SPEND_VISUALIZER_DATA")
+    if env:
+        return Path(env).expanduser()
+    cfg = MONOREPO_ROOT / "data_root"
+    if cfg.is_file():
+        for line in cfg.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line and not line.startswith("#"):
+                return Path(line).expanduser()
+    return Path("~/finance_data").expanduser()
+
+
+DATA_ROOT = data_root()
+
 # Test hook: the e2e suite runs the app in a subprocess pointed at a throwaway
-# config dir, so browser-driven tests can never read/write the live config.
-CONFIG_DIR = Path(os.environ.get("SPEND_ANALYZER_CONFIG_DIR", ROOT / "config"))
+# config dir, so browser-driven tests can never read/write the live config. When
+# set, it covers BOTH config families below.
+_ENV_CONFIG_DIR = os.environ.get("SPEND_ANALYZER_CONFIG_DIR")
+# Project config (shareable, committed): app.yaml + taxonomy.yaml.
+CONFIG_DIR = Path(_ENV_CONFIG_DIR) if _ENV_CONFIG_DIR else ROOT / "config"
+# Personal config (data, never committed here): accounts.yaml + budget.yaml.
+PERSONAL_CONFIG_DIR = (Path(_ENV_CONFIG_DIR) if _ENV_CONFIG_DIR
+                       else DATA_ROOT / "spend_analyzer" / "config")
 
 
 @dataclass
@@ -22,11 +52,13 @@ class AppConfig:
 
     @property
     def resolved_archive_paths(self) -> list[str]:
+        # Relative paths resolve from the DATA ROOT (all data lives there),
+        # so app.yaml stays valid no matter where the data root points.
         out = []
         for p in self.archive_paths:
-            pp = Path(p)
+            pp = Path(p).expanduser()
             if not pp.is_absolute():
-                pp = (ROOT / p).resolve()
+                pp = (DATA_ROOT / p).resolve()
             out.append(str(pp))
         return out
 
@@ -52,7 +84,7 @@ def load_app_config(path: str | Path = CONFIG_DIR / "app.yaml") -> AppConfig:
     )
 
 
-def load_accounts(path: str | Path = CONFIG_DIR / "accounts.yaml") -> dict[str, dict]:
+def load_accounts(path: str | Path = PERSONAL_CONFIG_DIR / "accounts.yaml") -> dict[str, dict]:
     """Return {account_id: {person, name, type, subtype, institution, include}}."""
     p = Path(path)
     if not p.exists():
@@ -70,7 +102,7 @@ class Budget:
         return self.goals.get(tier1)
 
 
-def load_budget(path: str | Path = CONFIG_DIR / "budget.yaml") -> Budget:
+def load_budget(path: str | Path = PERSONAL_CONFIG_DIR / "budget.yaml") -> Budget:
     """Return monthly tier-1 goals (PLAN.md §14). Empty if the file is absent."""
     p = Path(path)
     if not p.exists():

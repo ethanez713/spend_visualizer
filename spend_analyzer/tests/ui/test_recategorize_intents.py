@@ -5,6 +5,8 @@ exact payload written (and on what must NOT be written).
 """
 import json
 
+import pytest
+
 import manual_edits
 
 from tests.ui._harness import widget
@@ -43,7 +45,10 @@ def test_given_unchanged_category_when_save_clicked_then_warning_and_no_write(at
 
 
 def test_given_pending_intent_when_revoked_then_it_no_longer_applies(boot_app, isolate_writes):
-    raw = next(iter(manual_edits.raw_index().values()))
+    try:
+        raw = next(iter(manual_edits.raw_index().values()))  # needs the live archive
+    except FileNotFoundError:
+        pytest.skip("real transaction archive not present")
     primaries, detailed_map = manual_edits.taxonomy()
     seeded = manual_edits.add_edit(raw, scope="transaction", primary=primaries[0],
                                    detailed=detailed_map[primaries[0]][0], note="seed")

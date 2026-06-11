@@ -26,10 +26,14 @@ from pathlib import Path
 
 import pandas as pd
 
+from config_io import DATA_ROOT
+
 ROOT = Path(__file__).resolve().parent
 # Test hook: e2e runs point this at a throwaway dir so a browser-driven app
-# process can never append to the live corrections queue.
-DATA_DIR = Path(os.environ.get("SPEND_ANALYZER_DATA_DIR", ROOT / "data"))
+# process can never append to the live corrections queue. Default: the queue is
+# personal data, so it lives under the external data root (never in this repo).
+DATA_DIR = Path(os.environ.get("SPEND_ANALYZER_DATA_DIR",
+                               DATA_ROOT / "spend_analyzer" / "data"))
 STORE = DATA_DIR / "corrections.jsonl"
 
 LAYERS = {
@@ -49,7 +53,7 @@ FIELD_LAYER = {
 
 
 def _ensure_store() -> None:
-    DATA_DIR.mkdir(mode=0o700, exist_ok=True)
+    DATA_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
     try:
         os.chmod(DATA_DIR, 0o700)
     except OSError:

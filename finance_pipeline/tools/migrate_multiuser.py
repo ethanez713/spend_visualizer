@@ -40,6 +40,22 @@ _OWNER_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 _DEFAULT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
+def _data_root(monorepo_root: Path) -> Path:
+    """The external data root (same resolution as every component):
+    $SPEND_VISUALIZER_DATA, else the monorepo-root ``data_root`` file,
+    else ~/finance_data."""
+    env = os.environ.get("SPEND_VISUALIZER_DATA")
+    if env:
+        return Path(env).expanduser()
+    cfg = monorepo_root / "data_root"
+    if cfg.is_file():
+        for line in cfg.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line and not line.startswith("#"):
+                return Path(line).expanduser()
+    return Path("~/finance_data").expanduser()
+
+
 class Abort(SystemExit):
     def __init__(self, msg: str):
         super().__init__(f"✖ ABORT — {msg}\nNothing was modified.")
@@ -148,7 +164,12 @@ def main(argv=None) -> int:
     p.add_argument("--owner", default="Alice", metavar="NAME",
                    help="who all existing data belongs to (default: Alice)")
     p.add_argument("--root", default=str(_DEFAULT_ROOT), metavar="DIR",
-                   help="monorepo root (default: auto-detected from this script)")
+                   help="monorepo root, holds .secrets/tokens.json "
+                        "(default: auto-detected from this script)")
+    p.add_argument("--data-root", default=None, metavar="DIR",
+                   help="external data root holding the stores "
+                        "(default: resolved like every component — "
+                        "$SPEND_VISUALIZER_DATA / the data_root file / ~/finance_data)")
     p.add_argument("--dry-run", action="store_true",
                    help="report what would change; write nothing")
     p.add_argument("--yes", action="store_true",
@@ -158,12 +179,14 @@ def main(argv=None) -> int:
     if not _OWNER_RE.match(args.owner or ""):
         raise SystemExit(f"Invalid owner {args.owner!r} — letters/digits/_/- only.")
     root = Path(args.root).resolve()
+    data = (Path(args.data_root).expanduser().resolve() if args.data_root
+            else _data_root(root))
 
     targets = [
         (root / "transactions" / ".secrets" / "tokens.json", scan_tokens),
-        (root / "transactions" / "data" / "transactions_raw.jsonl.xz", scan_xz),
-        (root / "transactions" / "data" / "transactions.jsonl", scan_jsonl),
-        (root / "plaid_category_transformer" / "data" / "transactions_categorized.jsonl",
+        (data / "transactions" / "data" / "transactions_raw.jsonl.xz", scan_xz),
+        (data / "transactions" / "data" / "transactions.jsonl", scan_jsonl),
+        (data / "plaid_category_transformer" / "data" / "transactions_categorized.jsonl",
          scan_jsonl),
     ]
 
@@ -199,7 +222,7 @@ def main(argv=None) -> int:
     print(f"""
 ✓ Migration complete — all existing data is owned by {args.owner!r}.
   Next steps (yours to run):
-  - plaid_category_transformer/data/ is git-tracked: review + commit the diff.
+  - The data root ({data}) is its own git repo: review + commit the diff there.
   - The next Drive-enabled ./run.py pushes the stamped stores as new revisions of
     the SAME Drive files (the reconcile/divergence gates ignore txn_owner, so no
     --force-push is needed; old revisions survive as history).

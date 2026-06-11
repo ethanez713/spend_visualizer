@@ -18,7 +18,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from config_io import load_app_config
+from config_io import DATA_ROOT, load_app_config
 from ingest.load import load_sources, stat_source
 
 _modules: tuple | None = None  # (src.manual, src.pfc_taxonomy) once imported
@@ -49,8 +49,9 @@ def status() -> str | None:
 
 
 def edits_path() -> str:
-    root = load_app_config().resolved_transformer_root
-    return str(Path(root) / "data" / "manual_edits.jsonl")
+    # The transformer's CODE comes from transformer_root, but its DATA (incl. the
+    # intent log) lives under the shared external data root.
+    return str(DATA_ROOT / "plaid_category_transformer" / "data" / "manual_edits.jsonl")
 
 
 def taxonomy() -> tuple[list[str], dict[str, list[str]]]:

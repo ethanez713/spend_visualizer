@@ -53,4 +53,9 @@ def boot_app():
 def cube_df():
     """Ground truth: the same enriched DataFrame the app builds (read-only)."""
     from data import build_cube
-    return build_cube().df
+    try:
+        return build_cube().df
+    except FileNotFoundError:
+        # Same posture as boot(): no live archive (fresh clone / data root not
+        # populated) means the real-archive suite is skipped, never errored.
+        pytest.skip("real transaction archive not present")

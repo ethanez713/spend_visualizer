@@ -28,12 +28,16 @@ def test_strict_nesting_still_holds():
         assert seen.setdefault(t1, t0) == t0, f"{t1} spans two necessities"
 
 
-def test_budget_loads_screenshot_goals():
-    b = load_budget()
-    assert b.goal("Mortgage") == 4403
-    assert b.goal("Groceries") == 743
-    # the sheet's displayed $12,425 total is rounded; the per-category goals sum to 12,424
-    assert sum(b.goals.values()) == 12424
+def test_budget_loads_goals_and_fails_soft(tmp_path):
+    # budget.yaml is personal data living under the external data root — the loader
+    # must parse a real-shaped file and return an empty Budget when none exists yet.
+    p = tmp_path / "budget.yaml"
+    p.write_text("period: monthly\ngoals:\n  Mortgage: 4403\n  Groceries: 743\n")
+    b = load_budget(p)
+    assert b.goal("Mortgage") == 4403.0
+    assert b.goal("Groceries") == 743.0
+    assert b.goal("Nonexistent") is None
+    assert load_budget(tmp_path / "missing.yaml").goals == {}
 
 
 def test_corrections_layer_suggestion():
@@ -63,3 +67,21 @@ def test_style_table_counts_not_money():
     assert "$100" in html        # money formatted
     assert ">5<" in html         # count rendered plain, no $
     assert "$5" not in html
+
+
+def test_data_root_resolution(tmp_path, monkeypatch):
+    """Env var beats the data_root file; the file's first non-comment line wins."""
+    import config_io
+
+    monkeypatch.setenv("SPEND_VISUALIZER_DATA", str(tmp_path / "from_env"))
+    assert config_io.data_root() == tmp_path / "from_env"
+
+    monkeypatch.delenv("SPEND_VISUALIZER_DATA")
+    root_file = tmp_path / "data_root"
+    root_file.write_text("# comment\n\n~/somewhere\n~/ignored-second-line\n")
+    monkeypatch.setattr(config_io, "MONOREPO_ROOT", tmp_path)
+    assert str(config_io.data_root()).endswith("/somewhere")
+    assert not str(config_io.data_root()).startswith("~")  # tilde expanded
+
+    root_file.unlink()
+    assert str(config_io.data_root()).endswith("/finance_data")  # default

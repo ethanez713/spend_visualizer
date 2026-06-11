@@ -7,12 +7,14 @@ import hashlib
 from pathlib import Path
 
 import corrections as corr
+import manual_edits
 from config_io import load_app_config
 
 _cfg = load_app_config()
 LIVE_FILES = [Path(p) for p in _cfg.resolved_archive_paths] + [
-    Path(_cfg.resolved_transformer_root) / "data" / "manual_edits.jsonl",
-    corr.STORE,  # captured at import time, before any redirection
+    # Both captured at import time, before any per-test redirection.
+    Path(manual_edits.edits_path()),
+    corr.STORE,
 ]
 
 

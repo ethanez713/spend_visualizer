@@ -2,18 +2,20 @@
 # Offline by default: this app only reads local files; it never calls Plaid or
 # the network. The archive is read-only and the collector runs independently.
 
-# One or more transaction archives. Relative paths resolve from the repo root.
+# One or more transaction archives. RELATIVE paths resolve from the DATA ROOT
+# (the monorepo-root `data_root` file, default ~/finance_data — it mirrors the
+# monorepo layout); absolute and ~ paths work too.
 # Default: the CATEGORY-CORRECTED store from plaid_category_transformer — the full raw
 # Plaid record per row (same shape the collector emits) with audited/corrected
 # personal_finance_category values applied in place. Produced by the finance_pipeline
 # orchestrator (or by running categorize.py directly). To analyze the uncorrected feed
-# instead, point back at ../transactions/data/transactions_raw.jsonl.xz.
+# instead, point at transactions/data/transactions_raw.jsonl.xz.
 archive_paths:
-  - ../plaid_category_transformer/data/transactions_categorized.jsonl
+  - plaid_category_transformer/data/transactions_categorized.jsonl
 
-# The plaid_category_transformer repo root (relative paths resolve from this repo root).
-# Used by 'Recategorize (PFC)': edits append INTENTS to its data/manual_edits.jsonl,
-# which its pipeline replays on the next categorize run (nothing is edited here).
+# The plaid_category_transformer repo root, for importing its CODE (intent
+# validation, taxonomy). Relative paths resolve from this repo root. Its DATA
+# (manual_edits.jsonl etc.) lives under the data root like everything else.
 transformer_root: ../plaid_category_transformer
 
 # Trailing running-average window (months) for the Budget/Spend table.

@@ -11,8 +11,31 @@ from plaid.api import plaid_api
 
 BASE_DIR = Path(__file__).resolve().parent   # src/ package dir (also holds link.html)
 PROJECT_ROOT = BASE_DIR.parent
+MONOREPO_ROOT = PROJECT_ROOT.parent
 SECRETS_DIR = PROJECT_ROOT / ".secrets"       # gitignored, 0700: secrets only
-DATA_DIR = PROJECT_ROOT / "data"              # gitignored, 0700: runtime state + raw archive
+
+
+def _data_root() -> Path:
+    """Where ALL personal financial data lives — never inside this repo.
+
+    Priority: $SPEND_VISUALIZER_DATA, else the first non-comment line of the
+    monorepo-root ``data_root`` file, else ``~/finance_data``. The directory
+    mirrors the monorepo layout (``transactions/data/…`` etc.).
+    """
+    env = os.environ.get("SPEND_VISUALIZER_DATA")
+    if env:
+        return Path(env).expanduser()
+    cfg = MONOREPO_ROOT / "data_root"
+    if cfg.is_file():
+        for line in cfg.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line and not line.startswith("#"):
+                return Path(line).expanduser()
+    return Path("~/finance_data").expanduser()
+
+
+DATA_ROOT = _data_root()
+DATA_DIR = DATA_ROOT / "transactions" / "data"   # 0700: runtime state + raw archive
 
 # Credentials live in .secrets/.env (quarantined, never committed).
 load_dotenv(SECRETS_DIR / ".env")
@@ -26,8 +49,8 @@ OVERFETCH_LOG_FILE = DATA_DIR / "overfetch_log.jsonl"
 # transaction_id, persisted as xz-compressed JSONL (one JSON object per line).
 # The CSV is a derived projection of this. Kept for audit / QC.
 RAW_FILE = DATA_DIR / "transactions_raw.jsonl.xz"
-# The CSV is the user-facing deliverable — kept at the project root.
-CSV_FILE = PROJECT_ROOT / "transactions.csv"
+# The CSV is the user-facing deliverable.
+CSV_FILE = DATA_ROOT / "transactions" / "transactions.csv"
 
 _ENV_HOSTS = {
     "production": plaid.Environment.Production,
