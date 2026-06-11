@@ -1,6 +1,8 @@
 """Unit tests for the INGEST pipeline ops (PLAN.md §4)."""
+from enrich import enrich
 from ingest.dedupe import dedupe_by_id, drop_settled_pending
 from ingest.normalize import normalize_one
+from taxonomy import load_taxonomy
 
 
 def _raw(tid, **kw):
@@ -48,3 +50,27 @@ def test_normalize_direction_and_sign():
     assert inc.direction == "in"
     assert inc.pfc_detailed == "FOOD_AND_DRINK_GROCERIES"
     assert inc.raw is not None  # raw retained losslessly
+
+
+def test_normalize_carries_owner_stamp():
+    assert normalize_one(_raw("x", txn_owner="Alice")).owner == "Alice"
+    assert normalize_one(_raw("y")).owner is None  # pre-migration records
+
+
+def test_enrich_person_prefers_record_owner_over_accounts_yaml():
+    # The collector-written txn_owner stamp is authoritative; accounts.yaml `person`
+    # only fills in for un-stamped history; "Unknown" is the last resort.
+    taxonomy = load_taxonomy()
+    txns = [
+        normalize_one(_raw("stamped", txn_owner="Alice")),
+        normalize_one(_raw("unstamped")),
+        normalize_one(_raw("nowhere", account_id="acct_unmapped")),
+    ]
+    accounts = {"acct": {"person": "FromYaml"}}
+
+    df = enrich(txns, taxonomy, accounts)
+
+    person = df.set_index("transaction_id")["person"]
+    assert person["stamped"] == "Alice"      # record stamp wins
+    assert person["unstamped"] == "FromYaml"  # accounts.yaml fallback
+    assert person["nowhere"] == "Unknown"     # last resort

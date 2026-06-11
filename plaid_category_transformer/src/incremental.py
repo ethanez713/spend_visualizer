@@ -43,7 +43,10 @@ HASH_PENDING_REVOKED = "pending:manual-edit-revoked"
 
 # Fields that are OURS, not Plaid's — excluded from the content hash so our own edits (a
 # correction, a review flag, the hash itself) never masquerade as an upstream change.
-_NON_SOURCE_FIELDS = frozenset(NEW_COLUMNS) | {SOURCE_HASH_FIELD}
+# txn_owner is the collector's ownership stamp (who linked the Item): pure metadata that
+# never affects categorization, and excluding it means stamping existing history (the
+# multi-user migration) cannot trigger a mass LLM re-audit.
+_NON_SOURCE_FIELDS = frozenset(NEW_COLUMNS) | {SOURCE_HASH_FIELD, "txn_owner"}
 
 
 def source_hash(record: dict) -> str:

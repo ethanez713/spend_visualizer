@@ -61,12 +61,18 @@ holds runtime state; both are git-ignored and locked to `0700`.)
 ## Step 1 — Link your banks
 
 ```bash
-./venv/bin/python app.py
+./venv/bin/python app.py --user <name>
 ```
 
 Open <http://127.0.0.1:5000/> in a browser. Click **Connect a bank**, log in,
 and approve. On success the page shows "Linked: <bank>" and adds it to
 `.secrets/tokens.json`. Repeat once per bank.
+
+Every Item linked in the session belongs to `--user` (stored as `owner` on the
+token entry); restart the server with the other name to link a second person's
+banks. Every fetched transaction is stamped with that name as `txn_owner`, so
+ownership lives in the data itself. Each new Item's initial sync pulls the full
+24 months of history (`days_requested=730`, fixed at link time).
 
 > ⚠️ **10 Items max**, and removing an Item does **not** free the slot. Only link
 > banks you actually want. Confirm before each.
@@ -80,17 +86,18 @@ Stop the server with `Ctrl+C` when done linking.
 ```
 
 Prints a per-bank summary of added / modified / removed and writes
-`transactions.csv`.
+`transactions.csv`. Syncs every user's linked banks by default; pass
+`--user <name>` to sync only one person's.
 
-### CSV columns (54)
+### CSV columns (55)
 
 The file is intentionally wide — it captures essentially every populated field
 Plaid returns per transaction, plus per-account metadata, so a downstream
 analytics app has the maximum raw data to work with.
 
-- **Account identity** (from `/accounts/get`): `institution, account_id,
-  account_name, account_mask, account_official_name, account_type,
-  account_subtype`
+- **Account identity** (from `/accounts/get`, plus the fetch-time owner stamp):
+  `institution, txn_owner, account_id, account_name, account_mask,
+  account_official_name, account_type, account_subtype`
 - **Transaction core:** `transaction_id, pending, pending_transaction_id, date,
   authorized_date, datetime, authorized_datetime, name, original_description,
   merchant_name, merchant_entity_id, website, logo_url, amount,
@@ -223,7 +230,7 @@ Verify it works first by running the wrapper by hand:
 To prove the whole pipeline with fake data before linking real banks:
 
 1. In `.secrets/.env` set `PLAID_ENV=sandbox` and `PLAID_SECRET=<your Sandbox secret>`.
-2. Run `app.py`, link any bank, and use Plaid's test creds `user_good` / `pass_good`.
+2. Run `app.py --user <name>`, link any bank, and use Plaid's test creds `user_good` / `pass_good`.
 3. Run `fetch_transactions.py` and inspect `transactions.csv`.
 4. Switch `.secrets/.env` back to `production` + Production secret, then delete the sandbox
    state files (`.secrets/tokens.json`, `data/sync_cursors.json`,

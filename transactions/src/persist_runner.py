@@ -66,8 +66,10 @@ def run_persist(*, do_drive: bool = True, allow_refetch: bool = True,
                                 secrets_dir=str(SECRETS_DIR))
     remote = persister.load_jsonl_bytes(drive.pull()) if do_drive else {}
 
-    # 3. Classify local vs remote.
-    report = persister.reconcile(local, remote)
+    # 3. Classify local vs remote. txn_owner is OUR stamp, not Plaid content — a remote
+    #    written before the field existed must not read as a store-wide conflict
+    #    (in_sync-modulo-metadata keeps the local, stamped copy).
+    report = persister.reconcile(local, remote, metadata_fields=("txn_owner",))
     print(
         f"  persist: reconcile — {len(report.in_sync)} in sync, "
         f"{len(report.local_only)} local-only, {len(report.remote_only)} remote-only, "

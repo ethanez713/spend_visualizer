@@ -137,7 +137,7 @@ The full raw Plaid record (every original field) **plus 12 columns**, present on
 | `category_review_primary/detailed` | the suggested category (not yet applied) |
 | `category_review_reason/confidence/source` | why it was raised, the suggester's confidence, and `"llm"`/`"mechanical"` |
 
-The derived CSV = the 54 base columns (mirroring `transactions`) + these 12. The JSONL also
+The derived CSV = the 55 base columns (mirroring `transactions`, incl. `txn_owner`) + these 12. The JSONL also
 carries a `source_content_hash` bookkeeping field (used for incremental change detection; not
 in the CSV).
 

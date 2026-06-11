@@ -62,7 +62,12 @@ directly when you want to work the queue:
 
 ## First-run notes
 
-- Banks must already be linked (`transactions/`: `./venv/bin/python app.py`).
+- Banks must already be linked (`transactions/`: `./venv/bin/python app.py --user <name>`;
+  each linked Item belongs to that user, and every fetched record is stamped with it
+  as `txn_owner`).
+- Data fetched before multi-user support has no owner stamps — back-fill once with
+  `python3 tools/migrate_multiuser.py --dry-run` (then `--yes`). The fetch refuses
+  to run on un-stamped tokens until then.
 - Google Drive credentials must exist in `transactions/.secrets/` (see persister's
   README for the one-time OAuth setup; persister itself is a pure library and holds
   no state). Preflight seeds `plaid_category_transformer/.secrets/` from there

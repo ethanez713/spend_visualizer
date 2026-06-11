@@ -3,10 +3,12 @@
 Uses a fake Plaid client that returns canned sync pages, so the loop logic
 (deltas, de-dup, pagination, first-run retry) is exercised without any network.
 """
-from src.plaid_client import load_cursors
-from src.fetch_transactions import sync_item
+import pytest
 
-ENTRY = {"item_id": "it1", "access_token": "tok"}
+from src.plaid_client import load_cursors
+from src.fetch_transactions import filter_tokens, sync_item
+
+ENTRY = {"item_id": "it1", "access_token": "tok", "owner": "u1"}
 
 
 class FakeTxn(dict):
@@ -49,6 +51,8 @@ def given_added_modified_removed_when_sync_then_store_and_counts_update(state):
     assert counts == {"added": 2, "modified": 1, "removed": 1}
     assert set(raw_store) == {"a1", "a2", "m1"}
     assert load_cursors()["it1"] == "cur1"  # cursor checkpointed
+    # Every stored record (added AND modified) carries the linking user's stamp.
+    assert all(raw_store[t]["txn_owner"] == "u1" for t in ("a1", "a2", "m1"))
 
 
 def given_removed_id_absent_when_sync_then_not_counted(state):
@@ -86,6 +90,20 @@ def given_first_run_history_not_ready_when_sync_then_retry_signal(state):
     assert counts.get("_retry") is True
     assert raw_store == {}
     assert load_cursors() == {}  # nothing checkpointed on a retry
+
+
+def given_user_filter_when_filter_tokens_then_only_their_items(state):
+    tokens = [{"item_id": "i1", "owner": "u1"}, {"item_id": "i2", "owner": "u2"},
+              {"item_id": "i3", "owner": "u1"}]
+    assert [t["item_id"] for t in filter_tokens(tokens, "u1")] == ["i1", "i3"]
+    assert filter_tokens(tokens, None) is tokens  # no filter → everyone
+
+
+def given_unknown_user_when_filter_tokens_then_systemexit_lists_known(state):
+    tokens = [{"item_id": "i1", "owner": "u1"}]
+    with pytest.raises(SystemExit) as exc:
+        filter_tokens(tokens, "nobody")
+    assert "u1" in str(exc.value)  # error names the known users
 
 
 def given_paginated_response_when_sync_then_all_pages_applied(state):

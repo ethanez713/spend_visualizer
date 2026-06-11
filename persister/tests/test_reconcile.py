@@ -44,3 +44,34 @@ def given_equal_records_key_order_differs_when_reconcile_then_in_sync():
     rep = reconcile(local, remote)
     assert rep.in_sync == ["x"]
     assert rep.conflicts == []
+
+
+def given_metadata_only_difference_when_reconcile_then_in_sync_local_kept(make_record):
+    # A locally-stamped bookkeeping field (e.g. txn_owner) must not read as a
+    # conflict against a remote written before the field existed — and the merged
+    # store must keep the LOCAL copy, the side carrying the stamp.
+    local = {"x": make_record(transaction_id="x", txn_owner="Alice")}
+    remote = {"x": make_record(transaction_id="x")}
+    rep = reconcile(local, remote, metadata_fields=("txn_owner",))
+
+    assert rep.in_sync == ["x"]
+    assert rep.conflicts == []
+    assert rep.merged["x"]["txn_owner"] == "Alice"
+
+
+def given_real_difference_when_reconcile_with_metadata_fields_then_still_conflict(make_record):
+    # metadata_fields only masks the named fields — genuine content drift still conflicts.
+    local = {"x": make_record(transaction_id="x", amount=10.0, txn_owner="Alice")}
+    remote = {"x": make_record(transaction_id="x", amount=99.0)}
+    rep = reconcile(local, remote, metadata_fields=("txn_owner",))
+
+    assert rep.conflicts == ["x"]
+    assert rep.merged["x"]["amount"] == 99.0  # remote retained pending golden re-fetch
+
+
+def given_metadata_only_difference_when_reconcile_without_param_then_conflict(make_record):
+    # Default () keeps the exact pre-existing behavior: any field difference conflicts.
+    local = {"x": make_record(transaction_id="x", txn_owner="Alice")}
+    remote = {"x": make_record(transaction_id="x")}
+    rep = reconcile(local, remote)
+    assert rep.conflicts == ["x"]

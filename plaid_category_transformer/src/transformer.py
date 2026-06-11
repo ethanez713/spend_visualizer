@@ -301,7 +301,9 @@ def check_drive_divergence(prior: dict[str, dict], *, force_push: bool = False,
                   secrets_dir=secrets_dir).pull())
     if not remote:
         return
-    report = persister.reconcile(prior, remote)
+    # txn_owner is collector metadata, not audit content: a remote written before the
+    # field existed must not read as divergence (the migration stamps local stores).
+    report = persister.reconcile(prior, remote, metadata_fields=("txn_owner",))
     if not report.conflicts and not report.remote_only:
         return
     sample = ", ".join((report.conflicts + report.remote_only)[:10])

@@ -16,6 +16,7 @@ class CanonicalTransaction:
     transaction_id: str
     account_id: str
     institution: Optional[str] = None
+    owner: Optional[str] = None              # who the linked Item belongs to (txn_owner)
 
     # dates
     posted_date: Optional[str] = None        # ISO yyyy-mm-dd

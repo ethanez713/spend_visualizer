@@ -30,6 +30,7 @@ def normalize_one(raw: dict) -> CanonicalTransaction:
         transaction_id=raw["transaction_id"],
         account_id=raw.get("account_id"),
         institution=raw.get("institution"),
+        owner=raw.get("txn_owner"),
         posted_date=raw.get("date"),
         authorized_date=raw.get("authorized_date"),
         amount=amount,

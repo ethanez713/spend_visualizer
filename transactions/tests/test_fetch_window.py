@@ -40,8 +40,9 @@ class FakeClient:
         return {"transactions": page, "total_transactions": len(data)}
 
 
-def _token(access_token, institution="Chase", item_id="it1"):
-    return {"access_token": access_token, "item_id": item_id, "institution": institution}
+def _token(access_token, institution="Chase", item_id="it1", owner="u1"):
+    return {"access_token": access_token, "item_id": item_id,
+            "institution": institution, "owner": owner}
 
 
 def _txns(*ids):
@@ -58,8 +59,11 @@ def given_paginated_window_when_fetch_then_all_pages_collected_and_to_dict_shape
     assert client.calls == 2
     # Records are plain dicts (to_dict()ed), not FakeTxn / Plaid objects…
     assert all(type(r) is dict for r in out)
-    # …and carry NO joined account metadata (raw-store shape → reconcile parity).
+    # …and carry NO joined account metadata (raw-store shape → reconcile parity)…
     assert all("institution" not in r and "account_name" not in r for r in out)
+    # …but DO carry the owner stamp, exactly like the sync path (a golden
+    # overwrite must never strip txn_owner).
+    assert all(r["txn_owner"] == "u1" for r in out)
 
 
 def given_accepts_date_objects_when_fetch_then_works():

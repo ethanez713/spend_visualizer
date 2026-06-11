@@ -176,8 +176,9 @@ def enrich(
                 "week": tm["week"],
                 "dow": tm["dow"],
                 "time_path": tm["path"],
-                # facets
-                "person": acct.get("person", "Unknown"),
+                # facets — the record's own owner stamp (collector-written) wins;
+                # accounts.yaml `person` is the fallback for un-stamped history.
+                "person": t.owner or acct.get("person", "Unknown"),
                 "channel": t.payment_channel or "unknown",
                 "account_type": acct.get("type", "unknown"),
                 "account_name": acct.get("name", (t.account_id or "?")[:8]),

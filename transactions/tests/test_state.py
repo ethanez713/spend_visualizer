@@ -19,7 +19,7 @@ from src.plaid_client import (
 # --- _save_json: atomic write + owner-only perms (security regression) -------
 
 def given_secret_written_when_save_json_then_mode_is_0600(state):
-    add_token("access-secret", "item_1", "Chase")
+    add_token("access-secret", "item_1", "Chase", "u1")
     mode = state.tokens.stat().st_mode & 0o777
     assert oct(mode) == "0o600"
 
@@ -37,20 +37,51 @@ def given_data_when_saved_then_round_trips(state):
 
 # --- add_token: append-or-update-by-item_id ----------------------------------
 
-def given_new_items_when_add_token_then_appended(state):
-    add_token("tokA", "item_A", "Chase")
-    add_token("tokB", "item_B", "Wells Fargo")
+def given_new_items_when_add_token_then_appended_with_owner(state):
+    add_token("tokA", "item_A", "Chase", "u1")
+    add_token("tokB", "item_B", "Wells Fargo", "u2")
     tokens = load_tokens()
     assert [t["item_id"] for t in tokens] == ["item_A", "item_B"]
+    assert [t["owner"] for t in tokens] == ["u1", "u2"]
 
 
 def given_existing_item_when_add_token_then_updated_in_place(state):
-    add_token("old-token", "item_A", "Chase")
-    add_token("new-token", "item_A", "Chase (re-linked)")
+    add_token("old-token", "item_A", "Chase", "u1")
+    add_token("new-token", "item_A", "Chase (re-linked)", "u2")
     tokens = load_tokens()
     assert len(tokens) == 1
     assert tokens[0]["access_token"] == "new-token"
     assert tokens[0]["institution"] == "Chase (re-linked)"
+    assert tokens[0]["owner"] == "u2"  # latest link wins
+
+
+@pytest.mark.parametrize("bad", ["", "a b", "a/b", "../up", "name!", None])
+def given_invalid_owner_when_add_token_then_systemexit(state, bad):
+    # Owner names land in CLI args, the UI, and data records — reject anything
+    # that isn't a plain identifier before it is persisted anywhere.
+    with pytest.raises(SystemExit):
+        add_token("tok", "item_A", "Chase", bad)
+    assert load_tokens() == []  # nothing persisted
+
+
+# --- load_tokens: the un-migrated-data gate -----------------------------------
+
+def given_ownerless_entry_when_load_tokens_then_systemexit_names_migration(state):
+    # A pre-multi-user tokens file must fail loudly: a fetch over it would write
+    # un-attributed records. The error points at the migration script.
+    state.tokens.write_text(
+        '[{"access_token": "tok", "item_id": "item_A", "institution": "Chase"}]')
+    with pytest.raises(SystemExit) as exc:
+        load_tokens()
+    assert "migrate_multiuser" in str(exc.value)
+
+
+def given_ownerless_entry_when_load_tokens_tolerant_then_returned(state):
+    # The link flow (and the migration itself) must still read a pre-migration file.
+    state.tokens.write_text(
+        '[{"access_token": "tok", "item_id": "item_A", "institution": "Chase"}]')
+    tokens = load_tokens(require_owner=False)
+    assert len(tokens) == 1 and "owner" not in tokens[0]
 
 
 # --- raw store: xz JSONL round-trip ------------------------------------------
