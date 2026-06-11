@@ -278,7 +278,7 @@ def _build_hierarchy_fig(vis, levels, root, treemap: bool):
             v = r[c]
             if v is None or (isinstance(v, float) and pd.isna(v)) or v == "":
                 break
-            rel.append(_disp(c, v))
+            rel.append(v)  # RAW value: drill state must match the raw column (see _drill_filter)
         for i in range(len(rel)):
             key = tuple(rel[: i + 1])
             totals[key] = totals.get(key, 0.0) + float(r["spend"])
@@ -288,9 +288,11 @@ def _build_hierarchy_fig(vis, levels, root, treemap: bool):
     ids, labels, parents, values, colors, abs_nodes = [], [], [], [], [], []
     cmap: dict[str, str] = {}
     for key, val in totals.items():
-        ids.append("/".join(key))
-        labels.append(key[-1])
-        parents.append("/".join(parent[key]) if parent[key] else "")
+        ids.append("/".join(map(str, key)))
+        # ids/parents/abs_nodes carry RAW values (so a click resolves to a filterable
+        # path); only the visible label is humanized, at its own level.
+        labels.append(_disp(levels[len(key) - 1], key[-1]))
+        parents.append("/".join(map(str, parent[key])) if parent[key] else "")
         values.append(val)
         colors.append(cmap.setdefault(root_of[key], _PALETTE[len(cmap) % len(_PALETTE)]))
         abs_nodes.append(list(root) + list(key))
