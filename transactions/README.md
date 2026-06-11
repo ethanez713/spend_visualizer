@@ -10,11 +10,10 @@ production data, up to **10 connected banks (Items)**.
 ## Layout
 
 ```
-.
+.                               (this repo — code + secrets only, NO data)
 ├── app.py                      # entry-point shim → src/app.py
 ├── fetch_transactions.py       # entry-point shim → src/fetch_transactions.py
-├── run_fetch.sh                # wrapper for scheduled runs (logs to data/logs/fetch.log)
-├── transactions.csv            # ← the deliverable (git-ignored, regenerated each run)
+├── run_fetch.sh                # wrapper for scheduled runs (logs under the data root)
 ├── requirements.txt            # pinned runtime deps  (requirements-dev.txt = test deps)
 ├── src/
 │   ├── app.py                  # Flask backend for the Plaid Link flow
@@ -23,10 +22,13 @@ production data, up to **10 connected banks (Items)**.
 │   └── link.html               # browser page to log into a bank
 ├── tests/                      # pytest suite (offline, deterministic)
 ├── requirements-persist.txt    # durable-persist extras: persister (editable) + Drive libs
-├── .secrets/                   # git-ignored, 0700: secrets only
-│   ├── .env                    # your Plaid credentials (0600)
-│   └── tokens.json             # access_token + item_id + institution per bank (0600)
-└── data/                       # git-ignored, 0700: runtime state + raw archive
+└── .secrets/                   # git-ignored, 0700: secrets only (stays with the code)
+    ├── .env                    # your Plaid credentials (0600)
+    └── tokens.json             # access_token + item_id + institution + owner per bank
+
+<data root>/transactions/       (external — see <monorepo>/data_root, default ~/finance_data)
+├── transactions.csv            # ← the deliverable (regenerated each run)
+└── data/                       # 0700: runtime state + raw archive
     ├── sync_cursors.json       # next_cursor per item
     ├── transactions_raw.jsonl.xz  # lossless raw Plaid objects; source of truth + audit/QC
     ├── transactions.jsonl      # durable system-of-record store (Drive-synced revisions)
@@ -55,8 +57,9 @@ python3 -m venv venv
 ```
 
 `.secrets/.env` is already created with your Production credentials and `PLAID_ENV=production`.
-(See `.env.example` for the format. The `.secrets/` directory holds all secrets and `data/`
-holds runtime state; both are git-ignored and locked to `0700`.)
+(See `.env.example` for the format. The `.secrets/` directory holds all secrets,
+git-ignored and locked to `0700`. All DATA lives outside this repo under the data
+root — the monorepo-root `data_root` file, default `~/finance_data`.)
 
 ## Step 1 — Link your banks
 
@@ -137,7 +140,7 @@ is always de-duplicated by `transaction_id`.
 ### Durable persist (the default `--persist` step)
 
 After each sync the fetch also maintains the **durable system-of-record store** in
-this repo's `data/transactions.jsonl` (gitignored; its audit history is Drive's
+the data root's `transactions/data/transactions.jsonl` (its audit history is Drive's
 append-only revision trail) and pushes new Google Drive revisions of it + a derived
 CSV. `persister` is a pure library — this repo owns its own data, Drive credentials,
 and Drive file-id state:
@@ -185,7 +188,7 @@ Flags: `--overfetch` (force it now), `--no-overfetch` (skip even if due).
 
 ### Raw archive (audit / QC)
 
-`data/transactions_raw.jsonl.xz` is the **source of truth**: the complete, untouched
+`<data root>/transactions/data/transactions_raw.jsonl.xz` is the **source of truth**: the complete, untouched
 Plaid object for every transaction (keyed by `transaction_id`), stored as
 xz-compressed JSONL at max compression (~25× smaller than raw). `transactions.csv`
 is a derived projection of it, so the two can never drift. The archive is
@@ -194,9 +197,10 @@ lossless — it preserves every field Plaid returns, including ones the CSV omit
 Inspect it without decompressing to disk:
 
 ```bash
-xzcat data/transactions_raw.jsonl.xz | jq '.'                 # all records, pretty
-xzcat data/transactions_raw.jsonl.xz | jq 'select(.amount>100)'  # filter
-xzcat data/transactions_raw.jsonl.xz | wc -l                  # count
+RAW=~/finance_data/transactions/data/transactions_raw.jsonl.xz   # (your data root)
+xzcat $RAW | jq '.'                    # all records, pretty
+xzcat $RAW | jq 'select(.amount>100)'  # filter
+xzcat $RAW | wc -l                     # count
 ```
 
 ## Step 3 — Schedule (daily)
@@ -233,9 +237,10 @@ To prove the whole pipeline with fake data before linking real banks:
 2. Run `app.py --user <name>`, link any bank, and use Plaid's test creds `user_good` / `pass_good`.
 3. Run `fetch_transactions.py` and inspect `transactions.csv`.
 4. Switch `.secrets/.env` back to `production` + Production secret, then delete the sandbox
-   state files (`.secrets/tokens.json`, `data/sync_cursors.json`,
-   `data/transactions_raw.jsonl.xz`, `transactions.csv`) so real data starts clean, and
-   link your real banks.
+   state files (`.secrets/tokens.json` and the sandbox files under
+   `<data root>/transactions/`) so real data starts clean, and link your real banks.
+   Tip: point `SPEND_VISUALIZER_DATA` at a throwaway dir for the sandbox round
+   instead, and your real data root never sees fake data.
 
 ## Notes / constraints
 

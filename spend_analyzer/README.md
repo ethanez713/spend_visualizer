@@ -35,7 +35,7 @@ independent schedules with no locks or coordination.
 | `data.py` | Assemble configs → `Cube` + QC (pure, testable). |
 | `views/` | `drilldown.py`, `merchants.py`, `cashflow.py`, `qc.py`. |
 | `app.py` | Streamlit shell: granularity selector + global filters + tabs. |
-| `config/` | `taxonomy.yaml`, `accounts.yaml`, `app.yaml` (human-owned). |
+| `config/` | `taxonomy.yaml`, `app.yaml` (project config). Personal config (`accounts.yaml`, `budget.yaml`) lives under the data root. |
 | `tools/` | `gen_taxonomy.py`, `gen_accounts.py` bootstrap generators. |
 
 ## Setup
@@ -49,18 +49,20 @@ python3 -m venv venv
 ./venv/bin/python -m tools.gen_accounts           # account_id stubs
 ```
 
-Then **edit `config/accounts.yaml`** to map each `account_id` to a `person`,
-friendly `name`, and `type` (Plaid leaves `account_owner` null, so this is
-manual). Optionally tune category groupings in `config/taxonomy.yaml` — editing
-it **never recategorizes data**; only the rollup changes.
+Then **edit `<data root>/spend_analyzer/config/accounts.yaml`** to map each
+`account_id` to a `person`, friendly `name`, and `type` (`person` is pre-seeded
+from each record's `txn_owner` stamp where present). Optionally tune category
+groupings in `config/taxonomy.yaml` — editing it **never recategorizes data**;
+only the rollup changes.
 
-`config/app.yaml → archive_paths` points at the transaction archive to analyze.
-Default: the **category-corrected** store from `plaid_category_transformer`
-(`../plaid_category_transformer/data/transactions_categorized.jsonl`) — full raw
+`config/app.yaml → archive_paths` points at the transaction archive to analyze;
+relative paths resolve from the **data root**. Default: the **category-corrected**
+store from `plaid_category_transformer`
+(`plaid_category_transformer/data/transactions_categorized.jsonl`) — full raw
 Plaid records with audited `personal_finance_category` values applied in place,
 produced by the `../finance_pipeline` orchestrator (or by running `categorize.py`
-directly). To analyze the uncorrected feed instead, point it back at the
-collector's `../transactions/data/transactions_raw.jsonl.xz`.
+directly). To analyze the uncorrected feed instead, point it at the collector's
+`transactions/data/transactions_raw.jsonl.xz`.
 
 ## Run
 
@@ -81,7 +83,7 @@ click-to-zoom + transaction detail) · **Budget** (budget vs actual heatmap) ·
 (PFC)**: pick the correct category from the transformer's vendored taxonomy, scoped to
 *just this transaction* or *ALL transactions from this merchant*. This app **never edits
 records** — the edit is appended as an **intent** to the transformer's append-only log
-(`transformer_root` in `config/app.yaml` → `data/manual_edits.jsonl`), which its pipeline
+(`<data root>/plaid_category_transformer/data/manual_edits.jsonl`), which its pipeline
 replays on every categorize run: edits apply on the next run, survive full re-audits, and
 merchant-scope edits cover future transactions too. Pending intents are listed (and can
 be revoked) in the **Corrections** tab. The old report-only correction form remains for
