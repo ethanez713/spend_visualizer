@@ -93,12 +93,45 @@ and the global filters (date, person, account type, channel, flow, necessity).
 ## Tests
 
 ```bash
-./venv/bin/python -m pytest -q
+./venv/bin/python -m pytest -q                    # fast: unit + headless UI (~20 s)
+./venv/bin/python -m pytest tests/e2e -m e2e -q   # browser e2e (~2 min, opt-in)
+./venv/bin/python -m pytest -q --ignore=tests/ui  # unit tests only
 ```
 
-Covers ingest dedupe/pending, taxonomy exclusions (incl. the mortgage-vs-CC
-double-count trap), strict-nesting resolution, unmapped-atom handling, and the
-**no-double-count tie-out invariant** on the real archive.
+Unit tests cover ingest dedupe/pending, taxonomy exclusions (incl. the
+mortgage-vs-CC double-count trap), strict-nesting resolution, unmapped-atom
+handling, and the **no-double-count tie-out invariant** on the real archive.
+
+**UI suite** (`tests/ui/`): headless interaction tests via Streamlit's native
+`streamlit.testing.v1.AppTest` (no browser, no server, no new dependencies).
+Boots the real `app.py` over the real archive (read-only) and drives the
+sidebar filters, granularity control, hide/unhide, drill (`wheel_root`)
+navigation, the Recategorize-(PFC) intent form (save / no-op / revoke), and
+the corrections queue (add / reject / delete), asserting cross-view tie-outs
+and the exact intent payloads written. Safety by construction: an autouse
+fixture redirects both write paths (`manual_edits.edits_path`,
+`corrections.STORE`) into pytest tmp dirs, and a second fixture hashes the
+live archive + intent log before/after every test and fails on any change.
+(The plotly chart iframe and canvas grids are custom components AppTest cannot
+click — those interactions live in the browser e2e suite below; the
+click→drill-path *mapping* is unit-tested in `tests/test_drilldown.py`.)
+
+**Browser e2e suite** (`tests/e2e/`, excluded from default runs via
+`pytest.ini`): Playwright + Chromium drive the actually-served app for the
+interactions AppTest cannot reach — real clicks on the plotly hierarchy chart
+(click → drill lands on the clicked path, zoom-out/breadcrumb navigation that
+must *stay* (the stale-click re-fire trap), treemap clicks, sankey render,
+window switching) and canvas grid selections (spend-table row ticks → bulk
+Hide/Flag with totals restored by Show-all, hidden categories dropped from the
+chart, the 🚩 data-editor checkbox, the merchant-detail dropdown). Isolation is
+environmental, since a subprocess can't be monkeypatched: the server gets
+`SPEND_ANALYZER_CONFIG_DIR` / `SPEND_ANALYZER_DATA_DIR` pointed at throwaway
+dirs (real archive read-only; the intent log + corrections queue land in pytest
+tmp), and the same live-file hash guard wraps every test. One-time setup:
+`./venv/bin/playwright install chromium`. Without sudo for the few system libs
+Chromium needs, the suite auto-uses copies extracted under
+`~/.cache/ms-playwright/extra-libs/`; `sudo ./venv/bin/playwright install-deps
+chromium` is the cleaner permanent fix.
 
 ## Security posture
 

@@ -27,7 +27,9 @@ from pathlib import Path
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parent
-DATA_DIR = ROOT / "data"
+# Test hook: e2e runs point this at a throwaway dir so a browser-driven app
+# process can never append to the live corrections queue.
+DATA_DIR = Path(os.environ.get("SPEND_ANALYZER_DATA_DIR", ROOT / "data"))
 STORE = DATA_DIR / "corrections.jsonl"
 
 LAYERS = {
