@@ -1,0 +1,13 @@
+# Pinned exact versions (supply-chain hygiene). Rebuild the venv if you move the
+# project dir. To hash-lock the full tree later:
+#   pip install pip-tools && pip-compile --generate-hashes requirements.txt -o requirements.lock.txt
+#   pip install --require-hashes -r requirements.lock.txt
+streamlit==1.40.2
+duckdb==1.1.3
+pandas==2.2.3
+pyyaml==6.0.2
+plotly==5.24.1
+# Captures native click events on Plotly sunburst/treemap slices (Streamlit's
+# built-in on_select does not deliver hierarchical-chart clicks).
+streamlit-plotly-events==0.0.6
+pytest==8.3.4
