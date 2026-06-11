@@ -36,22 +36,16 @@ def _to_date(value) -> date:
     return date.fromisoformat(str(value)[:10])
 
 
-def fetch_window(client, tokens, start_date, end_date) -> list[dict]:
-    """Bounded repair fetch over [start_date, end_date] using /transactions/get.
+def _fetch_window_items(client, tokens, start: date, end: date):
+    """Paginate /transactions/get per token, yielding (token, records, ok) per item.
 
-    For each linked token/item, paginate /transactions/get by offset until every
-    transaction in the window is collected, then return the raw `.to_dict()` records.
-    `start_date`/`end_date` accept ISO strings (as compute_window emits) or date objects.
-
-    On ApiException for an item: log the Plaid error code and SKIP that item — other items
-    still return. A Plaid error must NEVER delete or overwrite local data (Plaid is golden
-    only on success).
+    `ok` is False when the item raised an ApiException; `records` then holds whatever
+    pages were collected before the error (safe to merge — adds/overwrites only — but
+    the item must NOT be treated as fully covered by the window).
     """
-    start = _to_date(start_date)
-    end = _to_date(end_date)
-
-    collected: list[dict] = []
     for t in tokens:
+        records: list[dict] = []
+        ok = True
         try:
             offset = 0
             while True:
@@ -68,7 +62,7 @@ def fetch_window(client, tokens, start_date, end_date) -> list[dict]:
                 resp = client.transactions_get(req)
                 page = resp["transactions"]
                 for txn in page:
-                    collected.append(normalize_txn(txn.to_dict()))
+                    records.append(normalize_txn(txn.to_dict()))
                 offset += len(page)
                 total = resp["total_transactions"]
                 # Stop once we've pulled the whole window (or Plaid returned an empty page).
@@ -80,6 +74,25 @@ def fetch_window(client, tokens, start_date, end_date) -> list[dict]:
                 f"Plaid API error: {e.body}",
                 file=sys.stderr,
             )
-            continue
+            ok = False
+        yield t, records, ok
 
+
+def fetch_window(client, tokens, start_date, end_date) -> list[dict]:
+    """Bounded repair fetch over [start_date, end_date] using /transactions/get.
+
+    For each linked token/item, paginate /transactions/get by offset until every
+    transaction in the window is collected, then return the raw `.to_dict()` records.
+    `start_date`/`end_date` accept ISO strings (as compute_window emits) or date objects.
+
+    On ApiException for an item: log the Plaid error code and SKIP that item — other items
+    still return. A Plaid error must NEVER delete or overwrite local data (Plaid is golden
+    only on success).
+    """
+    start = _to_date(start_date)
+    end = _to_date(end_date)
+
+    collected: list[dict] = []
+    for _t, records, _ok in _fetch_window_items(client, tokens, start, end):
+        collected.extend(records)
     return collected

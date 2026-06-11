@@ -18,6 +18,9 @@ load_dotenv(SECRETS_DIR / ".env")
 
 TOKENS_FILE = SECRETS_DIR / "tokens.json"
 CURSORS_FILE = DATA_DIR / "sync_cursors.json"
+# Cadence state + append-only health trail for the periodic safety-net overfetch.
+OVERFETCH_STATE_FILE = DATA_DIR / "overfetch_state.json"
+OVERFETCH_LOG_FILE = DATA_DIR / "overfetch_log.jsonl"
 # Single source of truth: the full raw Plaid object per transaction, keyed by
 # transaction_id, persisted as xz-compressed JSONL (one JSON object per line).
 # The CSV is a derived projection of this. Kept for audit / QC.
@@ -101,6 +104,24 @@ def save_cursor(item_id: str, cursor: str):
     cursors = load_cursors()
     cursors[item_id] = cursor
     _save_json(CURSORS_FILE, cursors)
+
+
+# --- overfetch_state.json: {"last_overfetch": "YYYY-MM-DD"} -------------------
+
+def load_overfetch_state() -> dict:
+    return _load_json(OVERFETCH_STATE_FILE, {})
+
+
+def save_overfetch_state(last_overfetch: str):
+    _save_json(OVERFETCH_STATE_FILE, {"last_overfetch": last_overfetch})
+
+
+def append_overfetch_log(entry: dict):
+    """Append one run's summary to the overfetch health trail (append-only JSONL)."""
+    _ensure_secure_dir(OVERFETCH_LOG_FILE.parent)
+    with open(OVERFETCH_LOG_FILE, "a") as f:
+        f.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
+    os.chmod(OVERFETCH_LOG_FILE, 0o600)
 
 
 # --- transactions_raw.jsonl.xz: {transaction_id: full raw Plaid object} -------

@@ -21,11 +21,15 @@ def state(tmp_path, monkeypatch):
         cursors=tmp_path / "sync_cursors.json",
         csv=tmp_path / "transactions.csv",
         raw=tmp_path / "transactions_raw.jsonl.xz",
+        overfetch_state=tmp_path / "overfetch_state.json",
+        overfetch_log=tmp_path / "overfetch_log.jsonl",
     )
     monkeypatch.setattr(plaid_client, "TOKENS_FILE", paths.tokens)
     monkeypatch.setattr(plaid_client, "CURSORS_FILE", paths.cursors)
     monkeypatch.setattr(plaid_client, "CSV_FILE", paths.csv)
     monkeypatch.setattr(plaid_client, "RAW_FILE", paths.raw)
+    monkeypatch.setattr(plaid_client, "OVERFETCH_STATE_FILE", paths.overfetch_state)
+    monkeypatch.setattr(plaid_client, "OVERFETCH_LOG_FILE", paths.overfetch_log)
     # fetch_transactions imported CSV_FILE / RAW_FILE into its own namespace.
     monkeypatch.setattr(fetch_transactions, "CSV_FILE", paths.csv)
     monkeypatch.setattr(fetch_transactions, "RAW_FILE", paths.raw)

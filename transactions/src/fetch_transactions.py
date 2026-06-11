@@ -23,6 +23,7 @@ from plaid.model.accounts_get_request import AccountsGetRequest
 from plaid.model.transactions_sync_request import TransactionsSyncRequest
 from plaid.model.transactions_sync_request_options import TransactionsSyncRequestOptions
 
+from .overfetch import overfetch_due, run_overfetch
 from .plaid_client import (
     CSV_FILE,
     RAW_FILE,
@@ -297,6 +298,13 @@ def _parse_args(argv=None):
                    help="persist locally but do NOT sync to Google Drive (no data egress).")
     p.add_argument("--no-refetch", dest="refetch", action="store_false", default=True,
                    help="do not run the /transactions/get repair fetch on reconcile conflicts.")
+    # Safety-net overfetch: full 90-day /transactions/get every 30 days (default: auto).
+    over = p.add_mutually_exclusive_group()
+    over.add_argument("--overfetch", dest="overfetch", action="store_true", default=None,
+                      help="force the 90-day safety-net overfetch now "
+                           "(default: automatically every 30 days).")
+    over.add_argument("--no-overfetch", dest="overfetch", action="store_false",
+                      help="skip the safety-net overfetch even if due.")
     return p.parse_args(argv)
 
 
@@ -335,6 +343,13 @@ def main(argv=None):
             )
         except ApiException as e:
             print(f"  {institution}: API error — {e.body}", file=sys.stderr)
+
+    # Safety-net overfetch (every ~30 days): re-fetch the last 90 days via
+    # /transactions/get and correct the raw store BEFORE it is saved/projected, so the
+    # normal persist step below propagates any corrections to the durable store + Drive.
+    if overfetch_due(args.overfetch):
+        print("\nRunning 90-day safety-net overfetch…")
+        run_overfetch(client, tokens, raw_store)
 
     save_raw_store(raw_store)
     write_csv(raw_store, account_meta)
