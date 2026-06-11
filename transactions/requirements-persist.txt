@@ -3,9 +3,10 @@
 # sync + local CSV pipeline needs only requirements.txt.
 #   ./venv/bin/pip install -r requirements-persist.txt
 #
-# persister is installed editable so local edits to the sibling repo propagate. If this
-# repo or persister is moved/renamed, rebuild the venv (the path below is absolute).
--e ~/persister
+# persister is installed editable so local edits to the sibling component propagate.
+# The path below is relative — run pip from this component's root. If this component
+# or persister is moved/renamed, rebuild the venv.
+-e ../persister
 
 # Google Drive (lazy-imported inside persister.drive_sync). Versions match converter/.
 google-api-python-client==2.197.0
