@@ -1,13 +1,16 @@
 """Tiny helpers for loading the human-owned YAML config (PLAN.md §9)."""
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
 
 ROOT = Path(__file__).resolve().parent
-CONFIG_DIR = ROOT / "config"
+# Test hook: the e2e suite runs the app in a subprocess pointed at a throwaway
+# config dir, so browser-driven tests can never read/write the live config.
+CONFIG_DIR = Path(os.environ.get("SPEND_ANALYZER_CONFIG_DIR", ROOT / "config"))
 
 
 @dataclass
