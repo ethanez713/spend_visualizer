@@ -1,0 +1,25 @@
+# Virtualenvs (per-component, rebuilt locally — never committed)
+venv/
+.venv/
+
+# Python tooling
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+
+# Defensive secret patterns — real secrets are quarantined in each component's
+# .secrets/ (also ignored per-component); catch strays anywhere in the tree.
+.secrets/
+.env*
+!.env.example
+*secret*.json
+token*.json
+drive_state.json
+*.tmp
+
+# NOTE: deliberately NO bare `data/` (or *.csv / *.jsonl) rule here.
+# plaid_category_transformer/data is committed on purpose (private financial data);
+# each component's own .gitignore scopes its own data/ rule.
