@@ -1,0 +1,30 @@
+# --- secrets / credentials (defensive, broad) ---
+*secret*.json
+*secret*.yaml
+token*.json
+tokens.json
+.env
+.env.*
+.secrets/
+
+# --- python ---
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.cache/
+
+# --- app artifacts / caches ---
+*.parquet
+.duckdb
+*.duckdb
+.streamlit/secrets.toml
+
+# --- local data copies (never vendor the archive into this repo) ---
+data/
+*.jsonl.xz
+*.csv
+
+# OS
+.DS_Store
