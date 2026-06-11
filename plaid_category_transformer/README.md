@@ -15,9 +15,11 @@ in place; the LLM is a reviewer that flags disagreements for you to adjudicate.*
 hardcoded rule tables (with a per-rule `auto`/`flag` trust level), and the LLM knobs — so
 what is auto-applied vs. flagged is readable at a glance.
 
-> ⚠ **This repo commits real financial data** under `data/` on purpose (git + Drive dual
-> audit history), so the GitHub repo **must be private**. Secrets stay in `.secrets/`
-> (gitignored). The core path is **offline**; Drive sync and the LLM are local/opt-in.
+> All data (input store, categorized outputs, the manual-edits intent log) lives
+> OUTSIDE this repo under the shared **data root** (`<monorepo>/data_root`, default
+> `~/finance_data` — ideally its own private git repo, giving the same git + Drive
+> dual audit history). Secrets stay in `.secrets/` (gitignored). The core path is
+> **offline**; Drive sync and the LLM are local/opt-in.
 
 ## Pipeline
 
@@ -50,10 +52,10 @@ load ─▶ select (ALL rows by default) ─▶ Stage 1 mechanical rules ─▶ 
    so local and remote stay in lock-step.
 6. **Stage 3 — manual overrides** (`manual.py`) — replays the human edit intents from
    **`data/manual_edits.jsonl`** over the full store, every run (see below).
-7. **Persist** (`persister`) — `data/transactions_categorized.{jsonl,csv}` (committed),
-   `data/flagged_for_review.csv` (the review worklist), `data/manual_edits.jsonl` (the
-   intent log), optional Drive push of all four (default ON, `--no-drive`),
-   `.secrets/{category_log,review_log}.jsonl`.
+7. **Persist** (`persister`) — under the data root:
+   `transactions_categorized.{jsonl,csv}`, `flagged_for_review.csv` (the review
+   worklist), `manual_edits.jsonl` (the intent log); optional Drive push of all four
+   (default ON, `--no-drive`); `.secrets/{category_log,review_log}.jsonl` stay local.
 
 ## Manual edit intents (sticky human edits)
 
@@ -160,8 +162,9 @@ ollama pull qwen2.5:7b  # one-time model download
 ## Usage
 
 ```bash
-# Default: read ../transactions/data/transactions.jsonl (the collector's durable store),
-# audit ALL rows, write data/*, push to Drive.
+# Default: read <data root>/transactions/data/transactions.jsonl (the collector's
+# durable store), audit ALL rows, write the categorized outputs under the data
+# root, push to Drive.
 ./.venv/bin/python categorize.py
 
 # Fully offline (no Drive egress):
@@ -173,8 +176,8 @@ ollama pull qwen2.5:7b  # one-time model download
 # Force a complete re-audit (e.g. after editing the rules in config.py):
 ./.venv/bin/python categorize.py --full --no-drive
 
-# Standalone run against the transactions xz raw store:
-./.venv/bin/python categorize.py --input ../transactions/data/transactions_raw.jsonl.xz --no-drive
+# Standalone run against the collector's xz raw store:
+./.venv/bin/python categorize.py --input ~/finance_data/transactions/data/transactions_raw.jsonl.xz --no-drive
 
 # Adjudicate the rows the audit flagged (accept / reject / re-pick), then re-persist:
 ./.venv/bin/python categorize.py --review --no-drive
