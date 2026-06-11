@@ -1,14 +1,19 @@
 """Tests for drive_sync.py — the Drive service is STUBBED; no real network.
 
 A fake service object records calls and returns canned results, so we exercise the
-update-vs-create branching, file_id persistence, byte download, and error→None
-behaviour without any credentials or network.
+update-vs-create branching, file_id persistence, byte download, and error handling
+(push fails soft; pull of a KNOWN remote fails LOUD) without credentials or network.
 """
 import json
 
 import pytest
 
-from persister.drive_sync import AppendOnlyError, DriveSync, _GuardedService
+from persister.drive_sync import (
+    AppendOnlyError,
+    DrivePullError,
+    DriveSync,
+    _GuardedService,
+)
 
 
 class _Exec:
@@ -143,10 +148,23 @@ def given_no_file_id_when_pull_then_none_without_calling_service(tmp_path):
     assert fake.calls == []  # short-circuits before touching the service
 
 
-def given_service_error_when_pull_then_none_not_raise(tmp_path):
+def given_service_error_on_known_remote_when_pull_then_raises_pull_error(tmp_path):
+    # A remote IS known (file_id remembered) but unreadable: reconcile callers must
+    # see a loud failure, never an empty remote (which would drop remote-only
+    # history from the rebuilt stores and the next push).
     (tmp_path / "drive_state.json").write_text(json.dumps({"transactions.jsonl": "fid"}))
     ds = _make(tmp_path, BrokenService())
-    assert ds.pull() is None
+    with pytest.raises(DrivePullError):
+        ds.pull()
+
+
+def given_service_unavailable_on_known_remote_when_pull_then_raises_pull_error(tmp_path):
+    # file_id remembered but the service can't be built (e.g. credentials removed):
+    # remote state is unknown, not absent.
+    (tmp_path / "drive_state.json").write_text(json.dumps({"transactions.jsonl": "fid"}))
+    ds = DriveSync("transactions.jsonl", secrets_dir=str(tmp_path))  # no injected service
+    with pytest.raises(DrivePullError):
+        ds.pull()
 
 
 def given_service_error_when_push_then_none_not_raise(tmp_path):

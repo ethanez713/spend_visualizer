@@ -20,6 +20,8 @@ token*.json
 drive_state.json
 *.tmp
 
-# NOTE: deliberately NO bare `data/` (or *.csv / *.jsonl) rule here.
-# plaid_category_transformer/data is committed on purpose (private financial data);
-# each component's own .gitignore scopes its own data/ rule.
+# ALL personal data lives OUTSIDE this repo (the external data root — see ./data_root);
+# history was purged of it once already. Bare data/ rule as a last line of defense in
+# case anything ever writes a data dir inside the repo again (components also ignore
+# their own data/).
+data/

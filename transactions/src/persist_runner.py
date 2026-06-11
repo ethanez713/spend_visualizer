@@ -62,9 +62,20 @@ def run_persist(*, do_drive: bool = True, allow_refetch: bool = True,
 
     # 2. Remote store from Drive (offline by default unless do_drive). Drive credentials
     #    + file-id state are THIS repo's (.secrets/) — persister is a pure library.
+    #    A pull FAILURE (remote known but unreadable) must STOP the run: treating it as
+    #    "no remote" would rebuild the durable store without the remote-only rows
+    #    (history the sync path deletes locally, e.g. removed deltas) and then push
+    #    that loss over the Drive head.
     drive = persister.DriveSync(_JSONL_NAME, folder_name=_DRIVE_FOLDER,
                                 secrets_dir=str(SECRETS_DIR))
-    remote = persister.load_jsonl_bytes(drive.pull()) if do_drive else {}
+    try:
+        remote = persister.load_jsonl_bytes(drive.pull()) if do_drive else {}
+    except persister.DrivePullError as e:
+        raise SystemExit(
+            f"  persist: STOP — could not read the Drive remote ({e}). Nothing was "
+            "written. Retry when Drive is reachable, or run --no-persist/--no-drive "
+            "to stay local."
+        )
 
     # 3. Classify local vs remote. txn_owner is OUR stamp, not Plaid content — a remote
     #    written before the field existed must not read as a store-wide conflict

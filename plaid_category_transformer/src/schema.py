@@ -2,9 +2,9 @@
 
 This module owns three concerns that the rest of the pipeline depends on:
 
-1. **Selection** — which rows the transformer touches. Plaid's
-   ``personal_finance_category.confidence_level`` of LOW / MEDIUM (and
-   UNKNOWN / missing) is unreliable; HIGH / VERY_HIGH pass through untouched.
+1. **Selection** — which rows the transformer touches, per
+   ``config.AUDIT_CONFIDENCE_LEVELS`` (default: ALL levels, even HIGH/VERY_HIGH —
+   they have been observed wrong; missing/blank counts as UNKNOWN).
 
 2. **Schema** — the 55 base columns (mirrors
    ``transactions/src/fetch_transactions.py`` ``CSV_COLUMNS`` exactly) plus the 12
@@ -207,7 +207,7 @@ def _g(obj, key):
 def row_fn(record: dict) -> dict:
     """Project one raw (possibly-corrected) record into a flat row for ``derive_csv``.
 
-    Mirrors ``transactions.txn_to_row`` so the 54 base columns match exactly; the
+    Mirrors ``transactions.txn_to_row`` so the 55 base columns match exactly; the
     nested ``personal_finance_category`` reflects any correction (set_provenance writes
     it there), and the 12 provenance/review columns are read from the record's top level.
     Account-identity columns are blank — the raw store carries no /accounts/get meta.

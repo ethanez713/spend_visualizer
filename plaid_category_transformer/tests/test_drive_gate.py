@@ -49,11 +49,37 @@ def given_remote_matches_prior_when_gate_then_passes(store_of):
 
 
 def given_no_remote_when_gate_then_passes(store_of):
-    # Nothing pushed yet (or Drive unreachable): pull() → None → first push is fine.
+    # Nothing pushed yet: pull() → None → first push is fine.
     prior = store_of({"transaction_id": "t1"})
     FakeDriveSync.remote_bytes = None
 
     tr.check_drive_divergence(prior)  # no exit
+
+
+def given_pull_failure_when_gate_then_stops(store_of, monkeypatch):
+    # A KNOWN remote that cannot be read might be diverged — and this gate is the only
+    # thing standing between it and the end-of-run push. Stop, don't guess.
+    prior = store_of({"transaction_id": "t1"})
+    monkeypatch.setattr(
+        FakeDriveSync, "pull",
+        lambda self: (_ for _ in ()).throw(persister.DrivePullError("remote unreadable")))
+
+    with pytest.raises(SystemExit) as exc:
+        tr.check_drive_divergence(prior)
+    assert "STOP" in str(exc.value)
+
+
+def given_pull_failure_with_force_push_when_gate_then_passes(store_of, monkeypatch, capsys):
+    # --force-push declares the local store authoritative — it bypasses an unreadable
+    # remote the same way it bypasses a detected divergence (loudly).
+    prior = store_of({"transaction_id": "t1"})
+    monkeypatch.setattr(
+        FakeDriveSync, "pull",
+        lambda self: (_ for _ in ()).throw(persister.DrivePullError("remote unreadable")))
+
+    tr.check_drive_divergence(prior, force_push=True)  # no exit
+
+    assert "authoritative" in capsys.readouterr().err
 
 
 def given_local_ahead_with_new_rows_when_gate_then_passes(store_of):
