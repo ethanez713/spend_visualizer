@@ -91,7 +91,7 @@ directly when you want to work the queue:
 ## Tests
 
 ```bash
-python3 -m venv venv && ./venv/bin/pip install -r requirements-dev.txt   # once
+python3 -m venv venv && ./venv/bin/pip install --require-hashes -r requirements.lock.txt   # once
 ./venv/bin/python -m pytest -q
 ```
 
