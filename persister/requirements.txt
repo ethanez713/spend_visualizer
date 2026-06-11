@@ -1,0 +1,22 @@
+# Pinned direct dependencies — supply-chain hardening (exact == versions).
+# Captured to match the known-good versions used by ../converter (2026-06-07).
+# Bump deliberately; review changelogs before upgrading.
+#
+# Install into a DEDICATED virtualenv so a compromised global package can't reach
+# this project's OAuth token / committed financial data:
+#     python3 -m venv .venv && . .venv/bin/activate
+#     pip install -r requirements.txt && pip install -e .
+#
+# STRONGER (recommended for financial data): hash-lock the full transitive tree:
+#     pip install pip-tools
+#     pip-compile --generate-hashes --allow-unsafe -o requirements.lock requirements.txt
+#     pip install --require-hashes -r requirements.lock
+#
+# NOTE: the core library (load/save/reconcile/window/merge) needs NONE of these —
+# they are imported lazily inside drive_sync.py and only required for the Drive path.
+
+# ── Google Drive sync (optional; imports are lazy in drive_sync.py) ───────────
+google-api-python-client==2.197.0
+google-auth==2.53.0
+google-auth-oauthlib==1.4.0
+google-auth-httplib2==0.4.0

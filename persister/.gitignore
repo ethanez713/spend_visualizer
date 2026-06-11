@@ -1,0 +1,28 @@
+# Runtime state + secrets — quarantined here, 0700, NEVER committed.
+.secrets/
+
+# Defensive secret patterns (catch a secret that lands outside .secrets/).
+.env*
+!.env.example
+*secret*.json
+token.json
+drive_state.json
+*.tmp
+
+# Python / tooling
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+
+# Local integration creds (real Drive round-trip is manual + gitignored)
+integration_tests/.secrets/
+
+# persister is a PURE LIBRARY: it holds no data of its own. Consuming repos
+# (transactions, plaid_category_transformer) own their stores, Drive credentials,
+# and drive_state.json. Ignore data/ so nothing ever lands here by accident.
+data/
