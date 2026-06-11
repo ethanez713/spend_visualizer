@@ -1,0 +1,15 @@
+# Python / tooling
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Defensive secret patterns (no secrets should ever land here — components keep
+# their own .secrets/ — but catch strays anyway).
+.secrets/
+.env*
+!.env.example
+*secret*.json
+token.json
+tokens.json
