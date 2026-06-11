@@ -28,3 +28,7 @@ data/
 
 # OS
 .DS_Store
+
+# --- personal config: lives under the data root, never in this repo ---
+config/accounts.yaml
+config/budget.yaml

@@ -22,5 +22,7 @@ dist/
 # Local integration creds (real Ollama/Drive runs are manual + gitignored)
 integration_tests/.secrets/
 
-# ⚠ NOTE: data/ is DELIBERATELY NOT ignored. The categorized transaction store is
-# committed on purpose (git + Drive dual audit history). This repo MUST be private.
+# Personal data lives OUTSIDE this repo (the data root — see <monorepo>/data_root);
+# defensive ignore in case anything ever writes here again. Its git audit history
+# now lives in the private data repo.
+data/
