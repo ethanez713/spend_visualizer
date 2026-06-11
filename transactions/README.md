@@ -181,7 +181,7 @@ crontab -e
 Add this line:
 
 ```
-0 7 * * * ~/transactions/run_fetch.sh
+0 7 * * * ~/spend_vizualiser/transactions/run_fetch.sh
 ```
 
 Verify it works first by running the wrapper by hand:

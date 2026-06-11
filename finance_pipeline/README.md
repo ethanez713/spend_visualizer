@@ -9,27 +9,27 @@ Analyzer UI and opens it in your default browser:
 ./run.py
 ```
 
-This repo is deliberately thin — just preflight + choreography over the sibling
-component repos, which own all the domain logic. It needs **only the Python standard
+This component is deliberately thin — just preflight + choreography over the sibling
+component directories, which own all the domain logic. It needs **only the Python standard
 library**: each component runs as a subprocess under its **own venv**, from its own
 repo root.
 
 ## What a run does
 
 ```
- 1. fetch        ~/transactions          /transactions/sync (cursor-based: ALL new/changed
+ 1. fetch        transactions/           /transactions/sync (cursor-based: ALL new/changed
     │                                    rows since the last run) → raw xz archive →
     │                                    reconcile vs Drive remote (Plaid = golden repair)
     │                                    → durable store in its own data/ → Drive push
     │                                    (transactions.jsonl + transactions.csv revisions)
     ▼
- 2. categorize   ~/plaid_category_       Drive divergence gate → incremental audit of
-    │            transformer             new/changed rows (mechanical rules + local Ollama
+ 2. categorize   plaid_category_         Drive divergence gate → incremental audit of
+    │            transformer/            new/changed rows (mechanical rules + local Ollama
     │                                    LLM as flag-only reviewer) → transactions_
     │                                    categorized.{jsonl,csv} + flagged_for_review.csv
     │                                    → Drive push (3 files, new revisions)
     ▼
- 3. analyze      ~/spend_analyzer        Streamlit UI over the CATEGORIZED store
+ 3. analyze      spend_analyzer/         Streamlit UI over the CATEGORIZED store
                                          (http://localhost:8501) + default browser opened
 ```
 
@@ -57,14 +57,15 @@ dataset conflicts with its Drive copy:
 
 Interactive review of flagged categorizations is *not* part of the pipeline — run it
 directly when you want to work the queue:
-`cd ~/plaid_category_transformer && ./.venv/bin/python categorize.py --review`
+`cd plaid_category_transformer && ./.venv/bin/python categorize.py --review`
+(paths relative to the monorepo root)
 
 ## First-run notes
 
-- Banks must already be linked (`~/transactions`: `./venv/bin/python app.py`).
-- Google Drive credentials must exist in `~/transactions/.secrets/` (see persister's
+- Banks must already be linked (`transactions/`: `./venv/bin/python app.py`).
+- Google Drive credentials must exist in `transactions/.secrets/` (see persister's
   README for the one-time OAuth setup; persister itself is a pure library and holds
-  no state). Preflight seeds `~/plaid_category_transformer/.secrets/` from there
+  no state). Preflight seeds `plaid_category_transformer/.secrets/` from there
   (local copy, `0600`) so the transformer can push too.
 - If Ollama isn't running, the LLM stage is skipped gracefully (warning printed);
   `ollama serve` + the `qwen2.5:7b` model enable full audits.

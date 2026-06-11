@@ -1,6 +1,6 @@
-"""Where the components live — the one file to touch if a repo moves.
+"""Where the components live — the one file to touch if a component moves.
 
-Everything is resolved relative to the home directory by ``default_config()``;
+Everything is resolved relative to the monorepo root by ``default_config()``;
 tests build their own ``Config`` pointing at fake components in a tmp dir.
 """
 from __future__ import annotations
@@ -33,10 +33,11 @@ class Config:
 
 
 def default_config() -> Config:
-    home = Path.home()
-    transactions = home / "transactions"
-    transformer = home / "plaid_category_transformer"
-    analyzer = home / "spend_analyzer"
+    # Monorepo root: this file lives at <root>/finance_pipeline/src/config.py.
+    root = Path(__file__).resolve().parents[2]
+    transactions = root / "transactions"
+    transformer = root / "plaid_category_transformer"
+    analyzer = root / "spend_analyzer"
     return Config(
         transactions_dir=transactions,
         transformer_dir=transformer,
