@@ -7,9 +7,11 @@ every consumer passes its own paths + secrets_dir. Keep it that way; domain logi
 
 - Test: `./.venv/bin/python -m pytest` (house `given_*` naming).
 - Reconcile policy: preserve everything — remote-only rows are durable history and
-  are NEVER deleted; conflicts keep the remote value until a golden re-fetch
-  overwrites via `merge_golden`; `metadata_fields` are excluded from conflict
-  detection with the LOCAL copy winning.
+  are NEVER deleted; conflicts keep the remote value by default (until a golden
+  re-fetch overwrites via `merge_golden`), or the caller's `conflict_resolver`
+  picks the winner per conflict (domain policy stays in consumers — the
+  transformer passes a newest-audit-stamp rule); `metadata_fields` are excluded
+  from conflict detection with the LOCAL copy winning.
 - `DriveSync` is append-only BY CONSTRUCTION (`_GuardedService` blocks delete/trash);
   scope is `drive.file`; file ids persist in the consumer's
   `.secrets/drive_state.json`. Never weaken the guard.

@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Wrapper for scheduled runs: cd into the project, run the fetch with the venv
 # Python, and append timestamped output to <data root>/transactions/data/logs/fetch.log.
+# NOTE: superseded for server deployments by deploy/bin/finance-daily.sh, which
+# runs the full data path (fetch → categorize → Drive + GitHub push) under
+# systemd — this script only fetches. See deploy/RUNBOOK.md.
 set -euo pipefail
 
 cd "$(dirname "$0")"

@@ -23,6 +23,7 @@ present on EVERY output record (null/empty when unchanged) so the schema is unif
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 
 from .config import AUDIT_CONFIDENCE_LEVELS
 
@@ -76,7 +77,40 @@ NEW_COLUMNS = [
     "category_review_reason",      # why the suggestion was raised
     "category_review_confidence",  # suggester's confidence
     "category_review_source",      # "llm" | "mechanical"
+    "category_audited_at",         # UTC ISO stamp of the last audit-content change
+                                   # (the adopt-time conflict resolver's recency signal)
+    "claude_audited_at",           # UTC ISO stamp of the last Claude-ritual review of this
+                                   # row (empty = never reviewed by Claude). Pure bookkeeping:
+                                   # excluded from the source hash and treated as a Drive
+                                   # metadata field, so it never triggers a re-audit or a
+                                   # two-writer conflict. See src/claude_audit.py.
 ]
+
+
+def stamp_audited_at(record: dict) -> None:
+    """Mark NOW (UTC) as the moment this row's audit content last changed.
+
+    This is the recency signal `adopt_drive_head` uses to resolve two-writer
+    conflicts (newer stamp wins), so the invariant is: stamp ONLY when audit
+    content actually changes. Refreshing it on a no-op re-run would let a stale
+    machine's untouched copy outrank the other machine's real work. Microsecond
+    precision keeps near-simultaneous runs ordered; NTP-synced machines and
+    hours-apart audit events make wall-clock reliable here.
+    """
+    record["category_audited_at"] = (
+        datetime.now(timezone.utc).isoformat(timespec="microseconds"))
+
+
+def stamp_claude_audited(record: dict) -> None:
+    """Record NOW (UTC) as the moment Claude last reviewed this row in an audit ritual.
+
+    Unlike ``stamp_audited_at`` this is pure bookkeeping — it marks that a human-driven
+    Claude review looked at the row, so the next ritual can skip it (see
+    ``claude_audit.rows_for_claude``). It is never read as audit content or a Drive
+    conflict signal.
+    """
+    record["claude_audited_at"] = (
+        datetime.now(timezone.utc).isoformat(timespec="microseconds"))
 
 
 def ensure_new_columns(record: dict) -> None:
@@ -123,6 +157,7 @@ def set_provenance(record: dict, primary: str, detailed: str,
     record["category_update_step"] = step
     record["category_update_reason"] = reason
     record["category_update_confidence"] = confidence
+    stamp_audited_at(record)
     return True
 
 
@@ -140,21 +175,33 @@ def set_review_flag(record: dict, primary: str, detailed: str,
     pfc = record.get("personal_finance_category") or {}
     if (primary, detailed) == (pfc.get("primary"), pfc.get("detailed")):
         return False
-    record["category_review_flag"] = "1"
-    record["category_review_primary"] = primary
-    record["category_review_detailed"] = detailed
-    record["category_review_reason"] = reason
-    record["category_review_confidence"] = confidence
-    record["category_review_source"] = source
+    new_vals = {
+        "category_review_flag": "1",
+        "category_review_primary": primary,
+        "category_review_detailed": detailed,
+        "category_review_reason": reason,
+        "category_review_confidence": confidence,
+        "category_review_source": source,
+    }
+    # Re-raising the identical flag (a deterministic rule re-running over an
+    # unchanged row) is a no-op and must NOT refresh the audit-recency stamp.
+    changed = any(record.get(k) != v for k, v in new_vals.items())
+    record.update(new_vals)
+    if changed:
+        stamp_audited_at(record)
     return True
 
 
 def clear_review_flag(record: dict) -> None:
     """Drop a pending review flag (e.g. after a human accepts or rejects it)."""
     ensure_new_columns(record)
+    had_flag = any(record.get(col) for col in NEW_COLUMNS
+                   if col.startswith("category_review_"))
     for col in NEW_COLUMNS:
         if col.startswith("category_review_"):
             record[col] = ""
+    if had_flag:        # an adjudication is an audit-content change; a no-op isn't
+        stamp_audited_at(record)
 
 
 # ── Base schema (55 cols, mirrors transactions/src/fetch_transactions.py) ──────

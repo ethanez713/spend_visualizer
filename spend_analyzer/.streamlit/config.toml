@@ -4,3 +4,7 @@ gatherUsageStats = false
 
 [server]
 headless = true
+# Loopback-only: on a server the UI is reached through `tailscale serve`
+# (deploy/RUNBOOK.md), never bound to a public interface; harmless on the
+# desktop, where the browser is local anyway.
+address = "127.0.0.1"

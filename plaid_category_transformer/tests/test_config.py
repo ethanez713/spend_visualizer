@@ -48,3 +48,45 @@ def given_cot_hotel_row_when_ruled_then_travel_lodging(make_record):
     hit = apply_rules(rec, None)
     assert hit is not None
     assert (hit.primary, hit.detailed) == ("TRAVEL", "TRAVEL_LODGING")
+
+
+# ── Personal rule overlay (personal/local rules live under the data root) ──────
+# config._load_personal_rules reads DATA_ROOT lazily inside the function, so we point
+# src.paths.DATA_ROOT at a tmp dir and call it directly (re-importing config to mutate
+# the module-level tables would leak into other tests).
+
+def _write_personal(tmp_path, monkeypatch, text):
+    import src.paths as paths
+    monkeypatch.setattr(paths, "DATA_ROOT", tmp_path)
+    cfg = tmp_path / "plaid_category_transformer" / "config"
+    cfg.mkdir(parents=True)
+    (cfg / "personal_rules.json").write_text(text, encoding="utf-8")
+
+
+def given_no_data_root_file_when_loaded_then_empty(tmp_path, monkeypatch):
+    import src.paths as paths
+    monkeypatch.setattr(paths, "DATA_ROOT", tmp_path)  # dir exists, file does not
+    assert config._load_personal_rules() == {"pos_prefix": [], "website": [], "keyword": []}
+
+
+def given_valid_personal_rules_when_loaded_then_parsed(tmp_path, monkeypatch):
+    _write_personal(tmp_path, monkeypatch,
+        '{"keyword": [["my local coop", ["FOOD_AND_DRINK", "FOOD_AND_DRINK_GROCERIES"], "auto"]]}')
+    loaded = config._load_personal_rules()
+    assert loaded["keyword"] == [
+        ("my local coop", ("FOOD_AND_DRINK", "FOOD_AND_DRINK_GROCERIES"), "auto")]
+    assert loaded["pos_prefix"] == [] and loaded["website"] == []
+
+
+def given_malformed_personal_file_when_loaded_then_fail_soft(tmp_path, monkeypatch):
+    # A malformed JSON file (or a bad entry) must never break the run — fail soft to empty.
+    _write_personal(tmp_path, monkeypatch, "{ not valid json")
+    assert config._load_personal_rules() == {"pos_prefix": [], "website": [], "keyword": []}
+
+
+def given_bad_entry_shape_when_loaded_then_skipped(tmp_path, monkeypatch):
+    _write_personal(tmp_path, monkeypatch,
+        '{"keyword": [["too", "short"], ["ok phrase", ["FOOD_AND_DRINK", "FOOD_AND_DRINK_GROCERIES"], "auto"]]}')
+    # The well-formed entry survives; the malformed one is dropped.
+    assert config._load_personal_rules()["keyword"] == [
+        ("ok phrase", ("FOOD_AND_DRINK", "FOOD_AND_DRINK_GROCERIES"), "auto")]

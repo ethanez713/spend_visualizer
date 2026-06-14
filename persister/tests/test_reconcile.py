@@ -75,3 +75,30 @@ def given_metadata_only_difference_when_reconcile_without_param_then_conflict(ma
     remote = {"x": make_record(transaction_id="x")}
     rep = reconcile(local, remote)
     assert rep.conflicts == ["x"]
+
+
+def given_conflict_resolver_when_reconcile_then_resolver_picks_winner(make_record):
+    # Consumers own conflict policy (e.g. newest-audit-stamp): the resolver's pick
+    # lands in merged, while the conflict is still reported for audit.
+    local = {"x": make_record(transaction_id="x", amount=10.0)}
+    remote = {"x": make_record(transaction_id="x", amount=99.0)}
+
+    rep = reconcile(local, remote, conflict_resolver=lambda lo, re: lo)
+
+    assert rep.conflicts == ["x"]
+    assert rep.merged["x"]["amount"] == 10.0   # resolver chose LOCAL
+
+
+def given_conflict_resolver_when_no_conflicts_then_resolver_never_called(make_record):
+    # in_sync / local_only / remote_only are not the resolver's business.
+    calls = []
+    local = {"same": make_record(transaction_id="same"),
+             "mine": make_record(transaction_id="mine")}
+    remote = {"same": make_record(transaction_id="same"),
+              "theirs": make_record(transaction_id="theirs")}
+
+    rep = reconcile(local, remote,
+                    conflict_resolver=lambda lo, re: calls.append(1) or lo)
+
+    assert calls == []
+    assert set(rep.merged) == {"same", "mine", "theirs"}

@@ -8,8 +8,10 @@ Streamlit. Nothing touches the network or the real sibling repos.
 """
 from __future__ import annotations
 
+import fcntl
 import socket
 import stat
+import subprocess
 import textwrap
 
 import pytest
@@ -86,6 +88,7 @@ def fake_world(tmp_path):
         transactions_dir=transactions,
         transformer_dir=transformer,
         analyzer_dir=analyzer,
+        data_root=tmp_path / "finance_data",
         transactions_python=transactions / "venv" / "bin" / "python",
         transformer_python=transformer / ".venv" / "bin" / "python",
         analyzer_streamlit=analyzer / "venv" / "bin" / "streamlit",
@@ -135,6 +138,25 @@ def given_flags_when_building_cmds_then_they_propagate(fake_world):
     cat = categorize_cmd(cfg, args)
     assert {"--no-drive", "--no-llm", "--force-push"} <= set(cat)
     assert ui_cmd(cfg, args)[-1] == "9999"
+
+
+def given_llm_defer_when_building_cmds_then_it_propagates(fake_world):
+    cfg, _ = fake_world
+    args = parse_args(["--llm-defer"])
+    assert "--llm-defer" in categorize_cmd(cfg, args)
+
+
+def given_llm_opt_in_when_building_cmds_then_it_propagates(fake_world):
+    # The local LLM is off by default; --llm must reach the transformer to turn it on.
+    cfg, _ = fake_world
+    assert "--llm" not in categorize_cmd(cfg, parse_args([]))     # default: no flag, LLM off
+    assert "--llm" in categorize_cmd(cfg, parse_args(["--llm"]))
+
+
+def given_no_llm_and_llm_defer_together_then_rejected():
+    # Mutually exclusive: "rules-only is final" vs "rules now, LLM later".
+    with pytest.raises(SystemExit):
+        parse_args(["--no-llm", "--llm-defer"])
 
 
 # ── Happy path ────────────────────────────────────────────────────────────────
@@ -265,3 +287,63 @@ def given_no_drive_flag_when_main_then_no_cred_seeding_needed(fake_world):
 
     assert [l.split()[0] for l in _log_lines(log)] == ["fetch", "categorize"]
     assert not cfg.transformer_secrets.exists()
+
+
+# ── Pipeline lock + data push (the scheduled-run additions) ──────────────────
+# `data_repo` (conftest.py) builds its git repo at the same tmp path fake_world
+# uses for Config.data_root, so combining the fixtures makes the pipeline's data
+# root a real (synthetic) git repo with a local bare "GitHub" remote.
+
+def _remote_commits(origin) -> int:
+    import subprocess
+    proc = subprocess.run(["git", "rev-list", "--count", "main"],
+                          cwd=str(origin), capture_output=True, text=True)
+    return int(proc.stdout) if proc.returncode == 0 else 0
+
+
+def given_lock_held_when_main_then_exits_before_any_component(fake_world):
+    cfg, log = fake_world
+    cfg.data_root.mkdir()
+    with (cfg.data_root / ".pipeline.lock").open("w") as held:
+        fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+        with pytest.raises(SystemExit) as exc:
+            main(["--no-ui", "--no-drive"], cfg=cfg)
+
+    assert "in progress" in str(exc.value)
+    assert _log_lines(log) == []                 # nothing ran under a held lock
+
+
+def given_no_push_flag_when_main_then_data_repo_never_touched(fake_world):
+    cfg, log = fake_world                        # data_root isn't even a git repo
+
+    main(["--no-ui", "--no-drive"], cfg=cfg)     # would die if a push were tried
+
+    assert [l.split()[0] for l in _log_lines(log)] == ["fetch", "categorize"]
+
+
+def given_push_flag_when_steps_succeed_then_snapshot_lands_on_remote(
+        fake_world, data_repo):
+    cfg, log = fake_world
+    repo, origin = data_repo
+    assert repo == cfg.data_root                 # fixtures share the path (see above)
+    (repo / "transactions.csv").write_text("synthetic\n")
+
+    main(["--no-ui", "--no-drive", "--push-data"], cfg=cfg)
+
+    assert [l.split()[0] for l in _log_lines(log)] == ["fetch", "categorize"]
+    assert _remote_commits(origin) == 1          # pushed only after both steps
+
+
+def given_push_flag_when_fetch_fails_then_nothing_committed(fake_world, data_repo):
+    cfg, log = fake_world
+    repo, origin = data_repo
+    (repo / "transactions.csv").write_text("synthetic\n")
+    _fail_next(cfg.transactions_python, 1)
+
+    with pytest.raises(SystemExit) as exc:
+        main(["--no-ui", "--no-drive", "--push-data"], cfg=cfg)
+
+    assert "fetch" in str(exc.value)             # stop-on-failure covers the push
+    assert _remote_commits(origin) == 0
+    assert _remote_commits(repo) == 0            # not even a local commit

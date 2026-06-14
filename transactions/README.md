@@ -223,7 +223,7 @@ crontab -e
 Add this line:
 
 ```
-0 7 * * * ~/spend_visualizer/transactions/run_fetch.sh
+0 7 * * * /path/to/spend_visualizer/transactions/run_fetch.sh
 ```
 
 Verify it works first by running the wrapper by hand:

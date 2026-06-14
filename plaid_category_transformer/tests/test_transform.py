@@ -211,6 +211,28 @@ def given_changes_when_logged_then_jsonl_appended_owner_only(tmp_path):
     assert oct(os.stat(path).st_mode)[-3:] == "600"
 
 
+# ── LLM on/off resolution (the 7B is OFF by default; --llm opts in) ────────────
+
+def given_no_llm_flags_when_resolved_then_off_by_config_default():
+    from src.transformer import _resolve_llm_mode
+    # default_on=False (the shipped config) → a bare run skips the LLM, stamps final.
+    assert _resolve_llm_mode(llm=False, no_llm=False, llm_defer=False, default_on=False) \
+        == (True, False)
+    # If the config flag is ever flipped back on, a bare run enables the LLM again.
+    assert _resolve_llm_mode(llm=False, no_llm=False, llm_defer=False, default_on=True) \
+        == (False, False)
+
+
+def given_explicit_flags_when_resolved_then_flag_wins_over_default():
+    from src.transformer import _resolve_llm_mode
+    assert _resolve_llm_mode(llm=True, no_llm=False, llm_defer=False, default_on=False) \
+        == (False, False)                                   # --llm forces ON
+    assert _resolve_llm_mode(llm=False, no_llm=True, llm_defer=False, default_on=True) \
+        == (True, False)                                    # --no-llm forces OFF
+    assert _resolve_llm_mode(llm=False, no_llm=False, llm_defer=True, default_on=True) \
+        == (False, True)                                    # --llm-defer → pending
+
+
 def given_xz_raw_store_when_loaded_then_parsed_by_transaction_id(tmp_path, make_record):
     path = tmp_path / "raw.jsonl.xz"
     recs = [make_record(transaction_id="a"), make_record(transaction_id="b")]

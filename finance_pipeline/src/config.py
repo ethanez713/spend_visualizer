@@ -5,6 +5,7 @@ tests build their own ``Config`` pointing at fake components in a tmp dir.
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -15,6 +16,10 @@ class Config:
     transactions_dir: Path       # Plaid collector (fetch + durable persist)
     transformer_dir: Path        # category auditor/corrector
     analyzer_dir: Path           # Streamlit UI
+
+    # External data root (the private finance_data repo): the pipeline-level lock
+    # lives there, and --push-data commits/pushes it as a git repo.
+    data_root: Path
 
     # Each component runs under ITS OWN venv interpreter, from its own repo root.
     transactions_python: Path
@@ -32,6 +37,22 @@ class Config:
     ollama_port: int = 11434            # local LLM; probed (warn-only) in preflight
 
 
+def _data_root(monorepo_root: Path) -> Path:
+    """The external data root (same resolution as every component, kept
+    deliberately duplicated — see the root CLAUDE.md): $SPEND_VISUALIZER_DATA,
+    else the monorepo-root ``data_root`` file, else ~/finance_data."""
+    env = os.environ.get("SPEND_VISUALIZER_DATA")
+    if env:
+        return Path(env).expanduser()
+    cfg = monorepo_root / "data_root"
+    if cfg.is_file():
+        for line in cfg.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line and not line.startswith("#"):
+                return Path(line).expanduser()
+    return Path("~/finance_data").expanduser()
+
+
 def default_config() -> Config:
     # Monorepo root: this file lives at <root>/finance_pipeline/src/config.py.
     root = Path(__file__).resolve().parents[2]
@@ -42,6 +63,7 @@ def default_config() -> Config:
         transactions_dir=transactions,
         transformer_dir=transformer,
         analyzer_dir=analyzer,
+        data_root=_data_root(root),
         transactions_python=transactions / "venv" / "bin" / "python",
         transformer_python=transformer / ".venv" / "bin" / "python",
         analyzer_streamlit=analyzer / "venv" / "bin" / "streamlit",

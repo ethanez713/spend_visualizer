@@ -158,7 +158,9 @@ def given_two_runs_when_input_changes_then_delta_applied(tmp_path, make_record):
     b = make_record(transaction_id="B", name="COT*FLT", original_description="COT*FLT",
                     merchant_name="COT", merchant_entity_id=None, website=None,
                     personal_finance_category=dict(low))  # mechanical 'auto' correction
-    c = make_record(transaction_id="C", personal_finance_category=dict(low))
+    # C is PENDING: settled pendings are the only rows the prune gate lets vanish.
+    c = make_record(transaction_id="C", pending=True,
+                    personal_finance_category=dict(low))
     persister.save_jsonl(str(inp), {"A": a, "B": b, "C": c})
 
     _run()
