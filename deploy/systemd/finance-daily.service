@@ -1,0 +1,14 @@
+# The daily data run: fetch → categorize (rules-only) → Drive push (built into
+# the components) → GitHub push (--push-data). Triggered by finance-daily.timer;
+# no [Install] section on purpose. The ~30-day overfetch safety net self-triggers
+# inside the fetch, so this one daily unit covers both cadences.
+# Logs: journalctl --user -u finance-daily
+[Unit]
+Description=Daily finance pipeline (fetch, categorize, Drive + GitHub push)
+OnFailure=finance-daily-alert.service
+
+[Service]
+Type=oneshot
+ExecStart=%h/spend_visualizer/deploy/bin/finance-daily.sh
+# Generous ceiling: an overfetch month + a slow Plaid day must not be killed mid-run.
+TimeoutStartSec=2h

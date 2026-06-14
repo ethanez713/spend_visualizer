@@ -97,8 +97,8 @@ class CategoryDecision(BaseModel):
     primary: str       # must be in pfc_taxonomy.PRIMARY
     detailed: str      # must be in pfc_taxonomy.DETAILED[primary]
     changed: bool      # did you change it from the current value?
-    confidence: str    # LOW | MEDIUM | HIGH (model's self-rating)
-    reason: str        # ONE concise sentence citing the signal used
+    confidence: str    # LOW | MEDIUM | HIGH (model's self-rating; anti-calibrated — see config)
+    reason: str        # structured: "<signal>=<value> => <PRIMARY>; sign: <debit|credit> consistent"
 
 
 class CategoryAudit(BaseModel):
@@ -124,8 +124,18 @@ OUTPUT RULES:
   - For every row, return its row_index, the chosen primary, a detailed that belongs to
     that primary, changed (true only if your choice differs from the row's current value),
     confidence (your self-rating: LOW/MEDIUM/HIGH), and reason.
-  - reason: ONE concise sentence naming the specific signal you used (the merchant, a
-    keyword in the description, the website, the amount sign). No preamble.
+  - AMOUNT SIGN (decisive — check it on every row): a POSITIVE amount is money LEAVING the
+    account (a debit: purchase, payment, or transfer OUT); a NEGATIVE amount is money
+    ARRIVING (a credit: refund, deposit, paycheck, or transfer IN). NEVER assign an
+    INCOME_* or TRANSFER_IN_* category to a positive amount — that is money going out, so it
+    cannot be income or an inbound transfer. A negative amount is most often a REFUND that
+    KEEPS the merchant's normal spend category (a returned purchase stays
+    GENERAL_MERCHANDISE, not INCOME); choose INCOME_*/TRANSFER_IN_* only for a genuine
+    deposit, paycheck, or inbound transfer, never for a refund.
+  - reason: ONE concise line of the form
+    "<signal>=<value> => <PRIMARY>; sign: <debit if positive | credit if negative> consistent"
+    — e.g. "merchant_name=Acme Brokerage => TRANSFER_OUT; sign: debit consistent". Name the single
+    most decisive signal, then state the sign check. No preamble.
   - Identify the merchant's PRIMARY business as a whole phrase — do not be misled by a
     single word in a longer name. When the current category is already correct, repeat it
     with changed=false.

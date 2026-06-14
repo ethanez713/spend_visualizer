@@ -5,6 +5,10 @@ from playwright.sync_api import FrameLocator, Page, expect
 
 CHART_IFRAME = 'iframe[title="streamlit_plotly_events.plotly_events"]'
 
+# Breadcrumb-trail buttons (the drill path). A sector click's observable effect is
+# this trail changing — used both to read the trail and to wait for a drill to land.
+_CRUMB_BUTTONS = 'div[class*="st-key-crumb_"] button'
+
 # Glide-data-grid geometry (Streamlit 1.40 defaults). The probe test validated
 # these against the live DOM; revisit if a Streamlit upgrade changes the grid.
 GRID_HEADER_H = 35
@@ -50,15 +54,31 @@ def sector_labels(page: Page) -> list[dict]:
 
 
 def click_sector(page: Page, sector: dict) -> None:
-    """Click the middle of a slice label (labels pass pointer events through to
-    the slice) and wait for the drill rerun to settle."""
+    """Click the middle of a slice label (labels pass pointer events through to the
+    slice) and wait for the drill to actually land.
+
+    The click round-trips iframe → websocket → server rerun (~1.5s on a busy
+    machine) — far longer than wait_idle's rerun-start budget, so a bare
+    wait_idle() can return *before* the rerun even begins and the caller then reads
+    stale, pre-click DOM (the historical chart-click flakiness). Wait on the drill's
+    observable effect — the breadcrumb trail changing — then let the rerun settle.
+    """
+    before = page.eval_on_selector_all(
+        _CRUMB_BUTTONS, "els => els.map(e => e.innerText.trim())")
     box = sector["box"]
     page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    page.wait_for_function(
+        "([sel, prev]) => {"
+        "  const cur = Array.from(document.querySelectorAll(sel))"
+        "    .map(e => e.innerText.trim());"
+        "  return JSON.stringify(cur) !== JSON.stringify(prev);"
+        "}",
+        arg=[_CRUMB_BUTTONS, before], timeout=15000)
     wait_idle(page)
 
 
 def breadcrumbs(page: Page) -> list[str]:
-    crumbs = page.locator('div[class*="st-key-crumb_"] button')
+    crumbs = page.locator(_CRUMB_BUTTONS)
     return [crumbs.nth(i).inner_text().strip() for i in range(crumbs.count())]
 
 

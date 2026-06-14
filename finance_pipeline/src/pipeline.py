@@ -22,6 +22,7 @@ choreography, and needs only the Python standard library.
 from __future__ import annotations
 
 import argparse
+import fcntl
 import platform
 import shutil
 import socket
@@ -29,8 +30,10 @@ import subprocess
 import sys
 import time
 import webbrowser
+from contextlib import contextmanager
 
 from .config import Config, default_config
+from .git_push import push_data
 
 # Files that let persister's DriveSync authenticate; copied (locally) from
 # transactions/.secrets into the transformer's .secrets on first Drive-enabled run.
@@ -48,11 +51,24 @@ def parse_args(argv=None, *, default_port: int = 8501) -> argparse.Namespace:
     )
     p.add_argument("--no-drive", action="store_true",
                    help="fully offline run: no Drive pull/reconcile/push in any component")
-    p.add_argument("--no-llm", action="store_true",
-                   help="skip the transformer's local-LLM review stage (rules still apply)")
+    llm_group = p.add_mutually_exclusive_group()
+    llm_group.add_argument("--llm", action="store_true",
+                           help="enable the transformer's local-LLM review stage (OFF by "
+                                "default since the 7B was too noisy; the Claude ritual is "
+                                "the default reviewer — see plaid_category_transformer)")
+    llm_group.add_argument("--no-llm", action="store_true",
+                           help="explicitly skip the transformer's local-LLM stage (the "
+                                "default now; rules still apply, rows stamp as fully audited)")
+    llm_group.add_argument("--llm-defer", action="store_true",
+                           help="rules-only categorize now, rows stay pending so a later "
+                                "--llm run audits them")
     p.add_argument("--force-push", action="store_true",
                    help="pass through to the transformer: override its Drive divergence "
                         "gate and treat the local categorized store as authoritative")
+    p.add_argument("--push-data", action="store_true",
+                   help="after the data steps succeed, commit the data-root git repo "
+                        "(if dirty) and push it to its 'origin' remote — explicit "
+                        "opt-in upload, like every off-machine egress")
     p.add_argument("--no-ui", action="store_true",
                    help="stop after the data steps; don't launch the Streamlit UI")
     p.add_argument("--no-browser", action="store_true",
@@ -75,8 +91,12 @@ def categorize_cmd(cfg: Config, args: argparse.Namespace) -> list[str]:
     cmd = [str(cfg.transformer_python), "categorize.py"]
     if args.no_drive:
         cmd.append("--no-drive")
+    if args.llm:
+        cmd.append("--llm")
     if args.no_llm:
         cmd.append("--no-llm")
+    if args.llm_defer:
+        cmd.append("--llm-defer")
     if args.force_push:
         cmd.append("--force-push")
     return cmd
@@ -155,13 +175,33 @@ def preflight(cfg: Config, args: argparse.Namespace) -> None:
 
     if not args.no_drive:
         ensure_drive_creds(cfg)
-    if not args.no_llm and not _ollama_reachable(cfg.ollama_port):
-        print(f"  ⚠ Ollama not reachable on 127.0.0.1:{cfg.ollama_port} — the "
-              "transformer will skip its LLM review stage (mechanical rules still "
-              "apply). Start it with `ollama serve` for full audits.")
+    # The local LLM is OFF by default now, so only warn about Ollama when it was asked for.
+    if args.llm and not _ollama_reachable(cfg.ollama_port):
+        print(f"  ⚠ --llm was requested but Ollama is not reachable on "
+              f"127.0.0.1:{cfg.ollama_port} — the transformer will skip its LLM review "
+              "stage (mechanical rules still apply). Start it with `ollama serve`.")
 
 
 # ── Steps ─────────────────────────────────────────────────────────────────────
+
+@contextmanager
+def pipeline_lock(data_root):
+    """Hold an exclusive flock for the data steps so a timer-scheduled run and a
+    manual one can't interleave writes on the same machine (cross-machine
+    concurrency is already handled by the components' Drive reconcile). Held for
+    fetch → categorize → push only — the UI runs indefinitely and is read-only,
+    so it must not keep the next day's run out. The lock file is never deleted
+    (unlinking would race another process opening it)."""
+    data_root.mkdir(parents=True, exist_ok=True)
+    lock_path = data_root / ".pipeline.lock"
+    with lock_path.open("w") as fd:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            sys.exit(f"✖ Another pipeline run holds {lock_path} — a scheduled or "
+                     "manual run is in progress; re-run when it finishes.")
+        yield
+
 
 def run_step(name: str, cmd: list[str], cwd) -> None:
     """Run one component to completion, streaming its output; stop on failure."""
@@ -248,13 +288,22 @@ def main(argv=None, cfg: Config | None = None) -> None:
         sys.stdout.reconfigure(line_buffering=True)
 
     mode = "OFFLINE (--no-drive)" if args.no_drive else "Drive sync ON"
+    if args.push_data:
+        mode += " + data git push"
     print(f"finance_pipeline — fetch → categorize → analyze   [{mode}]")
     preflight(cfg, args)
 
     try:
-        run_step("fetch (transactions)", fetch_cmd(cfg, args), cfg.transactions_dir)
-        run_step("categorize (plaid_category_transformer)",
-                 categorize_cmd(cfg, args), cfg.transformer_dir)
+        with pipeline_lock(cfg.data_root):
+            run_step("fetch (transactions)", fetch_cmd(cfg, args),
+                     cfg.transactions_dir)
+            run_step("categorize (plaid_category_transformer)",
+                     categorize_cmd(cfg, args), cfg.transformer_dir)
+            if args.push_data:
+                print("\n━━━ push data (git → origin) ━━━")
+                t0 = time.monotonic()
+                push_data(cfg.data_root)
+                print(f"✓ push data finished in {time.monotonic() - t0:.0f}s")
     except KeyboardInterrupt:
         # The subprocess got the same SIGINT and is already stopping; just exit cleanly
         # instead of dumping a traceback. Nothing is half-written (components write

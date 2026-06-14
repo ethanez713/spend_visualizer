@@ -1,0 +1,13 @@
+# Daily schedule for finance-daily.service. Persistent=true runs a missed tick
+# at next boot (server was off at 06:30); the random delay keeps the run from
+# hitting Plaid at the exact same second every day.
+[Unit]
+Description=Run the finance pipeline daily
+
+[Timer]
+OnCalendar=*-*-* 06:30:00
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target

@@ -161,8 +161,8 @@ def apply_plan(plan: dict, owner: str):
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--owner", default="Alice", metavar="NAME",
-                   help="who all existing data belongs to (default: Alice)")
+    p.add_argument("--owner", required=True, metavar="NAME",
+                   help="display name all existing (pre-multi-user) data belongs to")
     p.add_argument("--root", default=str(_DEFAULT_ROOT), metavar="DIR",
                    help="monorepo root, holds .secrets/tokens.json "
                         "(default: auto-detected from this script)")

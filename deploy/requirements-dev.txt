@@ -1,0 +1,5 @@
+# Test-only deps — deploy ships static artifacts (units + shell); pytest just
+# sanity-checks them. Pin matches finance_pipeline's.
+# Install from the hash-locked tree: pip install --require-hashes -r requirements.lock.txt
+# Regenerate: pip-compile --generate-hashes --allow-unsafe requirements-dev.txt -o requirements.lock.txt
+pytest==9.0.3

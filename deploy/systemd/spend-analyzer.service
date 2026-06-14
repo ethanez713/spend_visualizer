@@ -1,0 +1,17 @@
+# Persistent Streamlit UI over the categorized store — loopback-only by design;
+# it is reached through `tailscale serve` (RUNBOOK.md §9), never exposed publicly.
+# User-level unit (no root): installed by ../install.sh, which assumes the standard
+# ~/spend_visualizer clone (%h = the service user's home).
+# Logs: journalctl --user -u spend-analyzer
+[Unit]
+Description=Spend Analyzer (Streamlit UI, loopback-only)
+After=network.target
+
+[Service]
+WorkingDirectory=%h/spend_visualizer/spend_analyzer
+ExecStart=%h/spend_visualizer/spend_analyzer/venv/bin/streamlit run app.py --server.address 127.0.0.1 --server.port 8501
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

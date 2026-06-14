@@ -23,37 +23,47 @@ repo root.
     │                                    → durable store in its own data/ → Drive push
     │                                    (transactions.jsonl + transactions.csv revisions)
     ▼
- 2. categorize   plaid_category_         Drive divergence gate → incremental audit of
-    │            transformer/            new/changed rows (mechanical rules + local Ollama
-    │                                    LLM as flag-only reviewer) → transactions_
-    │                                    categorized.{jsonl,csv} + flagged_for_review.csv
-    │                                    → Drive push (3 files, new revisions)
+ 2. categorize   plaid_category_         adopt Drive head (other machine's audits +
+    │            transformer/            intent log) → incremental audit of new/changed
+    │                                    rows (mechanical rules + local Ollama LLM as
+    │                                    flag-only reviewer) → transactions_categorized
+    │                                    .{jsonl,csv} + flagged_for_review.csv
+    │                                    → Drive push (new revisions)
     ▼
  3. analyze      spend_analyzer/         Streamlit UI over the CATEGORIZED store
                                          (http://localhost:8501) + default browser opened
 ```
 
-**Stop-on-conflict:** the pipeline halts (non-zero exit, nothing further runs) when a
-dataset conflicts with its Drive copy:
+**Drive safety model:**
 
 - **raw** — reconcile conflicts are first repaired from Plaid (the golden source, via a
-  bounded `/transactions/get`); only conflicts Plaid *cannot confirm* stop the run,
-  **before** the durable store or Drive is touched.
-- **categorized** — there is no golden source for corrections, so *any* divergence
-  (content conflicts or remote-only rows) stops the run before any audit or write.
-  If the local store is the right one (e.g. after offline runs), re-run with
-  `--force-push`.
+  bounded `/transactions/get`); only conflicts Plaid *cannot confirm* stop the run
+  (non-zero exit), **before** the durable store or Drive is touched.
+- **categorized** — two machines may legitimately write it (a scheduled server run and
+  occasional desktop LLM runs), so each Drive-enabled run starts by **adopting the
+  Drive head**: remote-only rows and conflicting rows take the remote value, local-only
+  rows are kept, and the manual-edits intent log is union-merged alongside. A pull
+  failure stops the run; `--force-push` skips adoption and declares the local store
+  authoritative (e.g. restoring from a known-good local copy after offline runs).
 
 ## Flags
 
 | flag | effect |
 |---|---|
 | `--no-drive` | fully offline: no Drive pull/reconcile/push in any component |
-| `--no-llm` | skip the transformer's LLM review stage (mechanical rules still apply) |
-| `--force-push` | override the transformer's divergence gate: local store wins |
+| `--no-llm` | skip the transformer's LLM review stage deliberately (rules still apply; rows stamp as fully audited) |
+| `--llm-defer` | server mode: rules-only now, rows stay LLM-pending so a later LLM-enabled run audits them (mutually exclusive with `--no-llm`) |
+| `--force-push` | skip the transformer's Drive head adoption: local store wins |
 | `--no-ui` | stop after the data steps (e.g. for scheduled runs) |
+| `--push-data` | after the data steps: commit the data-root git repo (if dirty) and push to its `origin` — explicit opt-in upload (no remote ⇒ warn, commit locally) |
 | `--no-browser` | serve the UI but don't open a browser |
 | `--port N` | Streamlit port (default 8501) |
+
+The data steps (and `--push-data`) run under an exclusive lock on
+`<data_root>/.pipeline.lock`, so a scheduled run and a manual one can't
+interleave on the same machine; a second run exits immediately with a clear
+message. The lock is released before the UI step. Scheduled/server runs are
+`deploy/`'s job — see `deploy/RUNBOOK.md`.
 
 Interactive review of flagged categorizations is *not* part of the pipeline — run it
 directly when you want to work the queue:
@@ -66,7 +76,7 @@ directly when you want to work the queue:
   each linked Item belongs to that user, and every fetched record is stamped with it
   as `txn_owner`).
 - Data fetched before multi-user support has no owner stamps — back-fill once with
-  `python3 tools/migrate_multiuser.py --dry-run` (then `--yes`). The fetch refuses
+  `python3 tools/migrate_multiuser.py --owner <name> --dry-run` (then `--yes`). The fetch refuses
   to run on un-stamped tokens until then.
 - Google Drive credentials must exist in `transactions/.secrets/` (see persister's
   README for the one-time OAuth setup; persister itself is a pure library and holds
@@ -83,9 +93,10 @@ directly when you want to work the queue:
 .
 ├── run.py            # entry-point shim → src/pipeline.py
 ├── src/
-│   ├── pipeline.py   # preflight + the three steps + CLI
-│   └── config.py     # where the component repos/venvs live
-└── tests/            # offline: fake component repos in tmp dirs
+│   ├── pipeline.py   # preflight + the three steps + CLI + the data-root lock
+│   ├── git_push.py   # --push-data: snapshot-commit + push the data-root repo
+│   └── config.py     # where the component repos/venvs (and the data root) live
+└── tests/            # offline: fake component repos + a local bare "GitHub" in tmp dirs
 ```
 
 ## Tests

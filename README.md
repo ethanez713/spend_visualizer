@@ -1,16 +1,56 @@
 # spend_visualizer
 
 Personal finance pipeline: fetch bank/card transactions from Plaid, audit and correct
-their categories (deterministic rules + a local LLM reviewer), and explore spending in
-a local Streamlit UI. Multi-user: each Plaid Item is owned by a named person and every
-transaction is stamped with its owner; the UI renders everyone's data as one dataset
-with per-person attribution and filtering.
+their categories (deterministic rules, with periodic deep review by Claude — the local
+LLM reviewer is off by default), and explore spending in a local Streamlit UI.
+Multi-user: each Plaid Item is owned by a named person and every transaction is stamped
+with its owner; the UI renders everyone's data as one dataset with per-person attribution
+and filtering.
 
 **Privacy by construction:** this repo contains code only. All personal financial data
 lives OUTSIDE it under a configurable **data root** (see below), and all credentials
 live in gitignored `.secrets/` directories — so the repo can be shared without exposing
-anything. The core path is **offline**; Plaid is only called by the collector, and
-Google Drive sync + the LLM are local/opt-in.
+anything. The core path is **offline**; Plaid is only called by the collector, Google
+Drive sync is local/opt-in, and the local LLM reviewer is off by default (periodic deep
+review is the opt-in Claude ritual — step 2 below).
+
+## Everyday workflow
+
+The end-to-end loop, in order. Steps are independent — run only what you need. Each
+component runs under its **own** venv (build them once — see "Full setup"). The local LLM
+is **off by default**, so categorization is purely deterministic rules unless you pass
+`--llm`. (The raw Plaid store is INPUT only — no categorizer step ever writes it.)
+
+**1 · Refresh data** — fetch new transactions → deterministic categorize → push to Drive:
+```bash
+cd finance_pipeline && ./run.py --no-ui          # add --push-data to also git-push the data repo; --no-drive to stay local
+```
+
+**2 · Audit with Claude** — in a Claude Code session at the repo, review records and flag
+suspicious ones, run the quality sweeps, and propose rules (writes flags locally; pushes
+nothing):
+```bash
+/audit-transactions          # new/unreviewed records only (default)
+/audit-transactions full     # re-review the ENTIRE history (e.g. after a category/rule change)
+```
+
+**3 · Apply edits** — adjudicate and/or codify, which updates + uploads the categorized
+store (Drive). Run whichever apply:
+```bash
+cd plaid_category_transformer
+./.venv/bin/python categorize.py --review        # adjudicate Claude's flags: accept / reject / re-pick
+./.venv/bin/python categorize.py --edit          # one-off manual fix (sticky intent), applied now
+# systemic rule update: paste the audit's proposed rules into src/config.py, then:
+./.venv/bin/python categorize.py --full          # re-categorize everything with the new rules
+```
+
+**4 · Open the UI** — read-only spending explorer over the categorized store:
+```bash
+cd spend_analyzer && ./venv/bin/streamlit run app.py   # binds 127.0.0.1:8501
+```
+
+> **One-shot** (no audit in between): `cd finance_pipeline && ./run.py` does **1 + 4** —
+> refresh the data, then open the UI.
 
 ## Components
 
@@ -19,22 +59,74 @@ Google Drive sync + the LLM are local/opt-in.
 | `finance_pipeline/` | Orchestrator — runs the components below in sequence, each under its own venv |
 | `transactions/` | Plaid collector — incremental sync into a durable, Drive-replicated store |
 | `persister/` | Shared library — durable, deduped, reconciled, Drive-synced JSONL stores |
-| `plaid_category_transformer/` | Category auditor — rules + local LLM flag-don't-overwrite pipeline |
+| `plaid_category_transformer/` | Category auditor — deterministic rules + Claude-ritual review (flag-don't-overwrite; local LLM off by default) |
 | `spend_analyzer/` | Streamlit UI — faceted spending analysis over the categorized archive |
+| `deploy/` | Server artifacts — systemd units + runbook to run the stack as an unattended service |
 
 Components locate each other by sibling-relative paths; don't rename the directories
 independently. Each component has its own README with full details, and its own venv.
 
-## Everyday use (already set up)
+## Command reference (everyday use)
 
-```bash
-cd finance_pipeline && ./run.py          # fetch → categorize → open the UI
-./run.py --no-drive                      # fully offline (no Drive pull/push)
-./run.py --no-llm                        # skip the LLM review stage
-./run.py --no-ui                         # data steps only
-```
+All paths are relative to the repo root; every component runs under its **own
+venv** (build them once — see "Full setup" below). Each component's README has
+the full flag list.
 
-Work the category-review queue: `cd plaid_category_transformer && ./.venv/bin/python categorize.py --review`.
+### The pipeline (one command, end to end)
+
+| Task | Command |
+|---|---|
+| Full run: fetch → deterministic categorize → open the UI | `cd finance_pipeline && ./run.py` |
+| Data steps only, no UI (refresh + push to Drive) | `./run.py --no-ui` |
+| …also git-push the data-root repo to its remote | `./run.py --no-ui --push-data` |
+| Fully offline (no Drive pull/push) | `./run.py --no-drive` |
+| Opt IN to the local LLM reviewer (off by default; needs Ollama) | `./run.py --llm` |
+
+### Transactions (Plaid collector)
+
+| Task | Command |
+|---|---|
+| Link a new bank (one Flask session per user) | `cd transactions && ./venv/bin/python app.py --user <name>` |
+| Fetch/sync only (incremental + Drive persist) | `cd transactions && ./venv/bin/python fetch_transactions.py` |
+| Same, fully offline | `./venv/bin/python fetch_transactions.py --no-drive` |
+| Re-link after a bank forces re-auth | same as linking; from a server: `ssh -L 5000:127.0.0.1:5000`, then run it there |
+
+### Categorization (rules + LLM auditor)
+
+| Task | Command |
+|---|---|
+| Categorize only (delta; deterministic rules, LLM off) | `cd plaid_category_transformer && ./.venv/bin/python categorize.py` |
+| Claude audit ritual (export → judge → apply) | `/audit-transactions` skill, or `categorize.py --claude-export` / `--claude-apply` |
+| Work the review queue — adjudicate flags (interactive) | `./.venv/bin/python categorize.py --review` |
+| Capture a manual one-off edit (interactive) | `./.venv/bin/python categorize.py --edit` |
+| Full re-audit (after editing `src/config.py` rules) | `./.venv/bin/python categorize.py --full` |
+| Opt IN to the local LLM for this run | `./.venv/bin/python categorize.py --llm` |
+| Mine manual edits for rule improvements | `./.venv/bin/python analyze_edits.py` |
+
+### The UI (spend analyzer)
+
+| Task | Command |
+|---|---|
+| Launch the UI alone, locally | `cd spend_analyzer && ./venv/bin/streamlit run app.py` |
+| (it binds `127.0.0.1:8501` and reads the categorized store read-only) | |
+
+### Run it as a service (server)
+
+Bring-up is the ordered runbook: [`deploy/RUNBOOK.md`](deploy/RUNBOOK.md). Day-to-day:
+
+| Task | Command |
+|---|---|
+| Install + enable UI service & daily timer | `./deploy/install.sh` (on the server, after RUNBOOK §§1–7) |
+| What the timer runs each morning | `deploy/bin/finance-daily.sh` → `run.py --no-ui --no-llm --push-data` |
+| Open the UI | `https://<server>.<tailnet>.ts.net` (tailscale serve → loopback 8501) |
+| Did last night's run work? | `journalctl --user -u finance-daily -n 50` |
+| Pause / resume the schedule | `systemctl --user stop finance-daily.timer` / `start` |
+| Remove the service | `./deploy/uninstall.sh` |
+
+**Two-machine rule of thumb:** the categorized store and intent log rebase onto
+the Drive head at every run start, so the server's daily job and an occasional
+desktop Claude audit/review run coexist safely — just don't run both at the same
+moment, and only the server pushes `finance_data` to GitHub (RUNBOOK §12).
 
 ## Where the data lives (the data root)
 
@@ -160,6 +252,7 @@ Every component is offline-tested under its own venv:
 (cd plaid_category_transformer && ./.venv/bin/python -m pytest)
 (cd spend_analyzer && ./venv/bin/python -m pytest)            # + browser e2e: pytest tests/e2e -m e2e
 (cd finance_pipeline && ./venv/bin/python -m pytest)
+(cd deploy && ./.venv/bin/python -m pytest)                   # server-artifact sanity checks
 ```
 
 No test ever touches the network, Plaid, Drive, or your real data (the analyzer's UI

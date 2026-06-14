@@ -1,0 +1,9 @@
+# OnFailure hook for finance-daily.service: appends one line to
+# <data_root>/logs/failures.log so a failed night is visible without trawling
+# journald. Baseline alerting on purpose — wire something louder here if wanted.
+[Unit]
+Description=Record a finance-daily failure in the data root
+
+[Service]
+Type=oneshot
+ExecStart=%h/spend_visualizer/deploy/bin/finance-alert.sh

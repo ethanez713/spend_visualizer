@@ -37,11 +37,12 @@ class ReconcileReport:
 
 def reconcile(local: dict[str, dict], remote: dict[str, dict],
               key_field: str = "transaction_id",
-              *, metadata_fields: tuple = ()) -> ReconcileReport:
+              *, metadata_fields: tuple = (),
+              conflict_resolver=None) -> ReconcileReport:
     """Classify keys by membership + content hash and build the preserved union.
 
     - in both & equal  → in_sync   (keep either; we keep local)
-    - in both & differ → conflict  (keep remote until a golden re-fetch overwrites it)
+    - in both & differ → conflict  (resolved below)
     - local only       → keep in merged (new data, push it)
     - remote only      → keep in merged (durable history beyond Plaid's window)
 
@@ -51,6 +52,12 @@ def reconcile(local: dict[str, dict], remote: dict[str, dict],
     ``metadata_fields`` names caller-owned bookkeeping fields (e.g. an owner tag)
     excluded from conflict detection. Records equal modulo those fields are in_sync,
     and merged keeps the LOCAL copy — the side that carries the stamps.
+
+    ``conflict_resolver(local_rec, remote_rec) -> dict`` lets the caller pick the
+    winning record per conflict (domain logic — e.g. a newest-audit-stamp rule —
+    stays in consumers). Default: keep the remote value (pending a golden
+    re-fetch, the raw-store policy). The resolver must return one of its two
+    arguments; the conflict is still reported either way.
     """
     in_sync: list[str] = []
     local_only: list[str] = []
@@ -68,7 +75,8 @@ def reconcile(local: dict[str, dict], remote: dict[str, dict],
                 merged[key] = local[key]
             else:
                 conflicts.append(key)
-                merged[key] = remote[key]  # remote retained until golden re-fetch
+                merged[key] = (conflict_resolver(local[key], remote[key])
+                               if conflict_resolver is not None else remote[key])
         elif in_local:
             local_only.append(key)
             merged[key] = local[key]

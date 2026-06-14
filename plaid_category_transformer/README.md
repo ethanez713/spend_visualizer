@@ -19,7 +19,16 @@ what is auto-applied vs. flagged is readable at a glance.
 > OUTSIDE this repo under the shared **data root** (`<monorepo>/data_root`, default
 > `~/finance_data` — ideally its own private git repo, giving the same git + Drive
 > dual audit history). Secrets stay in `.secrets/` (gitignored). The core path is
-> **offline**; Drive sync and the LLM are local/opt-in.
+> **offline**; Drive sync is local/opt-in.
+
+> **The local LLM reviewer is OFF by default** (`config.LLM_ENABLED_BY_DEFAULT = False`).
+> The 2026-06 audit found `qwen2.5:7b` too noisy to be worth the review time (23% flag
+> precision; it couldn't reliably read the amount-sign convention — see
+> [`../LLM_ASSESSMENT.md`](../LLM_ASSESSMENT.md)). A bare run is **deterministic rules +
+> the sign guard** only. The strong periodic review is now the **[Claude audit
+> ritual](#claude-audit-ritual)** (a `--claude-export` / `--claude-apply` loop). Re-enable
+> the local model with `--llm` (or flip the config flag) once a bigger/better one is
+> available — the sign guard is model-agnostic and will protect it too.
 
 ## Pipeline
 
@@ -36,12 +45,17 @@ load ─▶ select (ALL rows by default) ─▶ Stage 1 mechanical rules ─▶ 
    Each rule has a **trust**: `auto` rules (entity-id memory, the specific `COT*FLT`/`COT*HTL`
    prefixes) **overwrite in place**; `flag` rules (loose keyword/website/`TST*`, name-memory)
    are only **suggestions**.
-3. **Stage 2 — local LLM** (`llm.py`) — Ollama `qwen2.5:7b` via `instructor` (JSON mode),
-   `temperature=0, seed=0`, one row per call. It sees the schema, the full vendored taxonomy,
-   every signal, and the mechanical suggestion — but it is a **reviewer, not an author**: by
-   default it never overwrites, it only **flags** rows where it disagrees. Skips gracefully
-   if Ollama is down. Tune with `config.LLM_AUTHORITY` (`"flag"` | `"apply_when_high"` |
-   `"final"`). Trusted Plaid labels (HIGH/VERY_HIGH) are **never** auto-changed by the LLM.
+3. **Stage 2 — local LLM** (`llm.py`, **OFF by default** — opt in with `--llm`) — Ollama
+   `qwen2.5:7b` via `instructor` (JSON mode), `temperature=0, seed=0`, one row per call. It
+   sees the schema, the full vendored taxonomy, every signal, and the mechanical suggestion —
+   but it is a **reviewer, not an author**: by default it never overwrites, it only **flags**
+   rows where it disagrees. Skips gracefully if Ollama is down. A deterministic **sign guard**
+   (`config.INFLOW_PRIMARIES`) drops any suggestion that puts an income/inbound-transfer
+   category on a positive (outgoing) amount, and **intra-tier-1 laterals** (same primary,
+   different detailed) aren't flagged unless `config.FLAG_INTRA_PRIMARY_LATERALS=True`. Tune
+   with `config.LLM_AUTHORITY` (`"flag"` | `"apply_when_high"` (discouraged — confidence is
+   anti-calibrated) | `"final"`). Trusted Plaid labels (HIGH/VERY_HIGH) are **never**
+   auto-changed by the LLM.
 4. **Apply or flag** (`schema.py`) — an *applied* change saves originals → `original_*`,
    overwrites in place, sets the `CORRECTED` sentinel, and records `category_update_*`. A
    *flag* writes `category_review_*` and leaves the category untouched.
@@ -67,7 +81,7 @@ re-audits, upstream row changes, even a rebuilt store. Capture surfaces:
 - **Spend Analyzer UI** (`../spend_analyzer`) — 🚩 a transaction → *Recategorize (PFC)*
   (it appends to this repo's intent log directly; nothing applies until the next run);
 - **`--edit`** — interactive CLI: search a row, pick a category, pick scope, note. Applies
-  immediately (and re-persists + pushes Drive, behind the same divergence gate).
+  immediately (and re-persists + pushes Drive, behind the same head adoption).
 
 Semantics:
 
@@ -88,12 +102,23 @@ Semantics:
   (rules humans keep overriding), an LLM scorecard, and Plaid-confidence stats — so rule
   changes stay periodic, targeted, and human-made.
 
-When Drive sync is on, a **divergence gate** runs first: the remote categorized store is
-pulled and reconciled against the local prior store. Content conflicts or remote-only rows
-(an externally edited Drive copy, or a lost/reset local store) **stop the run before any
-audit or write** — there is no golden source to repair the corrections from, so a human
-must arbitrate. If the local store is the correct one (e.g. after `--no-drive` runs),
-re-run with `--force-push`.
+When Drive sync is on, the run starts by **adopting the Drive head**: the remote
+categorized store is pulled and reconciled against the local prior — remote-only rows are
+taken, local-only rows are kept, and conflicting rows are resolved by **audit recency**:
+every audit-content change stamps `category_audited_at`, and the newer side wins. A local
+store that is *ahead* of the Drive head (an offline session, a crash between save and
+push, a lost race) therefore never loses its work; ties and unstamped legacy rows fall
+back to the remote value. Both versions of every conflict are first appended to
+**`data/adopt_conflicts.jsonl`** (which rides the data repo's daily git push), so no
+version is ever silently discarded. The manual-edits intent log is union-merged in the
+same step (remote entries first, local-only entries re-appended). This is what makes
+**two writers** safe — a scheduled server run and occasional desktop Claude audit/review
+runs serialize through the Drive copy, and neither can clobber the other's audits or corrections (a
+stale intent log alone would otherwise *revert* the other machine's manual edits at
+replay). A pull failure still stops the run; `--force-push` skips adoption and declares
+the local store (and log) authoritative. Simultaneous runs on both machines still race
+the final push — the resolver re-converges the stores on the next runs, but overlap can
+waste LLM work, so avoid it.
 
 ## Incremental processing & pruning
 
@@ -104,14 +129,16 @@ the prior categorized store and audits **only the delta**:
 - **new** rows (unseen ids) and **changed** rows are audited;
 - **unchanged** rows are carried forward verbatim — corrections *and* pending review flags
   survive untouched, so the model never re-flags a row you've already adjudicated;
-- **removed** rows — a Plaid **hard delete**, or a **pending row that settled** (Plaid drops
-  the pending id and issues a new posted one) — are **pruned from both** the local committed
-  file and the Drive copy.
+- **removed** rows — a **pending row that settled** (Plaid drops the pending id and issues
+  a new posted one) — are **pruned from both** the local committed file and the Drive copy.
 
 Change detection is a stable content hash of each row's *raw Plaid fields only* (our own
-provenance/review columns excluded), stamped on the record as `source_content_hash`. A safety
-guard: an **empty input** (e.g. a failed upstream fetch) is treated as a no-op, never as
-"everything was deleted". Use `--full` to force a complete re-audit (e.g. after editing the
+provenance/review columns excluded), stamped on the record as `source_content_hash`. Two
+safety guards: an **empty input** (e.g. a failed upstream fetch) is treated as a no-op,
+never as "everything was deleted"; and the **prune gate** stops the run outright if a
+**posted** row is missing from the input — posted rows never vanish upstream (stale ones
+are only flagged), so that means a stale or truncated raw store, and pruning it would
+shrink the shared store. Settled pendings are the only legitimate shrinkage. Use `--full` to force a complete re-audit (e.g. after editing the
 rules in `config.py`); it still prunes removed rows. Note `--full` re-derives every row from
 the pristine input, so prior in-place corrections are recomputed — decisions you **accepted
 in review survive via merchant memory** (they re-apply as `auto` hits), **manual edit
@@ -163,15 +190,18 @@ ollama pull qwen2.5:7b  # one-time model download
 
 ```bash
 # Default: read <data root>/transactions/data/transactions.jsonl (the collector's
-# durable store), audit ALL rows, write the categorized outputs under the data
-# root, push to Drive.
+# durable store), audit ALL rows with the DETERMINISTIC rules + sign guard (the local
+# LLM is OFF by default), write the categorized outputs under the data root, push to Drive.
 ./.venv/bin/python categorize.py
 
 # Fully offline (no Drive egress):
 ./.venv/bin/python categorize.py --no-drive
 
-# Mechanical rules only (skip the LLM):
-./.venv/bin/python categorize.py --no-llm --no-drive
+# Opt IN to the local LLM reviewer (needs Ollama; noisy — see LLM_ASSESSMENT.md):
+./.venv/bin/python categorize.py --llm --no-drive
+
+# Rules now, LLM later (rows stay pending so a later --llm run audits them):
+./.venv/bin/python categorize.py --llm-defer
 
 # Force a complete re-audit (e.g. after editing the rules in config.py):
 ./.venv/bin/python categorize.py --full --no-drive
@@ -191,8 +221,40 @@ ollama pull qwen2.5:7b  # one-time model download
 
 Key flags: `--input`, `--out-jsonl`, `--out-csv`, `--flags-csv`, `--full`,
 `--confidence LOW,MEDIUM,HIGH,VERY_HIGH,UNKNOWN`, `--memory PATH` / `--no-memory`,
-`--no-llm`, `--no-drive`, `--force-push` (override the Drive divergence gate),
-`--review`, `--edit`, `--edits PATH`, `--log PATH`, `--debug`.
+`--llm` / `--no-llm` / `--llm-defer` (mutually exclusive; LLM off by default), `--no-drive`,
+`--force-push` (skip the Drive head adoption: local store is authoritative),
+`--review`, `--edit`, `--edits PATH`, `--claude-export` / `--claude-apply`
+(+ `--claude-queue PATH` / `--claude-verdicts PATH`), `--log PATH`, `--debug`.
+
+## Claude audit ritual
+
+With the noisy local 7B off by default, the **periodic strong review** is done by Claude
+out-of-band: export the rows it hasn't seen, let it judge them, apply its verdicts as
+ordinary review flags. Claude is a **reviewer, not an author** — it only raises
+`category_review_*` flags (`source="claude"`) that you adjudicate with `--review`; it never
+overwrites a category. Each reviewed row is stamped `claude_audited_at`, so the next ritual
+skips it (a settled pending row reappears under a new id; `--full` re-exports everything).
+
+> ⚠ **Egress:** the ritual sends the exported rows (merchant names + amounts) to Anthropic —
+> the deliberate trade for a much stronger reviewer. The always-on pipeline stays fully local.
+
+```bash
+# 1. Export the rows Claude hasn't reviewed → .secrets/claude_audit_queue.jsonl
+#    (no Drive, no network; financial scratch stays in the gitignored .secrets/).
+./.venv/bin/python categorize.py --claude-export
+
+# 2. In a Claude Code session, have Claude read that queue and write verdicts to
+#    .secrets/claude_audit_verdicts.jsonl — one JSON per line:
+#      {"transaction_id": "...", "verdict": "flag", "primary": "FOOD_AND_DRINK",
+#       "detailed": "FOOD_AND_DRINK_RESTAURANT", "reason": "..."}
+#      {"transaction_id": "...", "verdict": "ok"}
+
+# 3. Apply the verdicts as review flags, then re-persist (and push Drive unless --no-drive):
+./.venv/bin/python categorize.py --claude-apply
+
+# 4. Adjudicate the flags Claude raised (accept / reject / re-pick):
+./.venv/bin/python categorize.py --review
+```
 
 ## Tests
 
