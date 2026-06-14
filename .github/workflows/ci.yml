@@ -1,0 +1,64 @@
+name: CI
+
+# Offline test suites for all six components. Every component is isolated in its
+# own venv and installed from its HASH-LOCKED tree (`--require-hashes`), mirroring
+# the project's supply-chain posture. The tests are offline by design — no network,
+# no real data — so they need no secrets and no data root. The opt-in browser e2e
+# suite (spend_analyzer/tests/e2e) is excluded by the component's pytest addopts.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.component }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { component: persister,                  persister: self    }
+          - { component: transactions,               persister: sibling }
+          - { component: plaid_category_transformer, persister: sibling }
+          - { component: spend_analyzer,             persister: none    }
+          - { component: finance_pipeline,           persister: none    }
+          - { component: deploy,                     persister: none    }
+    defaults:
+      run:
+        working-directory: ${{ matrix.component }}
+    steps:
+      # Actions pinned to a commit SHA (not a moving tag) — same supply-chain
+      # discipline the project applies to its Python deps.
+      - name: Checkout
+        uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0  # v6.0.3
+      - name: Set up Python 3.12
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: '3.12'
+
+      - name: Create venv + install hash-locked deps
+        run: |
+          python -m venv .civenv
+          ./.civenv/bin/pip install --upgrade pip
+          ./.civenv/bin/pip install --require-hashes -r requirements.lock.txt
+
+      # persister installs editable (--no-deps) — editables can't be hash-pinned,
+      # so it's a separate, hash-free step (its own deps are already in the lock).
+      - name: Install persister (self, editable)
+        if: matrix.persister == 'self'
+        run: ./.civenv/bin/pip install --no-deps -e .
+      - name: Install persister (sibling, editable)
+        if: matrix.persister == 'sibling'
+        run: ./.civenv/bin/pip install --no-deps -e ../persister
+
+      - name: Run offline test suite
+        run: ./.civenv/bin/python -m pytest -q

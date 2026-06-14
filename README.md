@@ -1,5 +1,9 @@
 # spend_visualizer
 
+[![CI](https://github.com/ethanez713/spend_visualizer/actions/workflows/ci.yml/badge.svg)](https://github.com/ethanez713/spend_visualizer/actions/workflows/ci.yml)
+![Python 3.12](https://img.shields.io/badge/python-3.12-blue)
+![Tests](https://img.shields.io/badge/tests-442%20offline-brightgreen)
+
 Personal finance pipeline: fetch bank/card transactions from Plaid, audit and correct
 their categories (deterministic rules, with periodic deep review by Claude — the local
 LLM reviewer is off by default), and explore spending in a local Streamlit UI.
@@ -13,6 +17,72 @@ live in gitignored `.secrets/` directories — so the repo can be shared without
 anything. The core path is **offline**; Plaid is only called by the collector, Google
 Drive sync is local/opt-in, and the local LLM reviewer is off by default (periodic deep
 review is the opt-in Claude ritual — step 2 below).
+
+## Highlights
+
+- **Real integrations, not a toy** — live Plaid sync, Google Drive replication, a Streamlit
+  analysis UI, and an unattended systemd deployment.
+- **A durable, reconciled data layer** (`persister/`) — incremental cursor-based sync,
+  content-hash dedup, append-only intent logs, and a conflict-reconciliation engine with a
+  *"Plaid is golden but never deletes"* policy so history that ages out of the API is
+  preserved.
+- **Multi-user by construction** — every transaction is owner-stamped at the fetch boundary;
+  the UI renders everyone's data as one dataset with per-person attribution and filtering.
+- **Offline & private by default** — code-only repo; all financial data and credentials live
+  *outside* it. The core path makes zero network calls; Plaid, Drive, and the LLM are each
+  opt-in behind explicit flags.
+- **Honest ML evaluation** — the LLM auditor was *measured*, not assumed: see
+  [`LLM_ASSESSMENT.md`](LLM_ASSESSMENT.md), where the model's flag precision is quantified at
+  23%, root-caused (it read Plaid's amount-sign convention backwards), and given a fix plan.
+- **442 offline tests** across six components, each pinned + hash-locked and isolated in its
+  own virtualenv. Supply-chain hardened: exact pins, `--require-hashes` installs, CSV
+  formula-injection escaping, least-privilege OAuth scopes.
+
+## Architecture
+
+Five components, each self-contained (own venv, README, tests, `.secrets/`), wired together
+by an orchestrator. Code lives in this repo; **all personal data lives outside it** under a
+configurable data root.
+
+```mermaid
+flowchart LR
+    Plaid([Plaid API]):::ext -->|cursor sync| RAW[(raw xz store)]
+    RAW -->|persist + reconcile| TXN[(transactions.jsonl)]
+    RAW -->|"categorize<br/>(rules + LLM flag)"| CAT[(categorized store)]
+    TXN --> DRIVE([Google Drive]):::ext
+    CAT --> DRIVE
+    CAT -->|read-only| UI[Streamlit UI]
+
+    classDef ext fill:#eef,stroke:#88a,color:#225;
+```
+
+> Plaid and Drive (dashed) are the only things that ever touch the network, and both are
+> opt-in. Everything in between is local-only by default.
+
+## Screenshots
+
+<!--
+  Add 2–3 UI screenshots here once captured. IMPORTANT: capture them against synthetic /
+  demo data only — never your real financial data (this is a public repo). Drop the PNGs in
+  docs/img/ and uncomment:
+
+  ![Spending overview](docs/img/overview.png)
+  ![Category drilldown](docs/img/drilldown.png)
+-->
+
+_UI screenshots pending — to be captured against synthetic demo data (never real data)._
+
+## How this was built
+
+Designed and built by me, using AI coding agents (Claude Code) as a force multiplier: I
+drove the architecture, the data-integrity invariants, the security model, and the LLM
+evaluation; the agent accelerated implementation and tests. The categorization *audit
+ritual* (`/audit-transactions`, step 2 below) is itself an AI-in-the-loop workflow I
+designed — an LLM proposes category flags, a deterministic guard rejects impossible ones,
+and a human adjudicates. I treat model output as a draft to review, not to trust:
+[`LLM_ASSESSMENT.md`](LLM_ASSESSMENT.md) is the receipt — I measured the local model,
+found it useful only ~23% of the time, and root-caused the failure rather than shipping it
+on faith.
 
 ## Everyday workflow
 
