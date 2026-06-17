@@ -30,6 +30,13 @@ repo root.
     │                                    .{jsonl,csv} + flagged_for_review.csv
     │                                    → Drive push (new revisions)
     ▼
+2b. convert      converter/  (optional)  regenerate the budget ledger from the categorized
+    │                                    store (refresh.py --no-fetch --all --no-upload):
+    │                                    PFC → the established budget's categories →
+    │                                    <data_root>/spend_analyzer/data/budget_ledger.csv.
+    │                                    Skipped unless a converter is configured; local-only
+    │                                    and non-fatal (it only derives a view).
+    ▼
  3. analyze      spend_analyzer/         Streamlit UI over the CATEGORIZED store
                                          (http://localhost:8501) + default browser opened
 ```
@@ -54,6 +61,7 @@ repo root.
 | `--no-llm` | skip the transformer's LLM review stage deliberately (rules still apply; rows stamp as fully audited) |
 | `--llm-defer` | server mode: rules-only now, rows stay LLM-pending so a later LLM-enabled run audits them (mutually exclusive with `--no-llm`) |
 | `--force-push` | skip the transformer's Drive head adoption: local store wins |
+| `--no-convert` | skip the optional budget-ledger regen even if a converter is configured |
 | `--no-ui` | stop after the data steps (e.g. for scheduled runs) |
 | `--push-data` | after the data steps: commit the data-root git repo (if dirty) and push to its `origin` — explicit opt-in upload (no remote ⇒ warn, commit locally) |
 | `--no-browser` | serve the UI but don't open a browser |
@@ -69,6 +77,25 @@ Interactive review of flagged categorizations is *not* part of the pipeline — 
 directly when you want to work the queue:
 `cd plaid_category_transformer && ./.venv/bin/python categorize.py --review`
 (paths relative to the monorepo root)
+
+## Optional: external budget ledger (step 2b)
+
+If you keep your budget in a *different* category set than this stack's built-in
+`tier1` taxonomy, point the pipeline at an external **converter** project that maps the
+categorized store onto those categories. When configured, the pipeline runs the
+converter after categorize (inside the lock, before `--push-data`) to regenerate
+`<data_root>/spend_analyzer/data/budget_ledger.csv`, which the Spend Analyzer's Budget
+tab reads when `ledger.csv` is set in its `budget.yaml` (see spend_analyzer's README).
+
+- **Configure it** with `$SPEND_VISUALIZER_CONVERTER`, or the first non-comment line of
+  `<data_root>/converter_root` — a plain-text pointer (this orchestrator stays
+  stdlib-only, so the pointer lives outside the analyzer's YAML). Both live in the
+  private data root, so this repo stays generic. Unset ⇒ the step is simply skipped.
+- The step runs the converter as `refresh.py --no-fetch --all --no-upload` under its own
+  venv: no Plaid fetch (this pipeline *is* its upstream — re-fetching would recurse), no
+  Google-Sheet egress. It is **non-fatal** — a converter hiccup warns loudly and the run
+  continues (it derives a view; it never touches the source stores). `--no-convert`
+  skips it outright.
 
 ## First-run notes
 
@@ -93,9 +120,9 @@ directly when you want to work the queue:
 .
 ├── run.py            # entry-point shim → src/pipeline.py
 ├── src/
-│   ├── pipeline.py   # preflight + the three steps + CLI + the data-root lock
+│   ├── pipeline.py   # preflight + the steps (incl. optional convert) + CLI + the lock
 │   ├── git_push.py   # --push-data: snapshot-commit + push the data-root repo
-│   └── config.py     # where the component repos/venvs (and the data root) live
+│   └── config.py     # where the component repos/venvs, data root, + optional converter live
 └── tests/            # offline: fake component repos + a local bare "GitHub" in tmp dirs
 ```
 

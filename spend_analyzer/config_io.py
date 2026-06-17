@@ -97,16 +97,38 @@ def load_accounts(path: str | Path = PERSONAL_CONFIG_DIR / "accounts.yaml") -> d
 class Budget:
     period: str = "monthly"
     goals: dict[str, float] = field(default_factory=dict)
+    # Optional: path to an EXTERNAL pre-categorized ledger CSV whose `Category`
+    # column already matches these goal keys (the converter project's output).
+    # When set, the Budget tab renders actuals from this ledger instead of the
+    # built-in tier1 cube, so its categories line up with the established budget.
+    # Relative paths resolve from the data root; None ⇒ use the tier1 logic.
+    ledger_csv: str | None = None
 
     def goal(self, tier1: str) -> float | None:
         return self.goals.get(tier1)
 
+    @property
+    def resolved_ledger_csv(self) -> str | None:
+        if not self.ledger_csv:
+            return None
+        p = Path(self.ledger_csv).expanduser()
+        if not p.is_absolute():
+            p = (DATA_ROOT / self.ledger_csv).resolve()
+        return str(p)
+
 
 def load_budget(path: str | Path = PERSONAL_CONFIG_DIR / "budget.yaml") -> Budget:
-    """Return monthly tier-1 goals (PLAN.md §14). Empty if the file is absent."""
+    """Return monthly tier-1 goals (PLAN.md §14). Empty if the file is absent.
+
+    An optional ``ledger.csv`` key points the Budget tab at an externally
+    categorized ledger (see ``Budget.ledger_csv``); its mere presence is the
+    switch — drop the key to fall back to the built-in tier1 categorization.
+    """
     p = Path(path)
     if not p.exists():
         return Budget()
     data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
     goals = {k: float(v) for k, v in (data.get("goals") or {}).items()}
-    return Budget(period=data.get("period", "monthly"), goals=goals)
+    ledger_csv = (data.get("ledger") or {}).get("csv")
+    return Budget(period=data.get("period", "monthly"), goals=goals,
+                  ledger_csv=ledger_csv)

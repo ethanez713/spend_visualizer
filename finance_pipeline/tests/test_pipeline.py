@@ -8,6 +8,7 @@ Streamlit. Nothing touches the network or the real sibling repos.
 """
 from __future__ import annotations
 
+import dataclasses
 import fcntl
 import socket
 import stat
@@ -19,6 +20,7 @@ import pytest
 from src.config import Config
 from src.pipeline import (
     categorize_cmd,
+    convert_cmd,
     ensure_drive_creds,
     fetch_cmd,
     main,
@@ -109,6 +111,35 @@ def fake_world(tmp_path):
     (cfg.transactions_secrets / "client_secret.json").write_text("{}")
     (cfg.transactions_secrets / "token.json").write_text("{}")
 
+    return cfg, log
+
+
+@pytest.fixture
+def with_converter(fake_world, tmp_path):
+    """fake_world + an optional external converter wired in (its own fake venv).
+
+    The fake converter `python` logs `convert <argv...>` to the shared log and
+    honors fail.txt, exactly like the component pythons — so convert tests assert
+    the orchestrator's contract (ordering, offline flags, non-fatal failure)
+    without the real converter project."""
+    cfg, log = fake_world
+    converter = tmp_path / "converter"
+    converter_python = converter / ".venv" / "bin" / "python"
+    body = textwrap.dedent(f"""\
+        #!/usr/bin/env python3
+        import pathlib, sys
+        pathlib.Path({str(log)!r}).open("a").write(
+            "convert " + " ".join(sys.argv[1:]) + chr(10))
+        fail = pathlib.Path(__file__).parent / "fail.txt"
+        sys.exit(int(fail.read_text()) if fail.is_file() else 0)
+        """)
+    _write_exe(converter_python, body)
+    cfg = dataclasses.replace(
+        cfg,
+        converter_dir=converter,
+        converter_python=converter_python,
+        budget_ledger_csv=cfg.data_root / "spend_analyzer" / "data" / "budget_ledger.csv",
+    )
     return cfg, log
 
 
@@ -347,3 +378,76 @@ def given_push_flag_when_fetch_fails_then_nothing_committed(fake_world, data_rep
     assert "fetch" in str(exc.value)             # stop-on-failure covers the push
     assert _remote_commits(origin) == 0
     assert _remote_commits(repo) == 0            # not even a local commit
+
+
+# ── Optional external budget-ledger conversion ───────────────────────────────
+# The converter is an opt-in add-on (config._converter_dir resolves it). When
+# present, the pipeline regenerates the budget ledger after categorize; the step
+# is offline (--no-fetch/--all/--no-upload) and NON-fatal (it derives a view).
+
+def given_no_converter_when_main_then_no_convert_step(fake_world):
+    cfg, log = fake_world                         # default fake_world has no converter
+
+    main(["--no-drive", "--no-ui"], cfg=cfg)
+
+    assert "convert" not in [l.split()[0] for l in _log_lines(log)]
+
+
+def given_converter_configured_when_building_convert_cmd_then_local_and_offline(with_converter):
+    cfg, _ = with_converter
+    cmd = convert_cmd(cfg)
+    assert cmd[:2] == [str(cfg.converter_python), "refresh.py"]
+    assert {"--no-fetch", "--all", "--no-upload"} <= set(cmd)   # no Plaid, no Sheet egress
+    assert cmd[-2:] == ["--output", str(cfg.budget_ledger_csv)]
+
+
+def given_converter_configured_when_main_then_convert_runs_after_categorize(with_converter):
+    cfg, log = with_converter
+
+    main(["--no-drive", "--no-browser"], cfg=cfg)
+
+    assert [l.split()[0] for l in _log_lines(log)] == \
+        ["fetch", "categorize", "convert", "streamlit"]
+    convert_line = next(l for l in _log_lines(log) if l.startswith("convert"))
+    assert "--no-fetch" in convert_line and "--no-upload" in convert_line
+
+
+def given_no_convert_flag_when_main_then_ledger_not_regenerated(with_converter):
+    cfg, log = with_converter
+
+    main(["--no-drive", "--no-ui", "--no-convert"], cfg=cfg)
+
+    assert [l.split()[0] for l in _log_lines(log)] == ["fetch", "categorize"]
+
+
+def given_converter_fails_when_main_then_pipeline_continues(with_converter, capsys):
+    cfg, log = with_converter
+    _fail_next(cfg.converter_python, 5)           # converter breaks — must not sink the run
+
+    main(["--no-drive", "--no-browser"], cfg=cfg)  # does NOT raise
+
+    assert [l.split()[0] for l in _log_lines(log)] == \
+        ["fetch", "categorize", "convert", "streamlit"]   # UI still served
+    assert "converter exited 5" in capsys.readouterr().out
+
+
+def given_converter_venv_missing_when_main_then_warns_and_continues(with_converter, capsys):
+    cfg, log = with_converter
+    cfg.converter_python.unlink()                 # configured but venv not built
+
+    main(["--no-drive", "--no-ui"], cfg=cfg)
+
+    assert [l.split()[0] for l in _log_lines(log)] == ["fetch", "categorize"]
+    assert "venv python is missing" in capsys.readouterr().out
+
+
+def given_converter_and_push_when_main_then_convert_precedes_push(with_converter, data_repo):
+    cfg, log = with_converter
+    repo, origin = data_repo
+    assert repo == cfg.data_root
+    (repo / "transactions.csv").write_text("synthetic\n")
+
+    main(["--no-drive", "--no-ui", "--push-data"], cfg=cfg)
+
+    assert [l.split()[0] for l in _log_lines(log)] == ["fetch", "categorize", "convert"]
+    assert _remote_commits(origin) == 1           # ledger regen happens before the push
