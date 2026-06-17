@@ -3,10 +3,9 @@
 **Status:** planned, not started (deferred 2026-06-09). Current behavior preserved:
 `TRANSPORTATION_TAXIS_AND_RIDE_SHARES` stays `tier0: Necessary` until this lands.
 
-> ⚠ **Repo note:** the necessity model lives entirely in **`../spend_analyzer`**, not in
-> this repo. This plan is filed here only because that's where it was requested; the
-> actual implementation + tests are all in `spend_analyzer`. Move this doc there if
-> preferred.
+> **Scope:** a `spend_analyzer` design note — the necessity model and all its tests live in
+> that component. The category tree currently roots at `tier0 = necessity` (`enrich.py`,
+> `cube.py`); this plan makes necessity an orthogonal facet instead.
 
 ## Problem
 

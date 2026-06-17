@@ -209,7 +209,11 @@ def main(argv=None) -> int:
         print("\n(dry run — nothing written)")
         return 0
     if not args.yes:
-        reply = input(f"\nStamp the above as {args.owner!r}? [y/N] ").strip().lower()
+        try:
+            reply = input(f"\nStamp the above as {args.owner!r}? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):  # piped/no-tty or Ctrl-C — treat as decline
+            print("\nCancelled — nothing written.")
+            return 1
         if reply not in ("y", "yes"):
             print("Cancelled — nothing written.")
             return 1

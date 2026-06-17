@@ -6,8 +6,8 @@ bank description) is attacker-influenceable — e.g. the memo on a payment someo
 sends you — so a crafted value could run a formula (``=IMPORTDATA(...)``) inside an
 uploaded Sheet and exfiltrate it. Prefix a single quote to force literal text.
 
-Copied from ``transactions/src/fetch_transactions.py`` / ``converter/src/converter.py``
-to keep this project self-contained (no cross-repo import). Numeric cells (floats/bools,
+Mirrors the guard in ``transactions/src/fetch_transactions.py`` (kept inline so this
+project stays self-contained — no cross-repo import). Numeric cells (floats/bools,
 e.g. ``amount``) are left untouched so negative amounts stay numeric.
 """
 from __future__ import annotations

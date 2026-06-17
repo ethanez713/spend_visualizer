@@ -10,7 +10,7 @@
 # (relative path — run pip from this component's root; rebuild the venv if either
 # component is moved/renamed)
 
-# Google Drive (lazy-imported inside persister.drive_sync). Versions match converter/.
+# Google Drive (lazy-imported inside persister.drive_sync).
 google-api-python-client==2.197.0
 google-auth==2.53.0
 google-auth-oauthlib==1.4.0

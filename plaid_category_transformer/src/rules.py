@@ -10,8 +10,7 @@ Runs before the LLM and exploits ALL of Plaid's signals, richest identity first:
 
 First hit wins. The result is a *suggestion* carried into Stage 2 (the LLM sees it) and
 recorded as provenance only if it becomes the final value. ``normalize_merchant`` and
-``contains_word`` are ported from ``converter/src/converter.py`` (whole-token matching so
-'lime' can't hit 'sublime', etc.).
+``contains_word`` do whole-token matching (so 'lime' can't hit 'sublime', etc.).
 
 Memory lives in ``.secrets/merchant_memory.json`` (0600, atomic write); the transformer tops
 it up with each run's final decisions so a once-resolved merchant is a HIGH hit next time.
@@ -41,7 +40,7 @@ class RuleHit:
     trust: str       # "auto" = overwrite in place | "flag" = suggest for human review
 
 
-# ── Text normalization (ported from converter) ───────────────────────────────
+# ── Text normalization ───────────────────────────────────────────────────────
 
 _NOISE = re.compile(
     r"((?<![a-z])x{2,}"          # masked card digits 'XXXX' (not 'exxon'/'maxx')

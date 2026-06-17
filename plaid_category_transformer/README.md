@@ -8,8 +8,7 @@ Plaid tags every transaction with a PFC primary/detailed and a `confidence_level
 even **HIGH/VERY_HIGH** rows are sometimes wrong (e.g. Capital One Travel flights, `COT*FLT`,
 landing in *postage & shipping*). So this tool audits **all** rows, but never lets the noisy
 local model silently clobber a good category: **high-precision deterministic rules apply
-in place; the LLM is a reviewer that flags disagreements for you to adjudicate.** It mirrors
-[`converter`](../converter)'s flag-don't-overwrite pipeline.
+in place; the LLM is a reviewer that flags disagreements for you to adjudicate.**
 
 **All categorization policy lives in [`src/config.py`](src/config.py)** — selection, the
 hardcoded rule tables (with a per-rule `auto`/`flag` trust level), and the LLM knobs — so

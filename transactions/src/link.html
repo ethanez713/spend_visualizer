@@ -64,6 +64,13 @@
             body: JSON.stringify({ public_token }),
           });
           const data = await r.json();
+          if (!r.ok) {
+            const span = document.createElement("span");
+            span.className = "err";
+            span.textContent = `Link failed: ${data.error || r.status}`;
+            statusEl.replaceChildren(span);
+            return;
+          }
           const ok = document.createElement("span");
           ok.className = "ok";
           ok.textContent = `Linked: ${data.institution}`;

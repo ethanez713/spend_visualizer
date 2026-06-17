@@ -1,11 +1,10 @@
 """Stage 2 — local-LLM categorizer (Ollama + instructor + pydantic).
 
-Adapted from ``converter/src/reviewer.py`` ``LLMAuditor``: same runtime
-(``instructor.from_openai`` over Ollama's OpenAI-compatible endpoint, JSON mode),
-same model/sampling (``qwen2.5:7b``, temperature=0 seed=0), batching per
+Runtime: ``instructor.from_openai`` over Ollama's OpenAI-compatible endpoint (JSON
+mode); model/sampling ``qwen2.5:7b``, temperature=0 seed=0; batching per
 ``config.LLM_BATCH_SIZE`` (currently 1 — see config.py for why multi-row batches
-drifted), the same ``_ensure_ready``/``_ping``/``_ensure_model`` startup, and the same
-TTY-aware ``_spinner``. It runs on ALL selected rows (regardless of Stage 1) and is the final
+drifted); an ``_ensure_ready``/``_ping``/``_ensure_model`` startup and a TTY-aware
+``_spinner``. It runs on ALL selected rows (regardless of Stage 1) and is the final
 authority for them — it sees the most context. If Ollama is unavailable the whole stage
 skips gracefully (returns ``{}``) and the caller falls back to the mechanical result.
 
