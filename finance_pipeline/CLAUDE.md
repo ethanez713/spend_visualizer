@@ -11,7 +11,8 @@ two machines legitimately write it — see the transformer's CLAUDE.md).
 - Test: `./venv/bin/python -m pytest` (house `given_*` naming; subprocesses faked
   via `fake_world`; `--push-data` tested against a local bare repo, never a remote).
 - `./run.py` is a LIVE run (Plaid + Drive; + GitHub with `--push-data`) — hand it
-  to the user, never execute it.
+  to the user by default; execute it only on the user's explicit in-session
+  go-ahead (see the root golden rules).
 - The data steps run under `<data_root>/.pipeline.lock` (flock; same-machine
   overlap guard for timer + manual runs). It is released BEFORE the UI step —
   don't extend its scope, or a long-lived UI blocks the next day's scheduled run.

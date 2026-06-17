@@ -3,9 +3,10 @@
 Read `../CLAUDE.md` first (golden rules). This component is **static artifacts
 only** — unit files, wrapper scripts, runbook. There is no app code here.
 
-- **Never enable/start these units or run `bin/finance-daily.sh`** — that is a
-  LIVE run (Plaid + Drive + GitHub push). Same rule as `./run.py`: hand it to
-  the user. `install.sh` mutates the user's systemd state — also user-run only.
+- **Don't enable/start these units or run `bin/finance-daily.sh` by default** — that
+  is a LIVE run (Plaid + Drive + GitHub push). Same rule as `./run.py`: hand it to
+  the user unless they explicitly authorize it in-session (see the root golden rules).
+  `install.sh` mutates the user's systemd state — also user-run by default.
   `bin/finance-alert.sh` is safe **only** with `SPEND_VISUALIZER_DATA` pointed
   at a tmp dir (the tests do this).
 - Test: `./.venv/bin/python -m pytest` (offline artifact checks; house `given_*`
