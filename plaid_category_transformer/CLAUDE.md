@@ -1,6 +1,7 @@
 # CLAUDE.md — plaid_category_transformer (category auditor)
 
-Read `../CLAUDE.md` first (golden rules: no live Drive calls, no data in-repo).
+Read `../CLAUDE.md` first (golden rules: no live Drive calls without the user's
+explicit in-session go-ahead, no data in-repo).
 
 - Test: `./.venv/bin/python -m pytest` — offline; the LLM is injected as a fake
   (`tests/conftest.py FakeLLM`), Drive is stubbed.

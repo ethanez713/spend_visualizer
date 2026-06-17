@@ -1,6 +1,7 @@
 # CLAUDE.md — transactions (Plaid collector)
 
-Read `../CLAUDE.md` first (golden rules: no live Plaid/Drive calls, no data in-repo).
+Read `../CLAUDE.md` first (golden rules: no live Plaid/Drive calls without the user's
+explicit in-session go-ahead, no data in-repo).
 
 - Test: `./venv/bin/python -m pytest` — fully offline; the `state` fixture
   (tests/conftest.py) redirects every persisted path to tmp. Fake Plaid clients are
