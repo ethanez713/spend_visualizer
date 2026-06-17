@@ -1,6 +1,6 @@
 """Engine + CLI: audit & re-categorize Plaid rows (ALL confidence levels), then persist.
 
-Pipeline (mirrors ``converter``'s architecture):
+Pipeline:
   1. **Select** rows to audit by ``personal_finance_category.confidence_level``. The
      default (``config.AUDIT_CONFIDENCE_LEVELS``) audits EVERY row — even HIGH / VERY_HIGH,
      which have been observed wrong.
@@ -58,6 +58,7 @@ from .schema import (
     COLUMNS,
     FLAG_COLUMNS,
     PROCESS_CONFIDENCE,
+    VALID_CONFIDENCE_LEVELS,
     confidence_of,
     ensure_new_columns,
     flag_row_fn,
@@ -924,6 +925,16 @@ def main():
                     help="verbose LLM-stage debug output")
     args = ap.parse_args()
 
+    # Validate --confidence up front (before any subcommand dispatch or filesystem
+    # check) so a typo'd level fails loudly instead of silently selecting no rows.
+    levels = {lv.strip().upper() for lv in args.confidence.split(",") if lv.strip()}
+    unknown = levels - VALID_CONFIDENCE_LEVELS
+    if not levels or unknown:
+        ap.error("--confidence: "
+                 + (f"unknown level(s): {','.join(sorted(unknown))}" if unknown
+                    else "no levels given")
+                 + f" (valid: {','.join(sorted(VALID_CONFIDENCE_LEVELS))})")
+
     if args.edit:
         edit_run(
             out_jsonl=args.out_jsonl,
@@ -971,7 +982,6 @@ def main():
         sys.exit(f"ERROR: input not found: {args.input}\n"
                  "Run the transactions fetcher / persister first, or pass --input.")
 
-    levels = {lv.strip().upper() for lv in args.confidence.split(",") if lv.strip()}
     no_llm, defer_llm = _resolve_llm_mode(llm=args.llm, no_llm=args.no_llm,
                                           llm_defer=args.llm_defer)
     run(

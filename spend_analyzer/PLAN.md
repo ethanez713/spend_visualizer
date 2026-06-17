@@ -1,5 +1,10 @@
 # Spend Analyzer — Build Plan
 
+> **Status (2026-06):** historical build spec — the analyzer is **built and shipped**; the
+> current source of truth is **README.md** + **CLAUDE.md**. Kept as a design record. One item
+> here remains **planned, not built**: decoupling "necessity" from the category tree
+> (necessity is currently `tier0` — see [`update_necessity_model.md`](update_necessity_model.md)).
+
 > Handoff doc. A fresh Claude Code instance should be able to execute from this
 > without re-deriving decisions. Written in June 2026.
 

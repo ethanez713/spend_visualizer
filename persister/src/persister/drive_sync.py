@@ -1,9 +1,9 @@
 """Sync ONE logical file to a Google Drive file, in place, with native revisions.
 
-This is the key new capability over ``converter/src/uploader.py`` (which is write-only:
-it creates a *new* Google Sheet each run with no file_id memory and no download). The
-OAuth flow (``_get_credentials``) and folder management (``_get_or_create_folder``) are
-copied verbatim from that uploader, keeping the least-privilege ``drive.file`` scope.
+The capability here is in-place sync with native revisions (vs. a write-only uploader
+that creates a *new* file each run with no file_id memory and no download). The OAuth
+flow (``_get_credentials``) and folder management (``_get_or_create_folder``) keep the
+least-privilege ``drive.file`` scope.
 
 Added here:
   * download   — ``files().get_media`` → bytes (to fetch the remote store for reconcile)
@@ -48,7 +48,7 @@ _SETUP_HINT = """\
   Then re-run."""
 
 
-# --- OAuth + folder management (copied verbatim from converter/src/uploader.py) ----
+# --- OAuth + folder management (least-privilege drive.file scope) -------------------
 
 def _get_credentials(client_secret: str, token_path: str):
     """Load cached creds, refreshing if expired, or run the browser OAuth flow."""

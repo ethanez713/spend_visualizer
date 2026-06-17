@@ -14,6 +14,28 @@ money out / debit; negative = money in / credit). The model consistently reads i
 **backwards** — e.g. it tried to label eight outgoing brokerage `BUY` *purchases* as
 `INCOME_WAGES` with the reason *"positive amount, indicating income."*
 
+## Status — fixes shipped (2026-06)
+
+This is a closed loop, not an open backlog; the prioritized recommendations below were
+implemented:
+
+- ✅ **Sign convention (Rec 1).** `src/llm.py` `_SYSTEM_PROMPT` now states the convention
+  explicitly, and a model-agnostic deterministic guard (`transformer._sign_violation`,
+  `config.INFLOW_PRIMARIES`) drops any `INCOME_*`/`TRANSFER_IN_*` suggestion on a positive
+  (outgoing) amount before it can become a flag.
+- ✅ **Confidence not trusted (Rec 2).** `config.LLM_AUTHORITY = "flag"` — the model only
+  flags for human review; its self-reported confidence gates nothing.
+- ✅ **Low-value laterals suppressed (Rec 3).** An intra-tier-1 suggestion is no longer
+  flagged unless `config.FLAG_INTRA_PRIMARY_LATERALS = True`.
+- ✅ **Noisy 7B retired (Rec 6, and further).** Rather than just swap models, the local LLM
+  is now **off by default** (`config.LLM_ENABLED_BY_DEFAULT = False`); the periodic strong
+  review is the **Claude audit ritual** (`categorize.py --claude-export` / `--claude-apply`),
+  whose sweeps also surface the invalid legacy categories of Rec 4 (`taxonomy_invalid`) and
+  re-check sign violations. The guard is model-agnostic, so re-enabling any local model with
+  `--llm` stays protected.
+
+The point-in-time analysis that produced these fixes follows.
+
 ## How it was measured
 
 Sample = the **126 rows the LLM flagged** on the real 520-transaction store (i.e. rows where
@@ -41,8 +63,8 @@ So roughly **1 in 4 flags was useful**; the rest were the model crying wolf.
 
 ### 1. Amount-sign confusion — the headline bug (~23 false flags, biggest single cause)
 The LLM suggested `INCOME/INCOME_WAGES` on **45** rows:
-- **22** on negative (inflow) amounts — real payroll (e.g. `<EMPLOYER> PAYROLL`, a federal
-  salary deposit). 15 were accepted. **Correct.**
+- **22** on negative (inflow) amounts — real payroll (e.g. `<EMPLOYER> PAYROLL`, a salary
+  deposit). 15 were accepted. **Correct.**
 - **23** on positive (outflow) amounts — **impossible** for income (brokerage `BUY` ×~14,
   outgoing P2P transfers, etc.). All rejected/re-picked. **Pure error.**
 

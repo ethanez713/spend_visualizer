@@ -57,7 +57,7 @@ def build_yaml() -> str:
             )
         lines.append("")
 
-    # --- merchant overrides (starter; like the converter's PINNED_RULES) ---
+    # --- merchant overrides (starter) ---
     lines.append("# Merchant overrides: regex on merchant_name OR exact merchant_entity_id.")
     lines.append("# Example splits 'Uber Eats' (food) from 'Uber' (rideshare).")
     lines.append("merchant_overrides:")

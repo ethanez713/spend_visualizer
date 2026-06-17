@@ -54,12 +54,19 @@ def create_link_token():
 
 @app.route("/exchange", methods=["POST"])
 def exchange():
-    public_token = request.json["public_token"]
+    body = request.get_json(silent=True) or {}
+    public_token = body.get("public_token")
+    if not public_token:
+        return jsonify({"error": "missing public_token"}), 400
 
     # public_token -> access_token + item_id (persist immediately)
-    exch = client.item_public_token_exchange(
-        ItemPublicTokenExchangeRequest(public_token=public_token)
-    )
+    try:
+        exch = client.item_public_token_exchange(
+            ItemPublicTokenExchangeRequest(public_token=public_token)
+        )
+    except Exception as e:  # bad/expired token, Plaid outage — return JSON, not an HTML 500
+        app.logger.warning("Token exchange failed: %s", e)
+        return jsonify({"error": "token exchange failed"}), 502
     access_token = exch["access_token"]
     item_id = exch["item_id"]
 

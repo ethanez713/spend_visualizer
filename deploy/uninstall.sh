@@ -9,6 +9,9 @@ systemctl --user disable finance-daily.service finance-daily-alert.service 2>/de
 for unit in finance-daily.service finance-daily.timer \
             finance-daily-alert.service spend-analyzer.service; do
     rm -f "$HOME/.config/systemd/user/$unit"
+    # Clear any lingering failed/ghost state so the removed unit doesn't show up
+    # in `systemctl --user --failed` after uninstall.
+    systemctl --user reset-failed "$unit" 2>/dev/null || true
 done
 systemctl --user daemon-reload
 

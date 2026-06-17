@@ -1,5 +1,13 @@
 # Plan: `persister` + `plaid_category_transformer` (two new sibling projects)
 
+> **Status (2026-06):** historical build spec — these components are **built and shipped**.
+> The current source of truth is each component's **README.md** + **CLAUDE.md** (and
+> [`LLM_ASSESSMENT.md`](../LLM_ASSESSMENT.md) for the categorizer); this doc is kept as a
+> design record. Notable change since it was written: the local LLM auditor is now **off by
+> default** (too noisy — see `LLM_ASSESSMENT.md`), and the periodic strong review is the
+> Claude audit ritual, not `qwen2.5:7b`. The `converter` references below are to the author's
+> earlier private project whose patterns were adapted here; it is not part of this repo.
+
 > **Audience:** separate execution agents with **no prior context**. This doc is
 > self-contained. Read the "Shared context" section first, then your project section.
 > All three pieces live in sibling dirs under `~/`:

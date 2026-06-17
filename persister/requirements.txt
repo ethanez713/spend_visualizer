@@ -1,5 +1,5 @@
 # Pinned direct dependencies — supply-chain hardening (exact == versions).
-# Captured to match the known-good versions used by ../converter (2026-06-07).
+# Captured from a known-good local environment (2026-06-07).
 # Bump deliberately; review changelogs before upgrading.
 #
 # Install into a DEDICATED virtualenv so a compromised global package can't reach

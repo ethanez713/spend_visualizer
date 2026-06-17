@@ -33,6 +33,11 @@ from .config import AUDIT_CONFIDENCE_LEVELS
 # config.py to skip trusted rows. A missing/blank level counts as UNKNOWN.
 PROCESS_CONFIDENCE = AUDIT_CONFIDENCE_LEVELS
 
+# The full universe of valid PFC confidence levels (Plaid's enum + our UNKNOWN
+# fallback). Used to validate the --confidence CLI override — distinct from
+# PROCESS_CONFIDENCE, which is the (possibly narrowed) default *selection*.
+VALID_CONFIDENCE_LEVELS = frozenset({"LOW", "MEDIUM", "HIGH", "VERY_HIGH", "UNKNOWN"})
+
 # Sentinel written into pf_category_confidence (and nested confidence_level) on a
 # correction, so downstream knows the value is no longer Plaid's own confidence.
 CORRECTED_CONFIDENCE = "CORRECTED"
