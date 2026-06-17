@@ -3,8 +3,16 @@
 Compares each tier-1 category's trailing monthly running-average spend against
 its monthly goal, with %-of-goal and $ diff heatmaps and the derived cuts
 (Total, Annualized, Less Mortgage, Less Mortgage & Home).
+
+Actuals come from one of two sources, both reduced to the same category × month
+pivot before rendering:
+  - the built-in tier1 cube (default), or
+  - an external pre-categorized ledger CSV, when ``budget.ledger_csv`` is set —
+    so the categories line up with the established (converter-defined) budget.
 """
 from __future__ import annotations
+
+from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
@@ -13,6 +21,7 @@ import streamlit as st
 import state
 from config_io import Budget
 from cube import Cube, GroupingSpec
+from ledger import load_ledger, monthly_pivot as ledger_monthly_pivot
 from viz import style_table
 
 
@@ -29,6 +38,27 @@ def _monthly_pivot(cube: Cube, spec: GroupingSpec) -> pd.DataFrame:
         return pd.DataFrame()
     return monthly.pivot_table(index="tier1", columns="month", values="spend",
                                aggfunc="sum").fillna(0.0)
+
+
+@st.cache_data(show_spinner=False)
+def _cached_ledger(path: str, cache_key: tuple):
+    # `cache_key` (path + mtime/size) is a normal (hashed) param ON PURPOSE: it
+    # must bust the cache when the ledger is regenerated. Underscore-naming it
+    # would make cache_data skip it and pin the result to the first load forever
+    # (the same trap app.py's `_config_signature` calls out).
+    return load_ledger(path)
+
+
+def _ledger_pivot(path: str, spec: GroupingSpec) -> pd.DataFrame:
+    """Category × month pivot from the external ledger, honoring the filters it
+    can (date range + person); see ledger.py for why the rest don't apply."""
+    st_info = Path(path).stat()
+    ledger = _cached_ledger(path, (path, st_info.st_mtime, st_info.st_size))
+    return ledger_monthly_pivot(
+        ledger,
+        persons=spec.filters.get("person") or None,
+        date_from=spec.date_from, date_to=spec.date_to,
+    )
 
 
 def _running_avg(pivot: pd.DataFrame, window: int) -> pd.Series:
@@ -52,9 +82,21 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
     if not budget.goals:
         st.info("No `config/budget.yaml` found — add monthly goals to enable this view.")
         return
-    st.caption(f"YTD average and trailing {window}-month running average vs monthly goal.")
 
-    pivot = _monthly_pivot(cube, spec)
+    ledger_csv = budget.resolved_ledger_csv
+    if ledger_csv and Path(ledger_csv).exists():
+        pivot = _ledger_pivot(ledger_csv, spec)
+        st.caption(f"YTD average and trailing {window}-month running average vs monthly "
+                   "goal. Actuals from the external categorized ledger — only the date "
+                   "and person filters apply here.")
+    else:
+        if ledger_csv:
+            st.warning(f"Configured budget ledger not found: `{ledger_csv}` — "
+                       "falling back to the built-in categorization. Run the pipeline "
+                       "to (re)generate it.")
+        pivot = _monthly_pivot(cube, spec)
+        st.caption(f"YTD average and trailing {window}-month running average vs monthly goal.")
+
     avg = _running_avg(pivot, window)
     ytd = _ytd_avg(pivot)
     avg_col = f"{window}mo Avg"
@@ -117,21 +159,23 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
             hidden_names = table.loc[table["_hidden"], "Category"].tolist()
             st.caption(f"🙈 Hidden from totals: {', '.join(hidden_names)}")
 
-    _trends(cube, spec, window)
+    _trends(pivot, window)
 
 
-def _trends(cube: Cube, spec: GroupingSpec, window: int) -> None:
-    """Monthly spend stacked by category, with a running-average overlay."""
+def _trends(pivot: pd.DataFrame, window: int) -> None:
+    """Monthly spend stacked by category, with a running-average overlay.
+
+    Driven by the same category × month pivot as the table (so both views agree
+    on the source), minus hidden categories."""
     st.subheader("Trends")
-    trend = cube.rollup(GroupingSpec(
-        group_by=["month", "tier1"], filters={**spec.filters, "flow": "spend"},
-        date_from=spec.date_from, date_to=spec.date_to,
-        measures=["spend"], order_by=None))
-    if trend.empty:
+    if pivot.empty:
         st.caption("No spend to chart.")
         return
-    piv = trend.pivot_table(index="month", columns="tier1", values="spend",
-                            aggfunc="sum").fillna(0.0).sort_index()
+    visible = [c for c in pivot.index if not state.is_hidden("tier1", c)]
+    piv = pivot.loc[visible].T.sort_index()         # rows = month, cols = category
+    if piv.empty:
+        st.caption("No spend to chart.")
+        return
     fig = px.bar(piv, x=piv.index, y=list(piv.columns))
     roll = piv.sum(axis=1).rolling(min(window, len(piv)), min_periods=1).mean()
     fig.add_scatter(x=piv.index, y=roll, mode="lines+markers",

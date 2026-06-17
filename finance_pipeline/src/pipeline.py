@@ -12,6 +12,10 @@ venv from its own repo root, stopping at the first non-zero exit:
      + local LLM reviewer), updates ``data/transactions_categorized.{jsonl,csv}`` and
      the review worklist, and pushes Drive revisions. Its divergence gate exits
      non-zero (pipeline STOPS) if the Drive copy drifted from the local store.
+  2b. (optional) the external ``converter`` project — only when one is configured
+     (see ``config._converter_dir``). Regenerates the budget ledger CSV the Budget
+     tab reads so its categories match the established budget. Local-only and
+     NON-fatal: it derives a view, never touches the source stores.
   3. ``spend_analyzer`` — serves the Streamlit UI over the categorized store and
      opens the default browser at the local URL.
 
@@ -69,6 +73,9 @@ def parse_args(argv=None, *, default_port: int = 8501) -> argparse.Namespace:
                    help="after the data steps succeed, commit the data-root git repo "
                         "(if dirty) and push it to its 'origin' remote — explicit "
                         "opt-in upload, like every off-machine egress")
+    p.add_argument("--no-convert", action="store_true",
+                   help="skip regenerating the external budget ledger even if a "
+                        "converter is configured (see the README's converter step)")
     p.add_argument("--no-ui", action="store_true",
                    help="stop after the data steps; don't launch the Streamlit UI")
     p.add_argument("--no-browser", action="store_true",
@@ -100,6 +107,17 @@ def categorize_cmd(cfg: Config, args: argparse.Namespace) -> list[str]:
     if args.force_push:
         cmd.append("--force-push")
     return cmd
+
+
+def convert_cmd(cfg: Config) -> list[str]:
+    """Regenerate the budget ledger from the just-categorized store, fully local.
+
+    ``--no-fetch`` skips the converter's own upstream run (this pipeline IS that
+    upstream — calling it would recurse), ``--all`` converts the whole history so
+    the Budget tab's trailing averages have every month, and ``--no-upload`` keeps
+    it offline (no Google-Sheet egress — Drive/Sheet pushes stay opt-in)."""
+    return [str(cfg.converter_python), "refresh.py", "--no-fetch", "--all",
+            "--no-upload", "--output", str(cfg.budget_ledger_csv)]
 
 
 def ui_cmd(cfg: Config, args: argparse.Namespace) -> list[str]:
@@ -214,6 +232,30 @@ def run_step(name: str, cmd: list[str], cwd) -> None:
     print(f"✓ {name} finished in {time.monotonic() - t0:.0f}s")
 
 
+def convert_ledger(cfg: Config, args: argparse.Namespace) -> None:
+    """Optionally regenerate the external budget ledger from the categorized store.
+
+    No-op unless a converter is configured (`cfg.converter_dir`) and `--no-convert`
+    wasn't passed. Unlike the data steps, this is NON-fatal: it only derives a view
+    over already-persisted data (it never touches the source stores), so a converter
+    hiccup must not sink the core pipeline or the UI — it warns loudly and continues."""
+    if args.no_convert or not cfg.converter_dir:
+        return
+    print("\n━━━ convert (external budget ledger) ━━━")
+    if not cfg.converter_python.is_file():
+        print(f"  ⚠ converter configured at {cfg.converter_dir} but its venv python "
+              f"is missing ({cfg.converter_python}); skipping ledger regen. "
+              "Rebuild the converter's .venv, or unset its pointer.")
+        return
+    t0 = time.monotonic()
+    rc = subprocess.run(convert_cmd(cfg), cwd=cfg.converter_dir).returncode
+    if rc != 0:
+        print(f"  ⚠ converter exited {rc}; the Budget tab will use the previous "
+              "ledger (or its built-in categorization). Core pipeline unaffected.")
+        return
+    print(f"✓ convert finished in {time.monotonic() - t0:.0f}s → {cfg.budget_ledger_csv}")
+
+
 def wait_for_ui(proc: subprocess.Popen, port: int, timeout_s: float) -> None:
     """Block until the UI accepts TCP on ``port``; die clearly if it never does."""
     deadline = time.monotonic() + timeout_s
@@ -299,6 +341,7 @@ def main(argv=None, cfg: Config | None = None) -> None:
                      cfg.transactions_dir)
             run_step("categorize (plaid_category_transformer)",
                      categorize_cmd(cfg, args), cfg.transformer_dir)
+            convert_ledger(cfg, args)   # optional, non-fatal; before push so it's versioned
             if args.push_data:
                 print("\n━━━ push data (git → origin) ━━━")
                 t0 = time.monotonic()
