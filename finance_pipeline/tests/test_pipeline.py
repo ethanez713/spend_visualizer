@@ -18,14 +18,17 @@ import textwrap
 import pytest
 
 from src.config import Config
+import src.pipeline
 from src.pipeline import (
     categorize_cmd,
     convert_cmd,
     ensure_drive_creds,
     fetch_cmd,
     main,
+    pinned_urls,
     preflight,
     parse_args,
+    sheet_cmd,
     ui_cmd,
 )
 
@@ -121,7 +124,9 @@ def with_converter(fake_world, tmp_path):
     The fake converter `python` logs `convert <argv...>` to the shared log and
     honors fail.txt, exactly like the component pythons — so convert tests assert
     the orchestrator's contract (ordering, offline flags, non-fatal failure)
-    without the real converter project."""
+    without the real converter project. When invoked in Sheet mode (--url-file)
+    it reports a fake Sheet URL, unless a `no_url.txt` sentinel simulates an
+    upload that failed inside an otherwise-successful converter run."""
     cfg, log = fake_world
     converter = tmp_path / "converter"
     converter_python = converter / ".venv" / "bin" / "python"
@@ -131,7 +136,13 @@ def with_converter(fake_world, tmp_path):
         pathlib.Path({str(log)!r}).open("a").write(
             "convert " + " ".join(sys.argv[1:]) + chr(10))
         fail = pathlib.Path(__file__).parent / "fail.txt"
-        sys.exit(int(fail.read_text()) if fail.is_file() else 0)
+        if fail.is_file():
+            sys.exit(int(fail.read_text()))
+        if "--url-file" in sys.argv and \\
+                not (pathlib.Path(__file__).parent / "no_url.txt").is_file():
+            pathlib.Path(sys.argv[sys.argv.index("--url-file") + 1]).write_text(
+                "https://sheet.example/fake" + chr(10))
+        sys.exit(0)
         """)
     _write_exe(converter_python, body)
     cfg = dataclasses.replace(
@@ -397,7 +408,7 @@ def given_converter_configured_when_building_convert_cmd_then_local_and_offline(
     cfg, _ = with_converter
     cmd = convert_cmd(cfg)
     assert cmd[:2] == [str(cfg.converter_python), "refresh.py"]
-    assert {"--no-fetch", "--all", "--no-upload"} <= set(cmd)   # no Plaid, no Sheet egress
+    assert {"--all", "--no-upload"} <= set(cmd)   # whole history, no Sheet egress
     assert cmd[-2:] == ["--output", str(cfg.budget_ledger_csv)]
 
 
@@ -409,7 +420,7 @@ def given_converter_configured_when_main_then_convert_runs_after_categorize(with
     assert [l.split()[0] for l in _log_lines(log)] == \
         ["fetch", "categorize", "convert", "streamlit"]
     convert_line = next(l for l in _log_lines(log) if l.startswith("convert"))
-    assert "--no-fetch" in convert_line and "--no-upload" in convert_line
+    assert "--no-upload" in convert_line          # the ledger regen never uploads
 
 
 def given_no_convert_flag_when_main_then_ledger_not_regenerated(with_converter):
@@ -451,3 +462,130 @@ def given_converter_and_push_when_main_then_convert_precedes_push(with_converter
 
     assert [l.split()[0] for l in _log_lines(log)] == ["fetch", "categorize", "convert"]
     assert _remote_commits(origin) == 1           # ledger regen happens before the push
+
+
+# ── --sheet: monthly Google-Sheet upload + extra browser tabs ─────────────────
+# The `run_finances` ritual: after the data steps, the converter runs a second
+# time in Sheet mode (upload ON, URL reported back via --url-file) and the fresh
+# Sheet plus any <data_root>/pinned_tabs URLs open as extra browser tabs.
+
+@pytest.fixture
+def opened_urls(monkeypatch):
+    """Capture what the pipeline would open in a browser (no real browser)."""
+    urls: list[str] = []
+    monkeypatch.setattr(src.pipeline, "open_browser",
+                        lambda url: urls.append(url) or "fake-opener")
+    return urls
+
+
+def given_sheet_flag_when_building_sheet_cmd_then_upload_stays_on(with_converter):
+    cfg, _ = with_converter
+    args = parse_args(["--sheet"])
+    cmd = sheet_cmd(cfg, args, "/tmp/u.txt")
+    assert cmd[:2] == [str(cfg.converter_python), "refresh.py"]
+    assert "--no-upload" not in cmd               # this step IS the (opt-in) egress
+    assert cmd[-2:] == ["--url-file", "/tmp/u.txt"]
+
+
+def given_sheet_month_when_building_sheet_cmd_then_month_propagates(with_converter):
+    cfg, _ = with_converter
+    args = parse_args(["--sheet", "--sheet-month", "2026-06"])
+    cmd = sheet_cmd(cfg, args, "/tmp/u.txt")
+    assert "--month" in cmd and "2026-06" in cmd
+
+
+def given_sheet_flag_when_main_then_sheet_runs_last_and_tabs_open(
+        with_converter, opened_urls):
+    cfg, log = with_converter
+
+    main(["--no-drive", "--sheet"], cfg=cfg)
+
+    assert [l.split()[0] for l in _log_lines(log)] == \
+        ["fetch", "categorize", "convert", "convert", "streamlit"]
+    sheet_line = _log_lines(log)[3]               # second converter call = Sheet mode
+    assert "--url-file" in sheet_line and "--no-upload" not in sheet_line
+    assert opened_urls == [f"http://localhost:{cfg.ui_port}",
+                           "https://sheet.example/fake"]
+
+
+def given_pinned_tabs_when_sheet_run_then_pinned_urls_open_after_sheet(
+        with_converter, opened_urls):
+    cfg, _ = with_converter
+    cfg.data_root.mkdir(parents=True, exist_ok=True)
+    (cfg.data_root / "pinned_tabs").write_text(
+        "# master budget spreadsheet\n"
+        "https://docs.google.com/spreadsheets/d/master\n"
+        "\n"
+        "https://docs.google.com/document/d/notes\n")
+
+    main(["--no-drive", "--sheet"], cfg=cfg)
+
+    assert opened_urls == [f"http://localhost:{cfg.ui_port}",
+                           "https://sheet.example/fake",
+                           "https://docs.google.com/spreadsheets/d/master",
+                           "https://docs.google.com/document/d/notes"]
+
+
+def given_no_sheet_flag_when_main_then_no_upload_and_no_pinned_tabs(
+        with_converter, opened_urls):
+    cfg, log = with_converter
+    cfg.data_root.mkdir(parents=True, exist_ok=True)
+    (cfg.data_root / "pinned_tabs").write_text("https://example.com/pinned\n")
+
+    main(["--no-drive"], cfg=cfg)
+
+    convert_lines = [l for l in _log_lines(log) if l.startswith("convert")]
+    assert len(convert_lines) == 1                # ledger regen only, no Sheet mode
+    assert "--no-upload" in convert_lines[0]
+    assert opened_urls == [f"http://localhost:{cfg.ui_port}"]   # pinned tabs are --sheet-only
+
+
+def given_sheet_without_converter_when_preflight_then_stops(fake_world):
+    cfg, log = fake_world                         # no converter configured
+
+    with pytest.raises(SystemExit) as exc:
+        main(["--no-drive", "--no-ui", "--sheet"], cfg=cfg)
+
+    assert "--sheet" in str(exc.value)
+    assert _log_lines(log) == []                  # nothing ran
+
+
+def given_sheet_upload_fails_when_main_then_ui_still_serves(
+        with_converter, opened_urls, capsys):
+    cfg, log = with_converter
+    _fail_next(cfg.converter_python, 7)           # both converter calls fail — non-fatal
+
+    main(["--no-drive", "--sheet"], cfg=cfg)      # does NOT raise
+
+    assert _log_lines(log)[-1].startswith("streamlit")
+    assert opened_urls == [f"http://localhost:{cfg.ui_port}"]   # no broken Sheet tab
+    assert "sheet upload exited 7" in capsys.readouterr().out
+
+
+def given_converter_reports_no_url_when_sheet_then_warns_without_tab(
+        with_converter, opened_urls, capsys):
+    cfg, _ = with_converter
+    (cfg.converter_python.parent / "no_url.txt").write_text("")  # upload failed inside
+
+    main(["--no-drive", "--sheet"], cfg=cfg)
+
+    assert opened_urls == [f"http://localhost:{cfg.ui_port}"]
+    assert "reported no Sheet URL" in capsys.readouterr().out
+
+
+def given_sheet_with_no_ui_when_main_then_urls_printed_not_opened(
+        with_converter, opened_urls, capsys):
+    cfg, log = with_converter
+
+    main(["--no-drive", "--no-ui", "--sheet"], cfg=cfg)
+
+    assert [l.split()[0] for l in _log_lines(log)] == \
+        ["fetch", "categorize", "convert", "convert"]
+    assert opened_urls == []
+    assert "open https://sheet.example/fake in your browser" in capsys.readouterr().out
+
+
+def given_pinned_tabs_file_when_parsing_then_comments_and_blanks_skipped(tmp_path):
+    (tmp_path / "pinned_tabs").write_text("# a comment\n\n  https://x.example/a  \n")
+    assert pinned_urls(tmp_path) == ["https://x.example/a"]
+    assert pinned_urls(tmp_path / "missing") == []   # no data root file → no tabs

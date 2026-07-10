@@ -31,11 +31,17 @@ repo root.
     │                                    → Drive push (new revisions)
     ▼
 2b. convert      converter/  (optional)  regenerate the budget ledger from the categorized
-    │                                    store (refresh.py --no-fetch --all --no-upload):
+    │                                    store (refresh.py --all --no-upload):
     │                                    PFC → the established budget's categories →
     │                                    <data_root>/spend_analyzer/data/budget_ledger.csv.
     │                                    Skipped unless a converter is configured; local-only
     │                                    and non-fatal (it only derives a view).
+    ▼
+2c. sheet        converter/  (--sheet)   convert the chosen month and upload it as a new
+    │                                    Google Sheet (explicit opt-in egress); the Sheet
+    │                                    URL comes back via --url-file and opens as an
+    │                                    extra browser tab, plus any URLs pinned in
+    │                                    <data_root>/pinned_tabs. Non-fatal.
     ▼
  3. analyze      spend_analyzer/         Streamlit UI over the CATEGORIZED store
                                          (http://localhost:8501) + default browser opened
@@ -62,6 +68,8 @@ repo root.
 | `--llm-defer` | server mode: rules-only now, rows stay LLM-pending so a later LLM-enabled run audits them (mutually exclusive with `--no-llm`) |
 | `--force-push` | skip the transformer's Drive head adoption: local store wins |
 | `--no-convert` | skip the optional budget-ledger regen even if a converter is configured |
+| `--sheet` | monthly ritual: also run the converter's Google-Sheet upload (opt-in egress) and open the fresh Sheet + `<data_root>/pinned_tabs` URLs as extra browser tabs |
+| `--sheet-month YYYY-MM` | month window for `--sheet` (default: current calendar month) |
 | `--no-ui` | stop after the data steps (e.g. for scheduled runs) |
 | `--push-data` | after the data steps: commit the data-root git repo (if dirty) and push to its `origin` — explicit opt-in upload (no remote ⇒ warn, commit locally) |
 | `--no-browser` | serve the UI but don't open a browser |
@@ -91,11 +99,22 @@ tab reads when `ledger.csv` is set in its `budget.yaml` (see spend_analyzer's RE
   `<data_root>/converter_root` — a plain-text pointer (this orchestrator stays
   stdlib-only, so the pointer lives outside the analyzer's YAML). Both live in the
   private data root, so this repo stays generic. Unset ⇒ the step is simply skipped.
-- The step runs the converter as `refresh.py --no-fetch --all --no-upload` under its own
-  venv: no Plaid fetch (this pipeline *is* its upstream — re-fetching would recurse), no
-  Google-Sheet egress. It is **non-fatal** — a converter hiccup warns loudly and the run
-  continues (it derives a view; it never touches the source stores). `--no-convert`
-  skips it outright.
+- The step runs the converter as `refresh.py --all --no-upload` under its own venv: no
+  Google-Sheet egress, and no fetch — the converter never fetches; this pipeline *is*
+  its upstream (invocation is deliberately one-directional, pipeline → converter). It is
+  **non-fatal** — a converter hiccup warns loudly and the run continues (it derives a
+  view; it never touches the source stores). `--no-convert` skips it outright.
+
+### `--sheet`: the monthly ritual (step 2c)
+
+`./run.py --sheet` additionally runs the converter in its month-Sheet mode
+(`refresh.py --url-file …`, upload ON — the explicit opt-in egress), then opens **all**
+the month-in-review tabs at once: the Streamlit UI, the freshly uploaded Google Sheet,
+and every URL listed in `<data_root>/pinned_tabs` (one per line, `#` comments allowed —
+e.g. the master budget spreadsheet; personal URLs, so the file lives in the private
+data root). The step runs *outside* the pipeline lock (it's read-only over the store)
+and is non-fatal. A `run_finances` wrapper script on the PATH that just executes
+`run.py --sheet "$@"` makes this a single command.
 
 ## First-run notes
 

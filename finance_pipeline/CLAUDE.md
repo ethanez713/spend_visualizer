@@ -24,3 +24,11 @@ two machines legitimately write it — see the transformer's CLAUDE.md).
 - `tools/migrate_multiuser.py`: one-off owner back-fill for pre-multi-user data
   (scan-then-apply, idempotent, aborts on foreign owners). Operates on tokens.json
   (repo .secrets) + the stores under the data root (`--data-root` to override).
+- `--sheet` (the `run_finances` monthly ritual) is EXTRA egress on top of the live
+  run: a second converter invocation with upload ON (a new Google Sheet) — same
+  user-authorization rule as the rest of `./run.py`. It runs OUTSIDE the lock
+  (read-only over the store; a slow Google API must not block the next scheduled
+  run) and is non-fatal. The Sheet URL comes back via the converter's `--url-file`
+  and opens as an extra browser tab together with `<data_root>/pinned_tabs` URLs.
+  Invocation is one-directional (pipeline → converter): the converter's refresh.py
+  no longer fetches, so never re-add a fetch flag to its invocations.
