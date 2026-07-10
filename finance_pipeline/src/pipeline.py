@@ -16,6 +16,11 @@ venv from its own repo root, stopping at the first non-zero exit:
      (see ``config._converter_dir``). Regenerates the budget ledger CSV the Budget
      tab reads so its categories match the established budget. Local-only and
      NON-fatal: it derives a view, never touches the source stores.
+  2c. (optional, ``--sheet``) the converter again, in its month-Sheet mode: converts
+     the chosen month and uploads it as a new Google Sheet (explicit opt-in egress,
+     like every upload). NON-fatal; the Sheet URL is captured via the converter's
+     ``--url-file`` and opened as an extra browser tab, along with any URLs pinned
+     in ``<data_root>/pinned_tabs`` (e.g. the master budget spreadsheet).
   3. ``spend_analyzer`` — serves the Streamlit UI over the categorized store and
      opens the default browser at the local URL.
 
@@ -32,9 +37,11 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import webbrowser
 from contextlib import contextmanager
+from pathlib import Path
 
 from .config import Config, default_config
 from .git_push import push_data
@@ -76,6 +83,14 @@ def parse_args(argv=None, *, default_port: int = 8501) -> argparse.Namespace:
     p.add_argument("--no-convert", action="store_true",
                    help="skip regenerating the external budget ledger even if a "
                         "converter is configured (see the README's converter step)")
+    p.add_argument("--sheet", action="store_true",
+                   help="after the data steps, run the external converter's monthly "
+                        "Google-Sheet upload and open the new Sheet (plus any URLs in "
+                        "<data_root>/pinned_tabs) as extra browser tabs — explicit "
+                        "opt-in egress; needs a configured converter")
+    p.add_argument("--sheet-month", default=None, metavar="YYYY-MM",
+                   help="month window for the --sheet upload (default: the converter's "
+                        "default, i.e. the current calendar month)")
     p.add_argument("--no-ui", action="store_true",
                    help="stop after the data steps; don't launch the Streamlit UI")
     p.add_argument("--no-browser", action="store_true",
@@ -112,12 +127,22 @@ def categorize_cmd(cfg: Config, args: argparse.Namespace) -> list[str]:
 def convert_cmd(cfg: Config) -> list[str]:
     """Regenerate the budget ledger from the just-categorized store, fully local.
 
-    ``--no-fetch`` skips the converter's own upstream run (this pipeline IS that
-    upstream — calling it would recurse), ``--all`` converts the whole history so
-    the Budget tab's trailing averages have every month, and ``--no-upload`` keeps
-    it offline (no Google-Sheet egress — Drive/Sheet pushes stay opt-in)."""
-    return [str(cfg.converter_python), "refresh.py", "--no-fetch", "--all",
+    ``--all`` converts the whole history so the Budget tab's trailing averages have
+    every month, and ``--no-upload`` keeps it offline (no Google-Sheet egress —
+    Drive/Sheet pushes stay opt-in). The converter never fetches: this pipeline is
+    its upstream (invocation is one-directional, pipeline → converter)."""
+    return [str(cfg.converter_python), "refresh.py", "--all",
             "--no-upload", "--output", str(cfg.budget_ledger_csv)]
+
+
+def sheet_cmd(cfg: Config, args: argparse.Namespace, url_file: str) -> list[str]:
+    """The converter's month-Sheet mode: convert the chosen month (its default:
+    the current one) and upload it as a new Google Sheet, reporting the Sheet's
+    URL through ``url_file`` so the pipeline can open it in a browser tab."""
+    cmd = [str(cfg.converter_python), "refresh.py", "--url-file", url_file]
+    if args.sheet_month:
+        cmd += ["--month", args.sheet_month]
+    return cmd
 
 
 def ui_cmd(cfg: Config, args: argparse.Namespace) -> list[str]:
@@ -188,6 +213,19 @@ def preflight(cfg: Config, args: argparse.Namespace) -> None:
             f"`{cfg.transactions_python} app.py` in {cfg.transactions_dir} "
             "and link your banks first"
         )
+    # --sheet was asked for explicitly, so a missing converter is a hard failure
+    # (unlike the ledger regen, which silently skips when none is configured).
+    if args.sheet:
+        if not cfg.converter_dir:
+            problems.append(
+                "  - --sheet needs a configured converter: set "
+                "$SPEND_VISUALIZER_CONVERTER or <data_root>/converter_root"
+            )
+        elif not cfg.converter_python.is_file():
+            problems.append(
+                f"  - --sheet: converter venv python missing ({cfg.converter_python}); "
+                "rebuild the converter's .venv"
+            )
     if problems:
         sys.exit("✖ Preflight failed:\n" + "\n".join(problems))
 
@@ -256,6 +294,44 @@ def convert_ledger(cfg: Config, args: argparse.Namespace) -> None:
     print(f"✓ convert finished in {time.monotonic() - t0:.0f}s → {cfg.budget_ledger_csv}")
 
 
+def upload_sheet(cfg: Config, args: argparse.Namespace) -> str | None:
+    """(--sheet) Upload the month's ledger as a new Google Sheet via the converter.
+
+    Runs AFTER the lock is released — it's read-only over the categorized store, and
+    a slow Google API must not keep the next scheduled run out. NON-fatal like the
+    ledger regen: a failed upload just means no Sheet tab to open. Returns the new
+    Sheet's URL (read back through the converter's --url-file), or None."""
+    print("\n━━━ sheet (monthly Google-Sheet upload) ━━━")
+    t0 = time.monotonic()
+    with tempfile.TemporaryDirectory() as tmp:
+        url_file = Path(tmp) / "sheet_url.txt"
+        rc = subprocess.run(sheet_cmd(cfg, args, str(url_file)),
+                            cwd=cfg.converter_dir).returncode
+        if rc != 0:
+            print(f"  ⚠ sheet upload exited {rc}; no Sheet tab will be opened. "
+                  "Core pipeline unaffected — re-run refresh.py in the converter "
+                  "to retry the upload alone.")
+            return None
+        if not url_file.is_file():
+            print("  ⚠ converter succeeded but reported no Sheet URL (upload "
+                  "skipped/failed inside the converter?) — no Sheet tab to open.")
+            return None
+        url = url_file.read_text(encoding="utf-8").strip()
+    print(f"✓ sheet finished in {time.monotonic() - t0:.0f}s → {url}")
+    return url
+
+
+def pinned_urls(data_root: Path) -> list[str]:
+    """Extra tabs for --sheet runs: non-comment lines of ``<data_root>/pinned_tabs``
+    (e.g. the master budget spreadsheet). Personal URLs, so the file lives in the
+    private data root — missing file just means no extra tabs."""
+    f = data_root / "pinned_tabs"
+    if not f.is_file():
+        return []
+    return [line.strip() for line in f.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.strip().startswith("#")]
+
+
 def wait_for_ui(proc: subprocess.Popen, port: int, timeout_s: float) -> None:
     """Block until the UI accepts TCP on ``port``; die clearly if it never does."""
     deadline = time.monotonic() + timeout_s
@@ -291,8 +367,11 @@ def open_browser(url: str) -> str | None:
     return "webbrowser" if webbrowser.open(url) else None
 
 
-def step_analyze(cfg: Config, args: argparse.Namespace) -> int:
-    """Launch the Streamlit UI, open the browser, and hand the foreground to it."""
+def step_analyze(cfg: Config, args: argparse.Namespace,
+                 extra_urls: tuple[str, ...] = ()) -> int:
+    """Launch the Streamlit UI, open the browser (plus ``extra_urls`` as additional
+    tabs — the fresh Sheet and any pinned tabs on --sheet runs), and hand the
+    foreground to it."""
     print("\n━━━ analyze (spend_analyzer UI) ━━━")
     proc = subprocess.Popen(ui_cmd(cfg, args), cwd=cfg.analyzer_dir)
     url = f"http://localhost:{args.port}"
@@ -300,11 +379,13 @@ def step_analyze(cfg: Config, args: argparse.Namespace) -> int:
         wait_for_ui(proc, args.port, cfg.ui_start_timeout_s)
         print(f"✓ UI serving at {url}")
         if args.no_browser:
-            print(f"  open {url} in your browser (--no-browser was set)")
+            for u in (url, *extra_urls):
+                print(f"  open {u} in your browser (--no-browser was set)")
         else:
-            used = open_browser(url)
-            print(f"  opened default browser via {used}" if used
-                  else f"  ⚠ couldn't auto-open a browser — visit {url}")
+            for u in (url, *extra_urls):
+                used = open_browser(u)
+                print(f"  opened {u} via {used}" if used
+                      else f"  ⚠ couldn't auto-open a browser — visit {u}")
         print("  Ctrl+C stops the UI (the fetched/categorized data is already saved).")
         return proc.wait()
     except KeyboardInterrupt:
@@ -332,6 +413,8 @@ def main(argv=None, cfg: Config | None = None) -> None:
     mode = "OFFLINE (--no-drive)" if args.no_drive else "Drive sync ON"
     if args.push_data:
         mode += " + data git push"
+    if args.sheet:
+        mode += " + Sheet upload"
     print(f"finance_pipeline — fetch → categorize → analyze   [{mode}]")
     preflight(cfg, args)
 
@@ -353,11 +436,20 @@ def main(argv=None, cfg: Config | None = None) -> None:
         # atomically), so a plain re-run resumes from the durable state.
         sys.exit("\n✖ Interrupted — pipeline stopped. Re-run ./run.py to resume.")
 
+    # Sheet upload + tab collection happen OUTSIDE the lock (read-only over the
+    # store; a slow Google API must not block the next scheduled run).
+    extra_urls: tuple[str, ...] = ()
+    if args.sheet:
+        sheet_url = upload_sheet(cfg, args)
+        extra_urls = ((sheet_url,) if sheet_url else ()) + tuple(pinned_urls(cfg.data_root))
+
     if args.no_ui:
         print("\n✓ Data pipeline complete (--no-ui: skipping the Streamlit step).")
+        for u in extra_urls:
+            print(f"  open {u} in your browser (--no-ui was set)")
         return
 
-    rc = step_analyze(cfg, args)
+    rc = step_analyze(cfg, args, extra_urls)
     if rc != 0:
         sys.exit(rc)
 
