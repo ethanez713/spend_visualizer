@@ -18,6 +18,22 @@ anything. The core path is **offline**; Plaid is only called by the collector, G
 Drive sync is local/opt-in, and the local LLM reviewer is off by default (periodic deep
 review is the opt-in Claude ritual — step 2 below).
 
+## Run the entire pipeline
+
+One command runs everything — fetch → categorize → budget ledger → Streamlit UI in
+your browser (setup: see "Full setup for a new user" below):
+
+```bash
+cd finance_pipeline
+./run.py                                  # entire pipeline + open the UI
+
+# …with the monthly Google-Sheet export (optional external converter; also opens
+# the fresh Sheet + your pinned tabs as extra browser tabs):
+./run.py --sheet                                                     # this calendar month
+./run.py --sheet --sheet-month 2026-06                               # a past month
+./run.py --sheet --sheet-since 2026-06-15 --sheet-until 2026-07-09   # a specific window
+```
+
 ## Highlights
 
 - **Real integrations, not a toy** — live Plaid sync, Google Drive replication, a Streamlit
@@ -159,6 +175,8 @@ the full flag list.
 | …also git-push the data-root repo to its remote | `./run.py --no-ui --push-data` |
 | Fully offline (no Drive pull/push) | `./run.py --no-drive` |
 | Opt IN to the local LLM reviewer (off by default; needs Ollama) | `./run.py --llm` |
+| …plus the monthly Google-Sheet export + extra tabs (optional converter) | `./run.py --sheet` |
+| Sheet for a past month / a specific window | `./run.py --sheet --sheet-month 2026-06` · `--sheet-since 2026-06-15 --sheet-until 2026-07-09` |
 
 ### Transactions (Plaid collector)
 
