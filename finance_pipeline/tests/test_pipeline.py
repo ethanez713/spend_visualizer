@@ -494,6 +494,15 @@ def given_sheet_month_when_building_sheet_cmd_then_month_propagates(with_convert
     assert "--month" in cmd and "2026-06" in cmd
 
 
+def given_sheet_window_when_building_sheet_cmd_then_since_until_propagate(with_converter):
+    cfg, _ = with_converter
+    args = parse_args(["--sheet", "--sheet-since", "2026-06-15",
+                       "--sheet-until", "2026-07-09"])
+    cmd = sheet_cmd(cfg, args, "/tmp/u.txt")
+    assert cmd[cmd.index("--since") + 1] == "2026-06-15"
+    assert cmd[cmd.index("--until") + 1] == "2026-07-09"
+
+
 def given_sheet_flag_when_main_then_sheet_runs_last_and_tabs_open(
         with_converter, opened_urls):
     cfg, log = with_converter

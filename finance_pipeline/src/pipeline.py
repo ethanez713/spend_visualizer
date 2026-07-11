@@ -91,6 +91,12 @@ def parse_args(argv=None, *, default_port: int = 8501) -> argparse.Namespace:
     p.add_argument("--sheet-month", default=None, metavar="YYYY-MM",
                    help="month window for the --sheet upload (default: the converter's "
                         "default, i.e. the current calendar month)")
+    p.add_argument("--sheet-since", default=None, metavar="DATE",
+                   help="inclusive start date for the --sheet upload window "
+                        "(overrides --sheet-month)")
+    p.add_argument("--sheet-until", default=None, metavar="DATE",
+                   help="inclusive end date for the --sheet upload window "
+                        "(overrides --sheet-month)")
     p.add_argument("--no-ui", action="store_true",
                    help="stop after the data steps; don't launch the Streamlit UI")
     p.add_argument("--no-browser", action="store_true",
@@ -136,12 +142,17 @@ def convert_cmd(cfg: Config) -> list[str]:
 
 
 def sheet_cmd(cfg: Config, args: argparse.Namespace, url_file: str) -> list[str]:
-    """The converter's month-Sheet mode: convert the chosen month (its default:
-    the current one) and upload it as a new Google Sheet, reporting the Sheet's
-    URL through ``url_file`` so the pipeline can open it in a browser tab."""
+    """The converter's Sheet mode: convert the chosen window (its default: the
+    current calendar month) and upload it as a new Google Sheet, reporting the
+    Sheet's URL through ``url_file`` so the pipeline can open it in a browser
+    tab. Window precedence is the converter's: --since/--until beat --month."""
     cmd = [str(cfg.converter_python), "refresh.py", "--url-file", url_file]
     if args.sheet_month:
         cmd += ["--month", args.sheet_month]
+    if args.sheet_since:
+        cmd += ["--since", args.sheet_since]
+    if args.sheet_until:
+        cmd += ["--until", args.sheet_until]
     return cmd
 
 
