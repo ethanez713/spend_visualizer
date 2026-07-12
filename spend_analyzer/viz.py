@@ -18,6 +18,28 @@ def humanize_atom(s: str | None) -> str:
     return str(s).replace("_", " ")
 
 
+# Categorization-provenance badges: who last set this row's category.
+# Blank step = Plaid's own category, never changed by the pipeline.
+PROVENANCE_BADGES = {
+    "mechanical": "🔧 rule",
+    "llm": "🤖 LLM",
+    "review": "👁 review",
+    "manual": "✏️ manual",
+}
+
+
+def provenance_why(step: str | None, reason: str | None,
+                   review_pending: bool = False) -> str:
+    """One-cell 'why this category' label: badge + the rule name / intent id."""
+    parts = []
+    badge = PROVENANCE_BADGES.get(str(step or ""))
+    if badge:
+        parts.append(f"{badge} · {reason}" if reason else badge)
+    if review_pending:
+        parts.append("⏳ suggestion")
+    return "  ".join(parts)
+
+
 def blank_if_missing(v):
     """None / NaN / 'None' -> '' so image columns don't print the word None."""
     if v is None:

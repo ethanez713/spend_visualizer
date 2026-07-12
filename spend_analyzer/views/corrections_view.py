@@ -1,5 +1,15 @@
-"""Corrections tab: manual recategorize intents + the triage report by fix-layer."""
+"""Overrides tab: the authoritative manual intents first, the triage notes demoted.
+
+Two very different things live here, in deliberate visual order:
+1. **My overrides** — the transformer's manual-edit intents: sticky, replayed on
+   every categorize run, the highest categorization authority. This is the "real"
+   fix path.
+2. **Triage notes** — the report-only corrections queue: never changes anything;
+   a note-to-self for later upstream/taxonomy work.
+"""
 from __future__ import annotations
+
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
@@ -10,18 +20,83 @@ from viz import sanitize_for_csv
 
 
 def render() -> None:
-    _render_manual_intents()
+    _render_overrides()
     st.divider()
-    st.subheader("Categorization corrections")
+    _render_triage_notes()
+
+
+@st.cache_data(show_spinner=False)
+def _affected(sig: tuple, edits_mtime: float) -> dict[str, int]:
+    """Rows-covered count per intent (sig/mtime bust the cache on data change)."""
+    return manual_edits.affected_counts(manual_edits.intents())
+
+
+def _render_overrides() -> None:
+    """The manual-edit intents: what I've overridden and what each is doing."""
+    st.subheader("My overrides (manual intents)")
+    err = manual_edits.status()
+    if err:
+        st.caption(f"⚠ Intent log unavailable: {err}")
+        return
+    items = manual_edits.intents()
     st.caption(
-        "Flagged from the Drilldown/Merchants views. Nothing here edits records — "
-        "it's a triage report: **upstream** fixes go to the transaction-generation "
-        "service; **local** fixes go to `config/taxonomy.yaml`."
+        "The **authoritative** fix path — appended to "
+        f"`{manual_edits.edits_path()}` and replayed by the categorizer on "
+        "**every** run: overrides trump rules and the LLM, survive full "
+        "re-audits, and merchant scope covers future transactions too. "
+        "Revoking hands the row back to the pipeline on the next run."
+    )
+    if not items:
+        st.info("No overrides yet. Tick 🚩 on a transaction in Drilldown or "
+                "Merchants, then use ‘✅ Override category’.")
+        return
+
+    try:
+        mtime = Path(manual_edits.edits_path()).stat().st_mtime
+    except OSError:
+        mtime = 0.0
+    counts = _affected(manual_edits.archive_sig(), mtime)
+
+    rows = [{
+        "id": it["id"],
+        "when": it["created_at"],
+        "scope": it["scope"],
+        "target": (it["match"].get("transaction_id")
+                   or (it.get("snapshot") or {}).get("merchant_name")
+                   or it["match"].get("merchant_name_normalized")
+                   or it["match"].get("merchant_entity_id")),
+        "→ category": f"{it['set']['primary']} / {it['set']['detailed']}",
+        "rows covered": counts.get(it["id"], 0),
+        "source": it.get("source", ""),
+        "note": it.get("note", ""),
+    } for it in items]
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True,
+                 column_config={"rows covered": st.column_config.NumberColumn(
+                     "rows covered",
+                     help="Archive rows this intent currently applies to "
+                          "(merchant scope keeps growing; 0 = target row not "
+                          "in the archive yet)")})
+    st.caption("Revoke an override (the row reverts and is re-audited next run):")
+    for it, row in zip(items, rows):
+        c1, c2 = st.columns([5, 1])
+        c1.write(f"`{it['id']}` · {it['scope']} · **{row['target']}** → "
+                 f"{it['set']['detailed']} · covers {row['rows covered']} row(s)"
+                 + (f" — {it['note']}" if it.get("note") else ""))
+        if c2.button("Revoke", key=f"revoke_{it['id']}"):
+            manual_edits.revoke(it["id"])
+            st.rerun()
+
+
+def _render_triage_notes() -> None:
+    st.subheader("Triage notes (report only)")
+    st.caption(
+        "Notes filed via ‘📝 Note for triage’ — **nothing here changes records**: "
+        "it's a to-do list for upstream (collector) vs local (taxonomy.yaml) "
+        "work. For an actual category fix, use ‘✅ Override category’ instead."
     )
     items = corr.load_corrections()
     if not items:
-        st.info("No corrections yet. Use the '✏️ Flag a categorization problem' "
-                "expander under a category or merchant to add one.")
+        st.info("No triage notes.")
         return
 
     up = [c for c in items if c["layer"] == "upstream"]
@@ -48,56 +123,11 @@ def render() -> None:
         st.markdown(md)
 
     st.divider()
-    st.caption("Remove a single correction:")
+    st.caption("Remove a single note:")
     for c in items:
         cols = st.columns([5, 1])
         diff = ", ".join(f"{k}→{c['suggestion'][k]}" for k in c["changed_fields"])
         cols[0].write(f"`{c['layer']}` · **{c['target'].get('label','')}** — {diff}")
         if cols[1].button("Delete", key=f"del_{c['id']}"):
             corr.delete_correction(c["id"])
-            st.rerun()
-
-
-def _render_manual_intents() -> None:
-    """The transformer's manual-edit intents: the durable recategorize edicts.
-
-    Listed from (and revoked into) the transformer's append-only log — this app never
-    edits records. Intents apply on the next categorize run and on every run after.
-    """
-    st.subheader("Manual recategorizations (intents)")
-    err = manual_edits.status()
-    if err:
-        st.caption(f"⚠ Intent log unavailable: {err}")
-        return
-    items = manual_edits.intents()
-    st.caption(
-        f"Append-only intent log: `{manual_edits.edits_path()}` — replayed by the "
-        "categorizer on **every** run (sticky: edits survive full re-audits; merchant "
-        "scope covers future transactions too). Revoking hands the row back to the "
-        "pipeline on the next run."
-    )
-    if not items:
-        st.info("No manual edits yet. Use 🚩 → ‘Recategorize (PFC)’ in Drilldown, or "
-                "the merchant detail in Merchants.")
-        return
-    rows = [{
-        "id": it["id"],
-        "when": it["created_at"],
-        "scope": it["scope"],
-        "target": (it["match"].get("transaction_id")
-                   or (it.get("snapshot") or {}).get("merchant_name")
-                   or it["match"].get("merchant_name_normalized")
-                   or it["match"].get("merchant_entity_id")),
-        "→ category": f"{it['set']['primary']} / {it['set']['detailed']}",
-        "source": it.get("source", ""),
-        "note": it.get("note", ""),
-    } for it in items]
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-    st.caption("Revoke an intent (the row reverts and is re-audited next run):")
-    for it, row in zip(items, rows):
-        c1, c2 = st.columns([5, 1])
-        c1.write(f"`{it['id']}` · {it['scope']} · **{row['target']}** → "
-                 f"{it['set']['detailed']}" + (f" — {it['note']}" if it.get("note") else ""))
-        if c2.button("Revoke", key=f"revoke_{it['id']}"):
-            manual_edits.revoke(it["id"])
             st.rerun()

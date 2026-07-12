@@ -16,7 +16,7 @@ from data import build_cube
 from ingest.load import stat_source
 from views import budget as budget_view
 from views import cashflow, drilldown, merchants
-from views import corrections_view
+from views import corrections_view, rules_view
 from views import qc as qc_view
 
 st.set_page_config(page_title="Spend Analyzer", page_icon="📊", layout="wide")
@@ -98,9 +98,9 @@ def main() -> None:
     spec = _sidebar_filters(cube, df)
 
     # Drilldown first so it is the default tab on load.
-    t_drill, t_budget, t_merch, t_cash, t_corr, t_qc = st.tabs(
+    t_drill, t_budget, t_merch, t_cash, t_over, t_rules, t_qc = st.tabs(
         ["🧭 Drilldown", "💰 Budget", "🏪 Merchants & recurring",
-         "💵 Cash flow", "✏️ Corrections", "✅ QC"]
+         "💵 Cash flow", "✏️ Overrides", "📐 Rules", "✅ QC"]
     )
     with t_drill:
         drilldown.render(cube, spec, app.trailing_avg_months)
@@ -110,8 +110,10 @@ def main() -> None:
         merchants.render(cube, spec)
     with t_cash:
         cashflow.render(cube, spec)
-    with t_corr:
+    with t_over:
         corrections_view.render()
+    with t_rules:
+        rules_view.render(df)
     with t_qc:
         qc_view.render(cube, qc, spec)
 

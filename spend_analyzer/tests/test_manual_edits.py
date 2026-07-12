@@ -66,6 +66,25 @@ def test_invalid_category_is_rejected(tmp_path):
                               path=str(tmp_path / "edits.jsonl"))
 
 
+def test_affected_counts_respect_scope_and_precedence(tmp_path):
+    # txn-scope claims its own row (specificity); the merchant-scope intent
+    # covers the merchant's OTHER rows; unrelated rows count for nobody.
+    path = str(tmp_path / "edits.jsonl")
+    txn_it = manual_edits.add_edit(RAW, scope="transaction", primary="FOOD_AND_DRINK",
+                                   detailed="FOOD_AND_DRINK_COFFEE", path=path)
+    merch_it = manual_edits.add_edit(RAW, scope="merchant", primary="FOOD_AND_DRINK",
+                                     detailed="FOOD_AND_DRINK_COFFEE", path=path)
+    records = [
+        RAW,
+        {**RAW, "transaction_id": "txn_ui_2"},
+        {"transaction_id": "txn_other", "merchant_name": "Somewhere Else",
+         "personal_finance_category": {"primary": "TRAVEL",
+                                       "detailed": "TRAVEL_FLIGHTS"}},
+    ]
+    counts = manual_edits.affected_counts(manual_edits.intents(path), records=records)
+    assert counts == {txn_it["id"]: 1, merch_it["id"]: 1}
+
+
 def test_taxonomy_menu_comes_from_the_transformer():
     primaries, detailed = manual_edits.taxonomy()
     assert "FOOD_AND_DRINK" in primaries

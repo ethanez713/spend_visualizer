@@ -18,6 +18,12 @@ it never edits records — category fixes append INTENTS to the transformer's lo
   (taxonomy tags + facets incl. `person` = record `txn_owner`, falling back to
   accounts.yaml) → cube (rollups). Streamlit caches key on archive mtime/size.
 - The transformer's CODE is imported via `transformer_root` (taxonomy + intent
-  validation); its DATA paths come from the data root — don't conflate.
+  validation in `manual_edits.py`; rule tables + match cascade in
+  `rules_bridge.py`); its DATA paths come from the data root — don't conflate.
+- Rule surfaces are READ-ONLY by decision (docs/categorization-ux-ideation.md):
+  the Rules tab and provenance explainers render the transformer's tables, its
+  merchant memory, and the optional converter's Sheet mapping (loaded fail-soft
+  via `$SPEND_VISUALIZER_CONVERTER` / `<data_root>/converter_root`) — never a
+  write path. Rule authoring stays a code edit in the owning project.
 - Tie-out invariant: every grouping must sum to the grand total (no double count);
   `tests/test_cube.py` checks it on the real archive.

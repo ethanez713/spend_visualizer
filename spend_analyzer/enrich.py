@@ -136,6 +136,7 @@ def enrich(
         g = _geo_dims(t)
         iso = _resolve_date(t)
         tm = _time_dims(iso)
+        raw = t.raw or {}
 
         records.append(
             {
@@ -187,6 +188,18 @@ def enrich(
                 "logo_url": t.logo_url,
                 "website": t.website,
                 "pending": t.pending,
+                # categorization provenance (transformer columns riding on raw; blank
+                # when the archive is the uncorrected feed or the row was never changed)
+                "category_update_step": raw.get("category_update_step") or "",
+                "category_update_reason": raw.get("category_update_reason") or "",
+                "category_update_confidence": raw.get("category_update_confidence") or "",
+                "original_pf_primary": raw.get("original_pf_category_primary"),
+                "original_pf_detailed": raw.get("original_pf_category_detailed"),
+                "review_pending": raw.get("category_review_flag") == "1",
+                "review_primary": raw.get("category_review_primary") or "",
+                "review_detailed": raw.get("category_review_detailed") or "",
+                "review_reason": raw.get("category_review_reason") or "",
+                "review_source": raw.get("category_review_source") or "",
             }
         )
 
