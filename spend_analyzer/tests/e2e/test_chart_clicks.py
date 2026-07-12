@@ -83,15 +83,6 @@ def test_given_treemap_when_tile_clicked_then_drills(app):
     assert_no_exception(app)
 
 
-def test_given_sankey_selected_then_flow_diagram_renders(app):
-    app.get_by_text("Sankey", exact=True).click()
-    wait_idle(app)
-    nodes = app.locator('[data-testid="stPlotlyChart"] .sankey-node')
-    expect(nodes.first).to_be_visible()
-    assert nodes.count() >= 4, "sankey rendered too few nodes"
-    assert_no_exception(app)
-
-
 def test_given_window_narrowed_then_chart_rerenders_without_error(app):
     app.get_by_text("3 mo", exact=True).click()
     wait_idle(app)

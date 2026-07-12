@@ -1,5 +1,5 @@
 """Drilldown core: granularity (table only), spend table, an interactive
-hierarchy chart (wheel/treemap/sankey) and a transaction-detail table that
+hierarchy chart (wheel/treemap) and a transaction-detail table that
 *follows the chart*.
 
 Interaction model:
@@ -31,7 +31,6 @@ _LEVEL_LABELS = {
 }
 _PALETTE = px.colors.qualitative.Set3 + px.colors.qualitative.Pastel
 ROOT_KEY = "wheel_root"
-_SANKEY_TOPN = 10
 
 
 def _disp(col: str, v) -> str:
@@ -168,7 +167,7 @@ def _hierarchy(rows: pd.DataFrame, cube=None, spec=None) -> list:
         root = st.session_state[ROOT_KEY] = []
 
     c1, c2, c3 = st.columns([3, 3, 1])
-    kind = c1.radio("Chart", ["Wheel", "Treemap", "Sankey"], horizontal=True,
+    kind = c1.radio("Chart", ["Wheel", "Treemap"], horizontal=True,
                     key="hier_kind", label_visibility="collapsed")
     win = c2.radio("Window", list(_WINDOW_DAYS), horizontal=True, key="hier_window",
                    label_visibility="collapsed")
@@ -196,8 +195,6 @@ def _hierarchy(rows: pd.DataFrame, cube=None, spec=None) -> list:
         # otherwise crashes the component and snaps back to the top).
         st.caption("Deepest level reached — the matching transactions are listed below."
                    if not levels else "Nothing to chart at this node.")
-    elif kind == "Sankey":
-        st.plotly_chart(_build_sankey(vis, levels), use_container_width=True, key="sankey")
     else:
         fig, abs_nodes = _build_hierarchy_fig(vis, levels, root, treemap=(kind == "Treemap"))
         # STABLE key (no len(root)) so a drill updates the figure *in place* rather
@@ -319,68 +316,6 @@ def _build_hierarchy_fig(vis, levels, root, treemap: bool):
     return fig, abs_nodes
 
 
-def _build_sankey(vis, levels) -> go.Figure:
-    """Readable Sankey: at most 3 stages, top-N nodes per stage, the long tail
-    folded into an 'Other' node, links coloured by source."""
-    stages = levels[:3]
-    if len(stages) < 2:
-        fig = go.Figure()
-        fig.add_annotation(text="Sankey needs ≥2 levels — increase Chart detail "
-                                "or zoom out.", showarrow=False)
-        fig.update_layout(height=300, margin=dict(t=10))
-        return fig
-
-    # keep the top-N values per stage; everything else -> "Other"
-    keep: dict[str, set] = {}
-    for c in stages:
-        tot = vis.groupby(c)["spend"].sum().sort_values(ascending=False)
-        keep[c] = set(tot.head(_SANKEY_TOPN).index)
-
-    def node_name(stage: str, raw) -> str:
-        disp = _disp(stage, raw)
-        return disp if raw in keep[stage] else f"Other {_LEVEL_LABELS[stage]}"
-
-    labels: list[str] = []
-    idx: dict[tuple, int] = {}
-    node_color: list[str] = []
-    cmap: dict[str, str] = {}
-
-    def nid(level: int, name: str) -> int:
-        key = (level, name)
-        if key not in idx:
-            idx[key] = len(labels)
-            labels.append(name)
-            node_color.append(cmap.setdefault(name, _PALETTE[len(cmap) % len(_PALETTE)]))
-        return idx[key]
-
-    links: dict[tuple[int, int], float] = {}
-    for _, r in vis.iterrows():
-        names = []
-        for c in stages:
-            v = r[c]
-            if v is None or (isinstance(v, float) and pd.isna(v)) or v == "":
-                break
-            names.append((c, v))
-        for i in range(len(names) - 1):
-            s = nid(i, node_name(*names[i]))
-            d = nid(i + 1, node_name(*names[i + 1]))
-            links[(s, d)] = links.get((s, d), 0.0) + float(r["spend"])
-
-    src = [s for s, _ in links]
-    link_colors = [_rgba(node_color[s], 0.35) for s in src]
-    fig = go.Figure(go.Sankey(
-        arrangement="snap",
-        node=dict(label=labels, color=node_color, pad=22, thickness=20,
-                  line=dict(color="#0e1117", width=1)),
-        link=dict(source=src, target=[d for _, d in links], value=list(links.values()),
-                  color=link_colors, hovertemplate="%{value:$,.0f}<extra></extra>"),
-    ))
-    fig.update_layout(height=560, margin=dict(t=20, l=10, r=10, b=10),
-                      paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                      font=dict(size=13, color="#e6e6e6"))
-    return fig
-
-
 # ------------------------------------------------------------ transaction detail
 def _detail_section(rows: pd.DataFrame, root: list) -> None:
     st.subheader("Transaction detail")
@@ -395,16 +330,6 @@ def _detail_section(rows: pd.DataFrame, root: list) -> None:
 
 
 # ------------------------------------------------------------------- helpers
-
-
-def _rgba(hex_or_rgb: str, alpha: float) -> str:
-    s = hex_or_rgb.strip()
-    if s.startswith("#"):
-        r, g, b = int(s[1:3], 16), int(s[3:5], 16), int(s[5:7], 16)
-        return f"rgba({r},{g},{b},{alpha})"
-    if s.startswith("rgb("):
-        return s.replace("rgb(", "rgba(").replace(")", f",{alpha})")
-    return s
 
 
 def _trailing_avg(cube, spec, level_col, window) -> pd.Series:

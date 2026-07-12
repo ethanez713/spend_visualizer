@@ -89,8 +89,8 @@ def parse_args(argv=None, *, default_port: int = 8501) -> argparse.Namespace:
                         "<data_root>/pinned_tabs) as extra browser tabs — explicit "
                         "opt-in egress; needs a configured converter")
     p.add_argument("--sheet-month", default=None, metavar="YYYY-MM",
-                   help="month window for the --sheet upload (default: the converter's "
-                        "default, i.e. the current calendar month)")
+                   help="month window for the --sheet upload (default: the last "
+                        "COMPLETE month, i.e. the month that just ended)")
     p.add_argument("--sheet-since", default=None, metavar="DATE",
                    help="inclusive start date for the --sheet upload window "
                         "(overrides --sheet-month)")
@@ -141,18 +141,31 @@ def convert_cmd(cfg: Config) -> list[str]:
             "--no-upload", "--output", str(cfg.budget_ledger_csv)]
 
 
+def _last_complete_month(today: "date | None" = None) -> str:
+    """``YYYY-MM`` of the month that most recently ENDED (the default --sheet
+    window). Running the monthly ritual on the 3rd should export the month that
+    just closed, not the near-empty current one."""
+    from datetime import date, timedelta
+    today = today or date.today()
+    return (today.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+
+
 def sheet_cmd(cfg: Config, args: argparse.Namespace, url_file: str) -> list[str]:
-    """The converter's Sheet mode: convert the chosen window (its default: the
-    current calendar month) and upload it as a new Google Sheet, reporting the
-    Sheet's URL through ``url_file`` so the pipeline can open it in a browser
-    tab. Window precedence is the converter's: --since/--until beat --month."""
+    """The converter's Sheet mode: convert the chosen window and upload it as a
+    new Google Sheet, reporting the Sheet's URL through ``url_file`` so the
+    pipeline can open it in a browser tab.
+
+    Window resolution: an explicit --sheet-since/--sheet-until wins; else an
+    explicit --sheet-month; else the default, the last COMPLETE month (not the
+    converter's own current-month default — see _last_complete_month)."""
     cmd = [str(cfg.converter_python), "refresh.py", "--url-file", url_file]
-    if args.sheet_month:
-        cmd += ["--month", args.sheet_month]
-    if args.sheet_since:
-        cmd += ["--since", args.sheet_since]
-    if args.sheet_until:
-        cmd += ["--until", args.sheet_until]
+    if args.sheet_since or args.sheet_until:
+        if args.sheet_since:
+            cmd += ["--since", args.sheet_since]
+        if args.sheet_until:
+            cmd += ["--until", args.sheet_until]
+    else:
+        cmd += ["--month", args.sheet_month or _last_complete_month()]
     return cmd
 
 

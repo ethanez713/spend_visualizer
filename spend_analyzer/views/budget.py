@@ -22,7 +22,7 @@ import state
 from config_io import Budget
 from cube import Cube, GroupingSpec
 from ledger import load_ledger, monthly_pivot as ledger_monthly_pivot
-from viz import style_table
+from viz import sanitize_for_csv, style_table
 
 
 def _monthly_pivot(cube: Cube, spec: GroupingSpec) -> pd.DataFrame:
@@ -159,7 +159,32 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
             hidden_names = table.loc[table["_hidden"], "Category"].tolist()
             st.caption(f"🙈 Hidden from totals: {', '.join(hidden_names)}")
 
+    _export_buttons(indexed, pivot)
     _trends(pivot, window)
+
+
+def _export_buttons(summary: pd.DataFrame, pivot: pd.DataFrame) -> None:
+    """Paste-ready CSV downloads for the Google-Sheet copy/paste flow.
+
+    Emits RAW numbers (not the on-screen ``$``/``%`` strings) so the target Sheet
+    can re-sum them, and formula-escapes every cell (security baseline). Two shapes:
+    the summary table as shown, and the full category × month grid.
+    """
+    c1, c2 = st.columns(2)
+    c1.download_button(
+        "⬇ Summary CSV (paste-ready)",
+        sanitize_for_csv(summary.reset_index()).to_csv(index=False),
+        file_name="budget_vs_actual.csv", mime="text/csv", use_container_width=True,
+    )
+    if not pivot.empty:
+        grid = pivot.round(2).reset_index().rename(columns={"tier1": "Category",
+                                                            "category": "Category"})
+        c2.download_button(
+            "⬇ Monthly grid CSV (category × month)",
+            sanitize_for_csv(grid).to_csv(index=False),
+            file_name="budget_monthly_grid.csv", mime="text/csv",
+            use_container_width=True,
+        )
 
 
 def _trends(pivot: pd.DataFrame, window: int) -> None:

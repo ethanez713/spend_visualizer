@@ -484,7 +484,24 @@ def given_sheet_flag_when_building_sheet_cmd_then_upload_stays_on(with_converter
     cmd = sheet_cmd(cfg, args, "/tmp/u.txt")
     assert cmd[:2] == [str(cfg.converter_python), "refresh.py"]
     assert "--no-upload" not in cmd               # this step IS the (opt-in) egress
-    assert cmd[-2:] == ["--url-file", "/tmp/u.txt"]
+    assert "--url-file" in cmd and "/tmp/u.txt" in cmd
+
+
+def given_no_sheet_window_when_building_sheet_cmd_then_defaults_to_last_complete_month(
+        with_converter):
+    from src.pipeline import _last_complete_month
+    cfg, _ = with_converter
+    cmd = sheet_cmd(cfg, parse_args(["--sheet"]), "/tmp/u.txt")
+    # No explicit window → the month that just ended, NOT the sparse current one.
+    assert cmd[cmd.index("--month") + 1] == _last_complete_month()
+    assert "--since" not in cmd and "--until" not in cmd
+
+
+def given_last_complete_month_when_computed_then_is_prior_month():
+    from datetime import date
+    from src.pipeline import _last_complete_month
+    assert _last_complete_month(date(2026, 7, 11)) == "2026-06"
+    assert _last_complete_month(date(2026, 1, 1)) == "2025-12"   # year rollover
 
 
 def given_sheet_month_when_building_sheet_cmd_then_month_propagates(with_converter):

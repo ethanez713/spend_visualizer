@@ -121,10 +121,17 @@ def _sidebar_filters(cube: Cube, df) -> GroupingSpec:
     sb.header("Filters")
     dmin, dmax = df["date_resolved"].dropna().min(), df["date_resolved"].dropna().max()
     if dmin and dmax:
-        date_from, date_to = sb.date_input(
+        picked = sb.date_input(
             "Date range", value=(_d(dmin), _d(dmax)),
             min_value=_d(dmin), max_value=_d(dmax),
         )
+        # st.date_input returns a 1-tuple *mid-selection* (after the user clicks the
+        # start date, before the end date) — unpacking it into two names crashes the
+        # whole app until the second click. Keep the full range until both ends exist.
+        if isinstance(picked, (list, tuple)) and len(picked) == 2:
+            date_from, date_to = picked
+        else:
+            date_from, date_to = _d(dmin), _d(dmax)
     else:
         date_from = date_to = None
 
