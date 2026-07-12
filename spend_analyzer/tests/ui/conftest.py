@@ -17,6 +17,7 @@ import pytest
 
 import corrections as corr
 import manual_edits
+import state
 from tests._liveguard import digest_all
 from tests.ui._harness import boot
 
@@ -35,6 +36,9 @@ def isolate_writes(monkeypatch, tmp_path):
     monkeypatch.setattr(manual_edits, "edits_path", lambda: str(edits))
     monkeypatch.setattr(corr, "DATA_DIR", tmp_path / "data")
     monkeypatch.setattr(corr, "STORE", tmp_path / "data" / "corrections.jsonl")
+    # The persisted hide-rules store is the third UI write path (state.py).
+    monkeypatch.setattr(state, "DATA_DIR", tmp_path / "data")
+    monkeypatch.setattr(state, "STORE", tmp_path / "data" / "hidden_rules.json")
     return edits
 
 

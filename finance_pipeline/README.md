@@ -10,7 +10,7 @@ Analyzer UI and opens it in your default browser:
 ./run.py
 
 # …plus the monthly Google-Sheet export (opens UI + Sheet + pinned tabs):
-./run.py --sheet                                          # this calendar month
+./run.py --sheet                                          # last complete month (default)
 ./run.py --sheet --sheet-month 2026-06                    # a past month
 ./run.py --sheet --sheet-since 2026-06-15 --sheet-until 2026-07-09   # a specific window
 ```
@@ -78,7 +78,7 @@ repo root.
 | `--force-push` | skip the transformer's Drive head adoption: local store wins |
 | `--no-convert` | skip the optional budget-ledger regen even if a converter is configured |
 | `--sheet` | monthly ritual: also run the converter's Google-Sheet upload (opt-in egress) and open the fresh Sheet + `<data_root>/pinned_tabs` URLs as extra browser tabs |
-| `--sheet-month YYYY-MM` | month window for `--sheet` (default: current calendar month) |
+| `--sheet-month YYYY-MM` | month window for `--sheet` (default: the last **complete** month) |
 | `--sheet-since/--sheet-until DATE` | arbitrary inclusive date window for `--sheet` (overrides `--sheet-month`) |
 | `--no-ui` | stop after the data steps (e.g. for scheduled runs) |
 | `--push-data` | after the data steps: commit the data-root git repo (if dirty) and push to its `origin` — explicit opt-in upload (no remote ⇒ warn, commit locally) |

@@ -29,7 +29,7 @@ cd finance_pipeline
 
 # …with the monthly Google-Sheet export (optional external converter; also opens
 # the fresh Sheet + your pinned tabs as extra browser tabs):
-./run.py --sheet                                                     # this calendar month
+./run.py --sheet                                                     # last complete month (default)
 ./run.py --sheet --sheet-month 2026-06                               # a past month
 ./run.py --sheet --sheet-since 2026-06-15 --sheet-until 2026-07-09   # a specific window
 ```
