@@ -95,21 +95,35 @@ warns and falls back to the built-in categorization rather than erroring.
 Tabs: **Drilldown** (spend table with running avgs, sunburst/treemap/sankey with
 click-to-zoom + transaction detail) · **Budget** (budget vs actual heatmap) ·
 **Merchants & recurring** (top merchants with logos + subscription burden) ·
-**Cash flow** (monthly income vs spend vs net + cumulative) · **Corrections**
-(manual recategorize intents + the triage queue: upstream vs taxonomy fixes) · **QC**
+**Cash flow** (monthly income vs spend vs net + cumulative) · **Overrides**
+(my manual overrides with live row-coverage counts + the demoted triage-note queue) ·
+**Rules** (read-only browser over every rule table that can decide a category) · **QC**
 (unmapped atoms, % in "Other", excluded totals, and a double-count tie-out check).
 
-### Recategorize (PFC) — manual edits that stick
+### Category provenance — "why is this row this category?"
 
-🚩 a transaction (Drilldown) or open a merchant detail (Merchants) → **Recategorize
-(PFC)**: pick the correct category from the transformer's vendored taxonomy, scoped to
+Every transaction table carries a **Why** column: 🔧 mechanical rule · 🤖 LLM ·
+👁 review · ✏️ manual override · blank = Plaid's own category, with the rule name /
+intent id alongside (⏳ marks a suggestion pending human review). The fix expander
+opens with the full decision chain — Plaid's original → who changed it → final —
+including the matched rule's definition inline. The **Rules** tab renders the
+transformer's pattern tables (built-in + personal overlay) and merchant memory with
+live match/applied/flag counts and a per-rule row inspector, plus the optional
+converter's Sheet-only PFC → budget mapping in a clearly-separate section. All
+read-only: rule authoring stays a code edit in the owning project.
+
+### Override category — manual edits that stick
+
+🚩 a transaction (Drilldown) or open a merchant detail (Merchants) → **✅ Override
+category**: pick the correct category from the transformer's vendored taxonomy, scoped to
 *just this transaction* or *ALL transactions from this merchant*. This app **never edits
 records** — the edit is appended as an **intent** to the transformer's append-only log
 (`<data root>/plaid_category_transformer/data/manual_edits.jsonl`), which its pipeline
 replays on every categorize run: edits apply on the next run, survive full re-audits, and
-merchant-scope edits cover future transactions too. Pending intents are listed (and can
-be revoked) in the **Corrections** tab. The old report-only correction form remains for
-merchant-name / tier-grouping fixes.
+merchant-scope edits cover future transactions too. All overrides are listed (with how
+many rows each currently covers, and revocation) in the **Overrides** tab. The
+report-only **📝 Note for triage** path remains for merchant-name / tier-grouping
+fixes — it never changes records.
 
 Use the **Category level** slider (necessity → tier1 → tier2 → atom → merchant)
 and the global filters (date, person, account type, channel, flow, necessity).

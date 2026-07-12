@@ -6,12 +6,14 @@ import streamlit as st
 
 import corrections as corr
 import manual_edits
+import rules_bridge
 import state
-from viz import blank_if_missing, humanize_atom, money
+from viz import (PROVENANCE_BADGES, blank_if_missing, humanize_atom, money,
+                 provenance_why)
 
 # Columns shown in a raw transaction-detail table.
 _TXN_COLS = ["date_resolved", "name", "merchant", "tier1", "tier2", "atom_display",
-             "abs_amount", "person", "account_name", "confidence"]
+             "abs_amount", "person", "account_name", "confidence", "why"]
 
 
 def transaction_detail(rows: pd.DataFrame, title: str = "Transactions",
@@ -27,6 +29,12 @@ def transaction_detail(rows: pd.DataFrame, title: str = "Transactions",
     ordered = rows.sort_values("abs_amount", ascending=False).reset_index(drop=True)
     view = ordered.copy()
     view["atom_display"] = view["atom"].map(humanize_atom)
+    if "category_update_step" in view.columns:
+        pend = (view["review_pending"] if "review_pending" in view.columns
+                else [False] * len(view))
+        view["why"] = [
+            provenance_why(s, r, bool(p)) for s, r, p in zip(
+                view["category_update_step"], view["category_update_reason"], pend)]
     cols = [c for c in _TXN_COLS if c in view.columns]
     disp = view[cols].copy()
     disp.insert(0, "🚩", False)
@@ -46,6 +54,10 @@ def transaction_detail(rows: pd.DataFrame, title: str = "Transactions",
             "abs_amount": st.column_config.NumberColumn("Amount", format="$%.2f"),
             "person": "Person",
             "account_name": "Account",
+            "why": st.column_config.TextColumn(
+                "Why", help="Who set this category: 🔧 mechanical rule · 🤖 LLM · "
+                            "👁 review · ✏️ manual override · blank = Plaid default. "
+                            "⏳ = a suggestion is pending human review."),
         },
     )
     flagged = [i for i, f in enumerate(edited["🚩"].tolist()) if f]
@@ -72,11 +84,80 @@ def _raw_index(sig: tuple) -> dict[str, dict]:
     return manual_edits.raw_index()
 
 
+@st.cache_data(show_spinner=False)
+def _rule_details(sig: tuple) -> dict[str, dict]:
+    """Rule tables keyed by rule_id (sig = config/memory/archive stats)."""
+    try:
+        return rules_bridge.rule_details()
+    except Exception:  # noqa: BLE001 — no transformer repo ⇒ no rule lookups
+        return {}
+
+
+def _txt(v) -> str:
+    """A row field as display text ('' for None/NaN)."""
+    v = blank_if_missing(v)
+    return "" if v is None else str(v)
+
+
+def provenance_explain(row) -> None:
+    """The decision chain for one row: Plaid original → who changed it → final.
+
+    Includes the matched rule's definition inline when a mechanical rule (or a
+    rule-sourced pending suggestion) is involved — the row→rule cross-reference.
+    """
+    step = _txt(row.get("category_update_step"))
+    reason = _txt(row.get("category_update_reason"))
+    cur = f"{_txt(row.get('pfc_primary'))} / {_txt(row.get('pfc_detailed'))}"
+    details = _rule_details(rules_bridge.tables_sig())
+
+    if step:
+        badge = PROVENANCE_BADGES.get(step, step)
+        orig = (f"{_txt(row.get('original_pf_primary'))} / "
+                f"{_txt(row.get('original_pf_detailed'))}")
+        conf = _txt(row.get("category_update_confidence"))
+        line = (f"**Why this category:** {badge} `{reason}` changed Plaid's "
+                f"`{orig}` to `{cur}`")
+        if conf:
+            line += f" (confidence {conf})"
+        if step == "manual":
+            line += " — revoke it from the Overrides tab."
+        st.markdown(line)
+        _rule_hint(details.get(reason))
+    else:
+        st.markdown(f"**Why this category:** Plaid default `{cur}` — "
+                    "never changed by the pipeline.")
+
+    if bool(row.get("review_pending")):
+        sugg = (f"{_txt(row.get('review_primary'))} / "
+                f"{_txt(row.get('review_detailed'))}")
+        src = _txt(row.get("review_source"))
+        why = _txt(row.get("review_reason"))
+        st.markdown(f"⏳ **Pending suggestion** ({src}): `{sugg}` — {why}. "
+                    "Adjudicate with `categorize.py --review`.")
+        _rule_hint(details.get(why))
+
+
+def _rule_hint(rule: dict | None) -> None:
+    if not rule:
+        return
+    st.caption(f"↳ rule `{rule['rule_id']}` ({rule['kind']}, {rule['origin']}, "
+               f"trust={rule['trust']}): pattern `{rule['pattern']}` → "
+               f"`{rule['primary']} / {rule['detailed']}` — full tables in the "
+               "📐 Rules tab.")
+
+
 def fix_categorization(*, row, label: str, key: str,
                        default_scope: str = "transaction") -> None:
-    """Expander with both fix paths: a sticky PFC recategorize intent, or a report entry."""
+    """Expander: provenance explainer + the two fix paths.
+
+    The PRIMARY action is the sticky override intent; the report queue is a
+    deliberately-secondary "note to self" that never changes records.
+    """
     with st.expander(f"✏️ Fix categorization — {label}"):
-        t_re, t_rep = st.tabs(["Recategorize (PFC)", "Other fix (report only)"])
+        provenance_explain(row)
+        st.divider()
+        t_re, t_rep = st.tabs(["✅ Override category (sticky)",
+                               "📝 Note for triage (changes nothing)"])
         with t_re:
             recategorize_form(row=row, key=key, default_scope=default_scope)
         with t_rep:
@@ -113,7 +194,7 @@ def recategorize_form(*, row, key: str, default_scope: str = "transaction") -> N
     primaries, detailed_map = manual_edits.taxonomy()
     st.caption(f"Current: `{cur_p} / {cur_d}`. The edit is queued as an intent and "
                "applied by the **next categorize run** (it never expires — revoke it "
-               "from the Corrections tab).")
+               "from the Overrides tab).")
     c1, c2 = st.columns(2)
     p = c1.selectbox("Primary", primaries,
                      index=primaries.index(cur_p) if cur_p in primaries else 0,
@@ -140,7 +221,7 @@ def recategorize_form(*, row, key: str, default_scope: str = "transaction") -> N
             st.error(f"Could not save the edit: {e}")
             return
         st.success(f"Saved intent `{it['id']}` ({scope}) → `{p} / {d}`. Applies on the "
-                   "next categorize run; pending edits are listed in the Corrections tab.")
+                   "next categorize run; all overrides are listed in the Overrides tab.")
 
 
 def correction_form(*, scope: str, original: dict, target: dict, key: str,
@@ -192,4 +273,4 @@ def _correction_form_body(*, scope: str, original: dict, target: dict, key: str)
             else:
                 corr.add_correction(scope=scope, target=target, original=original,
                                     suggestion=suggestion, layer=layer, note=note)
-                st.success("Added to the corrections report (QC → Corrections tab).")
+                st.success("Noted for triage (Overrides tab → Triage notes).")

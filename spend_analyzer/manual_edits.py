@@ -82,6 +82,25 @@ def revoke(intent_id: str, *, note: str = "", path: str | None = None) -> dict:
         path or edits_path(), manual.build_revoke(intent_id, note=note, source="ui"))
 
 
+def affected_counts(items: list[dict], records: list[dict] | None = None) -> dict[str, int]:
+    """{intent id: how many archive rows it currently covers}.
+
+    Uses the transformer's own ``ManualIndex.match`` over the raw records, so the
+    count reflects exactly what replay will touch (txn scope ⇒ 0 or 1; merchant
+    scope grows as new transactions arrive). ``records`` defaults to the archive.
+    """
+    manual, _ = _import()
+    idx = manual.ManualIndex(items)
+    counts = {it["id"]: 0 for it in items}
+    if records is None:
+        records = list(raw_index().values())
+    for rec in records:
+        hit = idx.match(rec)
+        if hit is not None:
+            counts[hit["id"]] += 1
+    return counts
+
+
 def archive_sig() -> tuple:
     """Cache key (mtime/size per archive) for the raw-record index."""
     sig = []

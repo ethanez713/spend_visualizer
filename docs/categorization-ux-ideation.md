@@ -1,8 +1,24 @@
 # Categorization & Manual-Override UX — Planning / Ideation
 
-**Status:** ideation only — nothing here is committed to. Captures the current state of
-the "how does a transaction get its category, and how do I override it" surfaces, the
-friction in them, and a menu of features to make them cleaner and more legible.
+**Status:** DECIDED & IMPLEMENTED (Phases 1+2, 2026-07-12). The open questions below
+were resolved as follows; Phase 3 (F) is deliberately not built:
+
+1. **Editable rules stay code-only.** The UI is read-only over the rule tables (A–E);
+   rule authoring remains an edit to the owning project's `config.py` /
+   `personal_rules.json`. F is off the table unless this is revisited.
+2. **The report queue survives, demoted.** "✅ Override category (sticky)" is the
+   primary action; "📝 Note for triage (changes nothing)" is the clearly-secondary one.
+3. **Converter rules ARE shown** in the Rules tab, in a clearly-fenced
+   "Google-Sheet budget mapping" section (separate taxonomy, Sheet-only).
+4. **Provenance verified complete**: `set_provenance` stamps every applying path;
+   blank step genuinely means "Plaid default". The columns are now projected through
+   `spend_analyzer/enrich.py`; mechanical flag reasons carry the rule name too.
+
+Shipped: A+G (Why column + decision-chain explainer, `views/_widgets.py`), D
+(Overrides tab with per-intent row-coverage counts, `views/corrections_view.py`,
+`manual_edits.affected_counts`), E (fix-path reframe), B+C (📐 Rules tab over
+`rules_bridge.py`, with per-rule row inspector and inline rule detail in the
+explainer). The sections below are the original ideation, kept for rationale.
 
 Scope spans three components, because categorization authority is spread across all three:
 - `plaid_category_transformer/` — the categorizer (rules → LLM/Claude flag → manual intents).
