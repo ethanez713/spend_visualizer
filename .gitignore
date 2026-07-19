@@ -13,6 +13,7 @@ dist/
 # Defensive secret patterns — real secrets are quarantined in each component's
 # .secrets/ (also ignored per-component); catch strays anywhere in the tree.
 .secrets/
+.secrets
 .env*
 !.env.example
 *secret*.json
