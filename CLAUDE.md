@@ -8,19 +8,28 @@ outside the repo** (see "Data root").
 ## Golden rules
 
 1. **No live fetch, Drive push, or data-repo push by default — only with the user's
-   explicit, in-session go-ahead.** `fetch_transactions.py` / `app.py` hit Plaid;
-   `--persist`/Drive-enabled runs and `categorize.py` without `--no-drive` push to
-   Google Drive; `run.py --sheet` (the `run_finances` ritual) additionally uploads
-   a new Google Sheet via the external converter; `--push-data` (and
-   `deploy/bin/finance-daily.sh`, which passes it)
-   pushes the data repo to GitHub; `deploy/install.sh` enables live timers. **Default
-   to** verifying with the offline test suites and synthetic data, and handing live
-   runs (`./run.py`) to the user. **When the user explicitly authorizes a live run in
-   the current conversation** (e.g. "actually run `run.py`", "push to Drive"), you may
-   execute it — that permission is scoped to that request/session, not standing: don't
-   carry it into a later session or an unrelated command, and confirm scope if the ask
-   is ambiguous. Local-only file operations are always fine. (Read-only local ops like
-   the Streamlit analyzer UI over the existing archive were never restricted.)
+   explicit, in-session go-ahead.**
+
+   *What counts as live:*
+   - `fetch_transactions.py` / `app.py` — hit Plaid.
+   - `--persist`/Drive-enabled runs, and `categorize.py` without `--no-drive` — push to
+     Google Drive.
+   - `run.py --sheet` (the `run_finances` ritual) — additionally uploads a new Google
+     Sheet via the external converter.
+   - `--push-data`, and `deploy/bin/finance-daily.sh` which passes it — pushes the data
+     repo to GitHub.
+   - `deploy/install.sh` — enables live timers.
+
+   *Default to* verifying with the offline test suites and synthetic data, and handing
+   live runs (`./run.py`) to the user.
+
+   *When the user explicitly authorizes a live run in the current conversation* (e.g.
+   "actually run `run.py`", "push to Drive"), you may execute it — that permission is
+   scoped to that request/session, not standing: don't carry it into a later session or
+   an unrelated command, and confirm scope if the ask is ambiguous.
+
+   *Always fine:* local-only file operations. (Read-only local ops like the Streamlit
+   analyzer UI over the existing archive were never restricted.)
 2. **Never write data into this repo.** All stores/state/personal config belong under
    the data root. If a change would create files in `*/data/` here, the paths are
    wrong. `accounts.yaml`/`budget.yaml` under the data root are personal; never
