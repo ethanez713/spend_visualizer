@@ -160,6 +160,23 @@ def given_failed_item_when_overfetch_then_its_records_not_flagged(state):
     assert counts["added"] == 1 and "a" in raw
 
 
+def given_partial_item_failure_when_overfetch_then_clock_not_advanced(state):
+    # The clock records "the whole 90-day window was verified". One failed item means
+    # its accounts were NOT verified, so advancing would retire the safety net for data
+    # it never looked at (and a permanently broken item would never be re-checked).
+    client = FakeClient({
+        "ok": [_txn("a", account_id="acc_ok")],
+        "boom": ApiException(status=400, reason="ITEM_LOGIN_REQUIRED"),
+    })
+    raw = {}
+
+    counts = run_overfetch(client, [_token("ok", "Bank1"), _token("boom", "Bank2", "it2")], raw)
+
+    assert counts["items_ok"] == 1
+    assert "a" in raw                          # the healthy item's data still merged
+    assert not state.overfetch_state.exists()  # window unverified → re-check next run
+
+
 def given_all_items_fail_when_overfetch_then_nothing_merged_clock_not_advanced(state):
     client = FakeClient({"boom": ApiException(status=500, reason="INTERNAL_SERVER_ERROR")})
     raw = {"a": _rec("a")}

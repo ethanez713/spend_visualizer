@@ -20,7 +20,9 @@ venv from its own repo root, stopping at the first non-zero exit:
      the chosen month and uploads it as a new Google Sheet (explicit opt-in egress,
      like every upload). NON-fatal; the Sheet URL is captured via the converter's
      ``--url-file`` and opened as an extra browser tab, along with any URLs pinned
-     in ``<data_root>/pinned_tabs`` (e.g. the master budget spreadsheet).
+     in ``<data_root>/pinned_tabs`` (e.g. the master budget spreadsheet). Warns
+     first (never blocks) when the window still holds PENDING rows — each run
+     uploads a NEW Sheet, so an early snapshot stays wrong forever.
   3. ``spend_analyzer`` — serves the Streamlit UI over the categorized store and
      opens the default browser at the local URL.
 
@@ -32,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import json
 import platform
 import shutil
 import socket
@@ -150,22 +153,32 @@ def _last_complete_month(today: "date | None" = None) -> str:
     return (today.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
 
 
+def sheet_window(args: argparse.Namespace) -> tuple[str | None, str | None, str | None]:
+    """The --sheet upload's date window as ``(month, since, until)``.
+
+    An explicit --sheet-since/--sheet-until wins; else an explicit --sheet-month;
+    else the default, the last COMPLETE month (not the converter's own
+    current-month default — see _last_complete_month). Shared by ``sheet_cmd``
+    and ``warn_pending_rows`` so the warning can never describe a different
+    window than the one actually uploaded."""
+    if args.sheet_since or args.sheet_until:
+        return None, args.sheet_since, args.sheet_until
+    return (args.sheet_month or _last_complete_month()), None, None
+
+
 def sheet_cmd(cfg: Config, args: argparse.Namespace, url_file: str) -> list[str]:
     """The converter's Sheet mode: convert the chosen window and upload it as a
     new Google Sheet, reporting the Sheet's URL through ``url_file`` so the
-    pipeline can open it in a browser tab.
-
-    Window resolution: an explicit --sheet-since/--sheet-until wins; else an
-    explicit --sheet-month; else the default, the last COMPLETE month (not the
-    converter's own current-month default — see _last_complete_month)."""
+    pipeline can open it in a browser tab."""
     cmd = [str(cfg.converter_python), "refresh.py", "--url-file", url_file]
-    if args.sheet_since or args.sheet_until:
-        if args.sheet_since:
-            cmd += ["--since", args.sheet_since]
-        if args.sheet_until:
-            cmd += ["--until", args.sheet_until]
+    month, since, until = sheet_window(args)
+    if month:
+        cmd += ["--month", month]
     else:
-        cmd += ["--month", args.sheet_month or _last_complete_month()]
+        if since:
+            cmd += ["--since", since]
+        if until:
+            cmd += ["--until", until]
     return cmd
 
 
@@ -318,6 +331,88 @@ def convert_ledger(cfg: Config, args: argparse.Namespace) -> None:
     print(f"✓ convert finished in {time.monotonic() - t0:.0f}s → {cfg.budget_ledger_csv}")
 
 
+def _in_window(day: str, month: str | None, since: str | None, until: str | None) -> bool:
+    """Whether an ISO ``YYYY-MM-DD`` date falls in the Sheet's window.
+
+    Mirrors the converter's own slicing (inclusive bounds). Anything unparseable is
+    excluded — it can't be placed in the window, and a warning must never guess."""
+    from datetime import date
+    try:
+        d = date.fromisoformat(day[:10])
+    except (ValueError, TypeError):
+        return False
+    if month:
+        return day[:7] == month
+    try:
+        if since and d < date.fromisoformat(since):
+            return False
+        if until and d > date.fromisoformat(until):
+            return False
+    except ValueError:
+        return False        # un-parseable bound: don't claim anything about the window
+    return True
+
+
+def pending_in_window(store_path, month, since, until) -> list[dict]:
+    """Rows in the categorized store that are still PENDING inside the Sheet's window.
+
+    A pending row's amount is provisional, and when it settles Plaid issues a NEW
+    transaction_id (the pending row is then dropped by dedupe_supersede) — so a Sheet
+    uploaded while rows are pending captures numbers the store itself will later
+    disagree with, and the Sheet is a snapshot that is never revisited.
+
+    READ-ONLY and fail-soft: a missing, unreadable, or malformed store yields no
+    warning rather than blocking an upload that is otherwise fine."""
+    if not store_path:
+        return []
+    try:
+        with open(store_path, encoding="utf-8") as f:
+            rows = []
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except ValueError:
+                    continue
+                if rec.get("pending") and _in_window(
+                        str(rec.get("date") or ""), month, since, until):
+                    rows.append(rec)
+            return rows
+    except OSError:
+        return []
+
+
+def warn_pending_rows(cfg: Config, args: argparse.Namespace) -> None:
+    """Warn (never block) when the --sheet window still contains pending rows.
+
+    Uploading "too early" is the one --sheet mistake the pipeline cannot undo: the
+    Sheet is a new file every run, so a snapshot taken before the month settled just
+    sits in Drive being wrong. Warning is deliberate over refusing — a mid-month
+    export is a legitimate thing to want."""
+    rows = pending_in_window(cfg.categorized_jsonl, *sheet_window(args))
+    if not rows:
+        return
+    total = 0.0
+    for r in rows:
+        try:
+            total += float(r.get("amount") or 0)
+        except (TypeError, ValueError):
+            pass
+    print(f"  ⚠ {len(rows)} row(s) in this window are still PENDING (${total:,.2f}):")
+    for r in rows[:5]:
+        name = r.get("merchant_name") or r.get("name") or "(unknown)"
+        print(f"      {str(r.get('date'))[:10]}  {str(name)[:28]:<28} "
+              f"{r.get('amount')}")
+    if len(rows) > 5:
+        print(f"      … and {len(rows) - 5} more")
+    print("    Pending amounts are provisional and get a NEW transaction_id when they "
+          "settle,\n    so this Sheet will not match the store once they post. Re-run "
+          "--sheet in a few\n    days for final numbers (it uploads a fresh Sheet; the "
+          "old one is not updated).")
+
+
 def upload_sheet(cfg: Config, args: argparse.Namespace) -> str | None:
     """(--sheet) Upload the month's ledger as a new Google Sheet via the converter.
 
@@ -326,6 +421,7 @@ def upload_sheet(cfg: Config, args: argparse.Namespace) -> str | None:
     ledger regen: a failed upload just means no Sheet tab to open. Returns the new
     Sheet's URL (read back through the converter's --url-file), or None."""
     print("\n━━━ sheet (monthly Google-Sheet upload) ━━━")
+    warn_pending_rows(cfg, args)
     t0 = time.monotonic()
     with tempfile.TemporaryDirectory() as tmp:
         url_file = Path(tmp) / "sheet_url.txt"

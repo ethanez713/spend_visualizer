@@ -231,6 +231,47 @@ def txn_to_row(txn, account_meta: dict) -> dict:
     }
 
 
+def api_error_code(e: ApiException) -> str:
+    """Best-effort Plaid ``error_code`` from an ApiException (fail-soft to the status).
+
+    Plaid puts a JSON body on the exception; the error_code (e.g. ITEM_LOGIN_REQUIRED)
+    is the actionable part for the end-of-run report. Anything unparseable degrades to
+    the HTTP status rather than raising inside error handling.
+    """
+    try:
+        return json.loads(e.body).get("error_code") or f"HTTP {e.status}"
+    except (AttributeError, ValueError, TypeError):
+        return f"HTTP {getattr(e, 'status', '?')}"
+
+
+def report_failed_items(failed: list[str], n_tokens: int, *, allow: bool) -> None:
+    """Loudly report Items that contributed NO data, and (unless ``allow``) exit non-zero.
+
+    A per-Item Plaid failure used to be a stderr line in an otherwise-green run: expired
+    bank consent (ITEM_LOGIN_REQUIRED) looked exactly like "no new spending", and the
+    pipeline happily categorized and pushed an incomplete picture. Called AFTER the
+    durable persist so data from the healthy Items is still saved and synced — the
+    non-zero exit stops the *pipeline* (and fires the deploy alert), it doesn't discard
+    this run's work.
+    """
+    if not failed:
+        return
+    print(
+        f"\n{'✖' if not allow else '⚠'} fetch: {len(failed)} of {n_tokens} linked "
+        f"bank(s) returned NO data this run:\n"
+        + "\n".join(f"    - {f}" for f in failed)
+        + "\n  Transactions from the healthy bank(s) were saved and persisted, but this "
+          "run is INCOMPLETE — a silent gap here is indistinguishable from a month with "
+          "no spending.\n  If consent expired, re-link with "
+          "`./venv/bin/python app.py --user <name>`, then re-run.",
+        file=sys.stderr,
+    )
+    if allow:
+        print("  (--allow-item-errors: continuing anyway.)", file=sys.stderr)
+        return
+    raise SystemExit(1)
+
+
 def filter_tokens(tokens: list, user: str | None) -> list:
     """Restrict the token list to one user's Items (--user); None means everyone."""
     if user is None:
@@ -336,6 +377,10 @@ def _parse_args(argv=None):
                       help="skip the safety-net overfetch even if due.")
     p.add_argument("--user", default=None, metavar="NAME",
                    help="sync only this user's linked banks (default: everyone's).")
+    p.add_argument("--allow-item-errors", action="store_true",
+                   help="exit 0 even when a linked Item returned no data (default: a "
+                        "failed Item exits non-zero AFTER persisting the healthy ones, "
+                        "so an expired bank consent can't pass as a clean run).")
     return p.parse_args(argv)
 
 
@@ -353,6 +398,10 @@ def main(argv=None):
     raw_store = load_raw_store()
     print(f"Syncing {len(tokens)} linked bank(s)…\n")
 
+    # Items that contributed nothing this run — reported loudly at the end (and, by
+    # default, exited non-zero on) so a broken bank can't hide inside a green run.
+    failed: list[str] = []
+
     for entry in tokens:
         institution = entry["institution"]
         try:
@@ -368,6 +417,8 @@ def main(argv=None):
                 counts = sync_item(client, entry, raw_store)
             if counts.get("_retry"):
                 print(f"  {institution}: still no data — try again in a few minutes.")
+                failed.append(f"{institution} (history still not ready after "
+                              f"{FIRST_RUN_RETRIES} retries)")
                 continue
             print(
                 f"  {institution}: +{counts['added']} added, "
@@ -375,6 +426,7 @@ def main(argv=None):
             )
         except ApiException as e:
             print(f"  {institution}: API error — {e.body}", file=sys.stderr)
+            failed.append(f"{institution} ({api_error_code(e)})")
 
     # Safety-net overfetch (every ~30 days): re-fetch the last 90 days via
     # /transactions/get and correct the raw store BEFORE it is saved/projected, so the
@@ -395,6 +447,10 @@ def main(argv=None):
         from .persist_runner import run_persist
         print("\nPersisting durable store…")
         run_persist(do_drive=args.drive, allow_refetch=args.refetch)
+
+    # Last, so the healthy Items' data is already durable + synced before a failure
+    # stops the caller (the finance_pipeline orchestrator halts on a non-zero exit).
+    report_failed_items(failed, len(tokens), allow=args.allow_item_errors)
 
 
 if __name__ == "__main__":

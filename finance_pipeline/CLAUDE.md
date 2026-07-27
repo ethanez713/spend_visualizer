@@ -32,3 +32,9 @@ two machines legitimately write it — see the transformer's CLAUDE.md).
   and opens as an extra browser tab together with `<data_root>/pinned_tabs` URLs.
   Invocation is one-directional (pipeline → converter): the converter's refresh.py
   no longer fetches, so never re-add a fetch flag to its invocations.
+  `warn_pending_rows` prints a heads-up first when the window still holds PENDING
+  rows (provisional amounts; a new transaction_id on settle) — each `--sheet` run
+  uploads a NEW Sheet and never revisits the old one, so an early snapshot is wrong
+  forever. It WARNS, never blocks: a mid-month export is legitimate. `sheet_window`
+  is shared with `sheet_cmd` so the warning can't describe a different window than
+  the one uploaded.

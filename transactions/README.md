@@ -98,6 +98,14 @@ Prints a per-bank summary of added / modified / removed and writes
 `transactions.csv`. Syncs every user's linked banks by default; pass
 `--user <name>` to sync only one person's.
 
+**A bank that returns no data fails the run.** If a linked Item errors (most often
+`ITEM_LOGIN_REQUIRED` — expired bank consent) or never becomes ready, the fetch
+still persists everything the healthy banks returned, then reports the failures and
+exits **non-zero** so the pipeline stops and the deploy alert fires. Without that,
+an expired consent looks exactly like a month with no spending. Re-link with
+`app.py --user <name>` and re-run; pass `--allow-item-errors` to proceed anyway
+while a bank is knowingly broken.
+
 ### CSV columns (55)
 
 The file is intentionally wide — it captures essentially every populated field
@@ -187,9 +195,11 @@ re-fetched 3–4 times over its life) and reconciles it against the raw store
   (The last 3 days are excluded from stale detection: pending churn.)
 
 A bank whose fetch errors is never treated as covered, so its records can't be
-falsely flagged; if every bank fails, nothing merges and the 30-day clock does
-not advance. In steady state every count in the log is ~0 — any nonzero
-`added`/`stale` count means the cursor path missed a delta.
+falsely flagged. The 30-day clock records "the whole 90-day window was verified",
+so it advances only when **every** bank succeeded — any failure (not just a total
+outage) leaves it alone and the next run re-checks the window. In steady state
+every count in the log is ~0 — any nonzero `added`/`stale` count means the cursor
+path missed a delta.
 
 Flags: `--overfetch` (force it now), `--no-overfetch` (skip even if due).
 

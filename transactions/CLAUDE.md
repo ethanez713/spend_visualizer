@@ -11,6 +11,14 @@ explicit in-session go-ahead, no data in-repo).
   keep new state as patchable constants/functions there.
 - `sync_item` checkpoints the raw store AND the cursor after every page; keep that
   ordering (crash → page retried, never lost).
+- **An Item that returns nothing fails the run.** `main` collects per-Item failures
+  (ApiException + retry exhaustion) and calls `report_failed_items` AFTER the persist
+  step: healthy data stays durable, but the non-zero exit stops the pipeline and fires
+  the deploy alert. Don't downgrade it to a warning — a silent `ITEM_LOGIN_REQUIRED`
+  is indistinguishable from "no spending this month". `--allow-item-errors` is the
+  escape hatch for a knowingly-broken bank.
+- The overfetch cadence clock advances only when EVERY item succeeded (it means "the
+  full 90-day window was verified"); a partial failure re-checks next run.
 - Stamp `txn_owner` on every record entering the store. The two stamping points are
   `sync_item` and `fetch_window._fetch_window_items` — any new fetch path must stamp
   identically, or golden overwrites will strip ownership and reconcile parity breaks.

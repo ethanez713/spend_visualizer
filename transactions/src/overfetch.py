@@ -60,8 +60,12 @@ def run_overfetch(client, tokens, raw_store: dict) -> dict:
     buffer), on an account covered by a fully-successful item, yet absent from the
     golden response. Partial records from an item that errored mid-pagination still
     merge (adds/overwrites are always safe), but that item covers nothing, so its
-    records can never be falsely flagged. If every item fails, nothing is merged and
-    the cadence clock is NOT advanced (a transient Plaid outage retries next run).
+    records can never be falsely flagged. If every item fails, nothing is merged.
+
+    The cadence clock advances ONLY when every item succeeded: it records "the full
+    90-day window has been verified", which a partial run did not do. So ANY item
+    failure (not just a total outage) leaves the clock alone and the next run
+    re-checks the window.
     """
     today = date.today()
     start = today - timedelta(days=OVERFETCH_WINDOW_DAYS)
@@ -139,7 +143,18 @@ def run_overfetch(client, tokens, raw_store: dict) -> dict:
     # Checkpoint the merged store before advancing the cadence clock (mirrors
     # sync_item's store-then-cursor order): a crash in between re-runs the overfetch.
     save_raw_store(raw_store)
-    save_overfetch_state(today.isoformat())
+    # The clock means "the whole 90-day window has been verified". A partial run did
+    # NOT verify the failed item's accounts, so advancing would retire the safety net
+    # for data it never looked at — and a permanently broken item would never get
+    # re-checked. Leave it, so the next run re-runs the full window.
+    if items_failed:
+        print(
+            f"  overfetch: {items_failed} item(s) failed — cadence clock NOT advanced; "
+            "the full window will be re-checked next run.",
+            file=sys.stderr,
+        )
+    else:
+        save_overfetch_state(today.isoformat())
     return {
         "added": len(added),
         "changed": len(changed),
