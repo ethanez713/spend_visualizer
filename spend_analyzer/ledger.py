@@ -5,13 +5,14 @@ personal ``budget.yaml`` — see ``config_io.Budget``). The ledger is produced b
 the sibling "converter" project, which translates Plaid's PFC taxonomy into the
 established budget's categories and emits the schema::
 
-    Source, Date, Description, Category, Debit, Credit, Debit Less Credit
+    Source, Date, Description, Category, Debit, Credit, Debit Less Credit, Account
 
 We only need three of those columns to drive the Budget view: who (``Source`` →
 person), when (``Date`` → month), what (``Category``), and how much
 (``Debit Less Credit`` → net spend, positive = money out). Everything else
-(account type, channel, necessity) is absent here, which is why the alternative
-view honors only the date-range and person filters.
+(channel, necessity) is absent here, which is why the alternative view honors
+only the date-range and person filters. Columns are read BY NAME, so the
+converter can add more (it appended ``Account``) without breaking this loader.
 
 Read-only and fail-soft: malformed dates/amounts are dropped per the security
 baseline, never fatal.
