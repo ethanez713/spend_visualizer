@@ -30,8 +30,6 @@ _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_REVIEW_LOG = os.path.join(_PROJECT_ROOT, ".secrets", "review_log.jsonl")
 
 
-# ── Pure per-row actions ──────────────────────────────────────────────────────
-
 def flagged_rows(store: dict[str, dict]) -> list[tuple[str, dict]]:
     """The ``(transaction_id, record)`` pairs carrying a pending review flag."""
     return [(tid, rec) for tid, rec in store.items() if rec.get("category_review_flag")]
@@ -53,7 +51,6 @@ def accept_flag(record: dict, memory: MerchantMemory | None = None) -> bool:
 
 
 def reject_flag(record: dict) -> None:
-    """Keep the current category; drop the flag."""
     clear_review_flag(record)
 
 
@@ -69,8 +66,6 @@ def repick_flag(record: dict, primary: str, detailed: str,
     return applied
 
 
-# ── Review logging ────────────────────────────────────────────────────────────
-
 def write_review_log(path: str, entries: list[dict]) -> None:
     """Append one JSONL line per adjudicated row (0600 — financial data)."""
     if not entries:
@@ -85,8 +80,6 @@ def write_review_log(path: str, entries: list[dict]) -> None:
     except OSError:
         pass
 
-
-# ── Interactive loop ──────────────────────────────────────────────────────────
 
 def _render(rec: dict, n: int, total: int, out) -> None:
     pfc = rec.get("personal_finance_category") or {}

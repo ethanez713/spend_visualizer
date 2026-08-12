@@ -45,7 +45,6 @@ def main() -> int:
     tmp = tempfile.mkdtemp()
     path = os.path.join(tmp, FILE_NAME)
 
-    # --- v1: create -----------------------------------------------------------
     v1 = {
         "t1": {"transaction_id": "t1", "date": "2026-01-01", "pending": False,
                "amount": 1.0, "name": "Alpha"},
@@ -71,7 +70,6 @@ def main() -> int:
         return 1
     print(f"  PASS: byte round-trip exact — {len(pulled1)} records match local store")
 
-    # --- v2: update in place (same file_id → new revision) --------------------
     v2 = dict(v1)
     v2["t3"] = {"transaction_id": "t3", "date": "2026-01-03", "pending": False,
                 "amount": 3.0, "name": "Gamma"}

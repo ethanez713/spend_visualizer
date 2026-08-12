@@ -37,7 +37,6 @@ def _disp(col: str, v) -> str:
     return humanize_atom(v) if col == "atom" else str(v)
 
 
-# ----------------------------------------------------------------- granularity
 def granularity_control(cube: Cube, spec: GroupingSpec) -> tuple[str, str]:
     options = list(CATEGORY_LEVEL_BY_NAME.keys())
     level_name = st.radio(
@@ -49,7 +48,6 @@ def granularity_control(cube: Cube, spec: GroupingSpec) -> tuple[str, str]:
     return level_name, CATEGORY_LEVEL_BY_NAME[level_name]
 
 
-# ----------------------------------------------------------------------- render
 def render(cube: Cube, spec: GroupingSpec, trailing_months: int) -> None:
     level_name, level_col = granularity_control(cube, spec)
 
@@ -159,7 +157,6 @@ def _flag_category(cube, spec, level_col, value) -> None:
 _WINDOW_DAYS = {"12 mo": 365, "3 mo": 90, "1 mo": 30}
 
 
-# --------------------------------------------------------------------- hierarchy
 def _hierarchy(rows: pd.DataFrame, cube=None, spec=None) -> list:
     st.subheader("Hierarchy")
     root: list = st.session_state.setdefault(ROOT_KEY, [])
@@ -259,7 +256,6 @@ def _drill_filter(rows: pd.DataFrame, root: list) -> pd.DataFrame:
     return out
 
 
-# --------------------------------------------------------------------- charts
 def _build_hierarchy_fig(vis, levels, root, treemap: bool):
     """Build a sunburst/treemap for the subtree under `root`.
 
@@ -316,7 +312,6 @@ def _build_hierarchy_fig(vis, levels, root, treemap: bool):
     return fig, abs_nodes
 
 
-# ------------------------------------------------------------ transaction detail
 def _detail_section(rows: pd.DataFrame, root: list) -> None:
     st.subheader("Transaction detail")
     sub = _drill_filter(rows, root)
@@ -327,9 +322,6 @@ def _detail_section(rows: pd.DataFrame, root: list) -> None:
         dim, val = CATEGORY_LEVELS[len(root) - 1], root[-1]
         hide_button(dim, val, _disp(dim, val), key=f"hide_drill_{dim}_{val}")
     transaction_detail(sub, title=crumb, key=f"drill_{len(root)}_{'_'.join(map(str, root))}")
-
-
-# ------------------------------------------------------------------- helpers
 
 
 def _trailing_avg(cube, spec, level_col, window) -> pd.Series:

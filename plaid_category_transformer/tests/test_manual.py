@@ -36,8 +36,6 @@ def _intent(record, scope="transaction", cat=COFFEE, **kw):
     return build_intent(scope=scope, primary=cat[0], detailed=cat[1], record=record, **kw)
 
 
-# ── Intent construction ───────────────────────────────────────────────────────
-
 def given_a_record_when_txn_intent_built_then_match_and_snapshot_captured(make_record):
     it = _intent(make_record())
     assert it["match"] == {"transaction_id": "txn_1"}
@@ -74,8 +72,6 @@ def given_no_merchant_identity_when_merchant_intent_built_then_raises(make_recor
     with pytest.raises(ValueError):
         _intent(rec, scope="merchant")
 
-
-# ── The append-only log ───────────────────────────────────────────────────────
 
 def given_intents_appended_when_loaded_and_resolved_then_order_preserved(
         tmp_path, make_record):
@@ -118,8 +114,6 @@ def given_an_invalid_category_in_the_log_when_resolved_then_intent_skipped(
     assert "not a valid PFC pair" in capsys.readouterr().err
 
 
-# ── Matching (specificity, recency, the entity-id veto) ───────────────────────
-
 def given_txn_and_newer_merchant_intents_when_matched_then_transaction_scope_wins(
         make_record):
     rec = make_record()
@@ -147,8 +141,6 @@ def given_a_row_without_entity_id_when_matched_then_name_fallback_applies(make_r
     row = make_record(transaction_id="txn_9", merchant_entity_id=None)
     assert ManualIndex([it]).match(row)["id"] == it["id"]
 
-
-# ── Replay (apply_manual_edits) ───────────────────────────────────────────────
 
 def given_a_covered_flagged_row_when_applied_then_manual_provenance_and_flag_cleared(
         make_record):
@@ -196,8 +188,6 @@ def given_an_intent_for_a_pruned_row_when_replayed_then_orphan_reported_store_un
     assert summary["orphans"] == [gone["id"]]
     assert rec["personal_finance_category"]["primary"] == "GENERAL_MERCHANDISE"
 
-
-# ── Pipeline integration ──────────────────────────────────────────────────────
 
 def given_a_covered_row_when_transformed_then_llm_never_sees_it(
         make_record, store_of, FakeLLM_cls):
@@ -282,8 +272,6 @@ def given_no_edits_file_when_run_then_pipeline_unaffected(
                  edits_path=str(tmp_path / "missing.jsonl"))
     assert store["txn_1"]["category_update_step"] == ""
 
-
-# ── The interactive --edit session ────────────────────────────────────────────
 
 def given_a_store_when_searched_then_text_and_id_lookups_work(make_record, store_of):
     store = store_of(make_record(), make_record(transaction_id="txn_2",

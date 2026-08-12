@@ -31,8 +31,6 @@ def given_audit_levels_when_inspected_then_default_covers_all_plaid_levels():
     assert {"LOW", "MEDIUM", "HIGH", "VERY_HIGH"} <= config.AUDIT_CONFIDENCE_LEVELS
 
 
-# ── The motivating example: Capital One Travel ────────────────────────────────
-
 def given_cot_flight_row_when_ruled_then_travel_flights(make_record):
     rec = make_record(merchant_name="COT", name="COT*FLT", original_description="COT*FLT",
                       website=None, merchant_entity_id=None)
@@ -50,7 +48,6 @@ def given_cot_hotel_row_when_ruled_then_travel_lodging(make_record):
     assert (hit.primary, hit.detailed) == ("TRAVEL", "TRAVEL_LODGING")
 
 
-# ── Personal rule overlay (personal/local rules live under the data root) ──────
 # config._load_personal_rules reads DATA_ROOT lazily inside the function, so we point
 # src.paths.DATA_ROOT at a tmp dir and call it directly (re-importing config to mutate
 # the module-level tables would leak into other tests).

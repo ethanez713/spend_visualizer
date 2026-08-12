@@ -59,7 +59,6 @@ class Cube:
         self.con = duckdb.connect(database=":memory:")
         self.con.register("txns", self.df)
 
-    # ------------------------------------------------------------------ #
     def _where(self, spec: GroupingSpec) -> tuple[str, list]:
         clauses, params = [], []
         if self.has_hidden and not spec.include_hidden:
@@ -141,10 +140,8 @@ class Cube:
         return vals
 
 
-# ---------------------------------------------------------------------- #
 # Future top-K frontier (PLAN.md §7.3): provably covered by category_path.
 # Implemented now because it powers click-to-zoom depth on the sunburst.
-# ---------------------------------------------------------------------- #
 def topk_frontier(df: pd.DataFrame, k: int, path_col: str = "category_path",
                   value_col: str = "spend") -> list[tuple]:
     """Greedy top-K: expand the largest expandable node until K buckets.

@@ -10,7 +10,6 @@ of the same guard across the sibling projects).
 """
 from __future__ import annotations
 
-# A leading one of these makes a spreadsheet treat a cell as a formula.
 _CSV_INJECTION_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 
 

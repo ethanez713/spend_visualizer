@@ -5,8 +5,6 @@ from src.schema import CORRECTED_CONFIDENCE, NEW_COLUMNS, ensure_new_columns, se
 from src.transformer import _decide
 
 
-# ── set_provenance ─────────────────────────────────────────────────────────────
-
 def given_a_change_when_provenance_set_then_originals_saved_and_value_overwritten(make_record):
     rec = make_record(personal_finance_category={
         "primary": "GENERAL_MERCHANDISE",
@@ -69,8 +67,6 @@ def given_a_record_when_ensure_new_columns_then_all_present(make_record):
     for col in NEW_COLUMNS:
         assert col in rec
 
-
-# ── _decide attribution ────────────────────────────────────────────────────────
 
 def _rec(primary="GENERAL_MERCHANDISE",
          detailed="GENERAL_MERCHANDISE_OTHER_GENERAL_MERCHANDISE", conf="LOW"):

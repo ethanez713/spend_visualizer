@@ -46,7 +46,6 @@ CSV_COLUMNS = [
     "account_official_name",
     "account_type",
     "account_subtype",
-    # --- transaction core ---
     "transaction_id",
     "pending",
     "pending_transaction_id",
@@ -74,7 +73,6 @@ CSV_COLUMNS = [
     "pf_category_confidence",
     "pf_category_version",
     "pf_category_icon_url",
-    # --- location ---
     "location_address",
     "location_city",
     "location_region",

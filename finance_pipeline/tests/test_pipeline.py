@@ -33,8 +33,6 @@ from src.pipeline import (
 )
 
 
-# ── Fake-component harness ───────────────────────────────────────────────────
-
 def _write_exe(path, body: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(body)
@@ -164,8 +162,6 @@ def _fail_next(cfg_python, code: int) -> None:
     (cfg_python.parent / "fail.txt").write_text(str(code))
 
 
-# ── Command construction (pure) ───────────────────────────────────────────────
-
 def given_default_args_when_building_cmds_then_components_run_with_defaults(fake_world):
     cfg, _ = fake_world
     args = parse_args([], default_port=cfg.ui_port)
@@ -203,8 +199,6 @@ def given_no_llm_and_llm_defer_together_then_rejected():
         parse_args(["--no-llm", "--llm-defer"])
 
 
-# ── Happy path ────────────────────────────────────────────────────────────────
-
 def given_healthy_components_when_main_then_steps_run_in_order(fake_world, capsys):
     cfg, log = fake_world
 
@@ -226,8 +220,6 @@ def given_no_ui_when_main_then_streamlit_never_launches(fake_world):
 
     assert [l.split()[0] for l in _log_lines(log)] == ["fetch", "categorize"]
 
-
-# ── Stop-on-failure (the conflict-stop contract) ─────────────────────────────
 
 def given_fetch_fails_when_main_then_pipeline_stops_before_categorize(fake_world):
     cfg, log = fake_world
@@ -261,8 +253,6 @@ def given_ui_dies_before_serving_when_main_then_clear_error(fake_world):
     assert "before serving" in str(exc.value)
 
 
-# ── Preflight ─────────────────────────────────────────────────────────────────
-
 def given_no_linked_banks_when_preflight_then_stops_with_link_hint(fake_world):
     cfg, log = fake_world
     (cfg.transactions_dir / ".secrets" / "tokens.json").unlink()
@@ -285,8 +275,6 @@ def given_missing_venv_when_preflight_then_all_problems_reported(fake_world):
     msg = str(exc.value)
     assert "transformer venv python" in msg and "link" in msg.lower()
 
-
-# ── Drive credential seeding ──────────────────────────────────────────────────
 
 def given_empty_transformer_secrets_when_drive_run_then_creds_seeded_0600(fake_world):
     cfg, _ = fake_world
@@ -333,7 +321,6 @@ def given_no_drive_flag_when_main_then_no_cred_seeding_needed(fake_world):
     assert not cfg.transformer_secrets.exists()
 
 
-# ── Pipeline lock + data push (the scheduled-run additions) ──────────────────
 # `data_repo` (conftest.py) builds its git repo at the same tmp path fake_world
 # uses for Config.data_root, so combining the fixtures makes the pipeline's data
 # root a real (synthetic) git repo with a local bare "GitHub" remote.
@@ -393,7 +380,6 @@ def given_push_flag_when_fetch_fails_then_nothing_committed(fake_world, data_rep
     assert _remote_commits(repo) == 0            # not even a local commit
 
 
-# ── Optional external budget-ledger conversion ───────────────────────────────
 # The converter is an opt-in add-on (config._converter_dir resolves it). When
 # present, the pipeline regenerates the budget ledger after categorize; the step
 # is offline (--no-fetch/--all/--no-upload) and NON-fatal (it derives a view).
@@ -466,7 +452,6 @@ def given_converter_and_push_when_main_then_convert_precedes_push(with_converter
     assert _remote_commits(origin) == 1           # ledger regen happens before the push
 
 
-# ── --sheet: monthly Google-Sheet upload + extra browser tabs ─────────────────
 # The `run_finances` ritual: after the data steps, the converter runs a second
 # time in Sheet mode (upload ON, URL reported back via --url-file) and the fresh
 # Sheet plus any <data_root>/pinned_tabs URLs open as extra browser tabs.
@@ -601,7 +586,6 @@ def given_converter_reports_no_url_when_sheet_then_warns_without_tab(
     assert "reported no Sheet URL" in capsys.readouterr().out
 
 
-# ── --sheet: pending-row warning (uploading "too early") ─────────────────────
 # A pending row's amount is provisional and it gets a NEW transaction_id when it
 # settles, so a Sheet snapshot taken before the window settled is permanently
 # wrong (each --sheet run uploads a NEW Sheet; the old one is never updated).

@@ -38,7 +38,6 @@ HEADER = """# taxonomy.yaml — atoms -> category tiers, merchant overrides, exc
 def build_yaml() -> str:
     lines: list[str] = [HEADER]
 
-    # --- exclusions: internal money movement (the #1 double-count trap) ---
     lines.append("# Internal money movement: excluded from spend/income aggregates.")
     lines.append("# KEEP LOAN_PAYMENTS_MORTGAGE_PAYMENT — that is real spend.")
     lines.append("exclude_detailed:")
@@ -46,7 +45,6 @@ def build_yaml() -> str:
         lines.append(f"  - {pat}")
     lines.append("")
 
-    # --- atoms ---
     lines.append("atoms:")
     for primary in DETAILED:
         lines.append(f"  # --- {primary} ---")
@@ -57,7 +55,6 @@ def build_yaml() -> str:
             )
         lines.append("")
 
-    # --- merchant overrides (starter) ---
     lines.append("# Merchant overrides: regex on merchant_name OR exact merchant_entity_id.")
     lines.append("# Example splits 'Uber Eats' (food) from 'Uber' (rideshare).")
     lines.append("merchant_overrides:")

@@ -89,7 +89,6 @@ def given_pending_stamp_when_next_run_classifies_then_row_reaudited(make_record)
     assert delta.changed == ["txn_1"]
 
 
-# ── Audit-recency stamping (the adopt-time conflict resolver's signal) ────────
 # Invariant under test: category_audited_at moves ONLY when audit content
 # actually changes. A no-op re-run must not refresh it, or a stale machine
 # could outrank the other machine's real work at adopt time.

@@ -12,13 +12,11 @@ from typing import Any, Optional
 
 @dataclass
 class CanonicalTransaction:
-    # identity / source
     transaction_id: str
     account_id: str
     institution: Optional[str] = None
     owner: Optional[str] = None              # who the linked Item belongs to (txn_owner)
 
-    # dates
     posted_date: Optional[str] = None        # ISO yyyy-mm-dd
     authorized_date: Optional[str] = None     # ISO yyyy-mm-dd (often null in data)
 
@@ -26,7 +24,6 @@ class CanonicalTransaction:
     amount: float = 0.0
     currency: Optional[str] = None
 
-    # descriptors
     name: Optional[str] = None
     merchant_name: Optional[str] = None
     merchant_entity_id: Optional[str] = None
@@ -49,7 +46,6 @@ class CanonicalTransaction:
     account_type: Optional[str] = None
     account_subtype: Optional[str] = None
 
-    # pending handling
     pending: bool = False
     pending_transaction_id: Optional[str] = None
 

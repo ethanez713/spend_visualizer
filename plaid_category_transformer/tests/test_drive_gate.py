@@ -48,8 +48,6 @@ def _set_remote_store(store: dict) -> None:
     FakeDriveSync.remote_by_name[tr.DRIVE_JSONL_NAME] = _jsonl(store)
 
 
-# ── Store adoption ────────────────────────────────────────────────────────────
-
 def given_remote_matches_prior_when_adopt_then_prior_unchanged(store_of):
     prior = store_of({"transaction_id": "t1"}, {"transaction_id": "t2"})
     _set_remote_store(prior)
@@ -322,8 +320,6 @@ def given_correction_made_on_other_machine_when_adopt_and_replay_then_not_revert
     assert summary["reverted"] == []             # A's correction survives B's replay
     assert adopted["t1"]["category_update_step"] == "manual"
 
-
-# ── review_run adopts, then keeps local and Drive in lock-step ────────────────
 
 class FakePushDriveSync(FakeDriveSync):
     """FakeDriveSync that also records push() calls across instances."""

@@ -67,8 +67,6 @@ def _rec(tid, **over):
     return {**dict(_txn(tid, **over)), "txn_owner": "u1"}
 
 
-# --- cadence -------------------------------------------------------------------------
-
 def given_no_state_when_due_checked_then_due(state):
     assert overfetch_due(None) is True
 
@@ -94,8 +92,6 @@ def given_saved_state_when_loaded_then_round_trips(state):
     save_overfetch_state("2026-01-01")
     assert load_overfetch_state() == {"last_overfetch": "2026-01-01"}
 
-
-# --- golden merge: add + overwrite ---------------------------------------------------
 
 def given_record_missing_locally_when_overfetch_then_added(state):
     client = FakeClient({"tok": [_txn("a")]})
@@ -129,8 +125,6 @@ def given_in_sync_store_when_overfetch_then_all_counts_zero(state):
 
     assert counts == {"added": 0, "changed": 0, "stale": 0, "items_ok": 1}
 
-
-# --- stale detection: flag, never delete ---------------------------------------------
 
 def given_record_absent_from_golden_when_overfetch_then_flagged_not_deleted(state):
     # Plaid's golden window covers acc_1 but no longer returns "ghost".

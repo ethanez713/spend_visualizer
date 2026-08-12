@@ -61,8 +61,6 @@ class Abort(SystemExit):
         super().__init__(f"✖ ABORT — {msg}\nNothing was modified.")
 
 
-# ── Scan phase (read-only) ─────────────────────────────────────────────────────
-
 def scan_tokens(path: Path, owner: str) -> dict:
     """Plan for tokens.json: which entries need an owner. Mismatch aborts."""
     entries = json.loads(path.read_text(encoding="utf-8"))
@@ -115,8 +113,6 @@ def scan_xz(path: Path, owner: str) -> dict:
     return {**plan, "kind": "xz"}
 
 
-# ── Apply phase (atomic, permission-preserving) ────────────────────────────────
-
 def _atomic_write(path: Path, text: str):
     mode = path.stat().st_mode & 0o777  # preserve the file's existing perms (0600 etc.)
     tmp = path.with_suffix(path.suffix + ".tmp")
@@ -155,8 +151,6 @@ def apply_plan(plan: dict, owner: str):
     else:
         _atomic_write(plan["path"], "\n".join(lines) + ("\n" if lines else ""))
 
-
-# ── Entry point ────────────────────────────────────────────────────────────────
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__,

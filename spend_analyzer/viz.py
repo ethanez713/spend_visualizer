@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import pandas as pd
 
-# ----------------------------------------------------------------- formatting
 def money(x: float) -> str:
     try:
         return f"${x:,.0f}" if abs(x) >= 100 else f"${x:,.2f}"
@@ -51,7 +50,6 @@ def blank_if_missing(v):
     return v
 
 
-# -------------------------------------------------------------------- heatmaps
 def _green_scale(series: pd.Series) -> list[str]:
     """Sequential green with black text — darker green = larger value."""
     vals = pd.to_numeric(series, errors="coerce")
@@ -139,7 +137,6 @@ def style_table(
     return styler
 
 
-# ----------------------------------------------------------------------- export
 _INJECTION_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 
 

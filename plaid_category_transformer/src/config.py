@@ -16,7 +16,6 @@ The companion taxonomy file ``pfc_taxonomy.csv`` is the menu of legal categories
 """
 from __future__ import annotations
 
-# ── 1. SELECTION POLICY — which rows do we audit? ─────────────────────────────
 # Plaid stamps every category with a confidence_level. We re-audit ALL of them: even
 # HIGH/VERY_HIGH rows have been observed wrong (e.g. Capital One Travel flights, 'COT*FLT',
 # landing in GENERAL_SERVICES_POSTAGE_AND_SHIPPING). A missing/blank level counts as
@@ -24,7 +23,6 @@ from __future__ import annotations
 # {"HIGH", "VERY_HIGH"} to only re-check Plaid's own low-confidence guesses.
 AUDIT_CONFIDENCE_LEVELS = {"LOW", "MEDIUM", "HIGH", "VERY_HIGH", "UNKNOWN"}
 
-# ── AUTHORITY MODEL — who is allowed to overwrite a category? ─────────────────
 # Most-trusted signal wins, and the noisy local LLM never SILENTLY overwrites a category.
 # Authority, highest to lowest:
 #   1. Mechanical 'auto' rules (entity-id memory + the specific COT* booking prefixes) —
@@ -51,7 +49,6 @@ LLM_AUTHORITY = "flag"
 # flag them), under any LLM_AUTHORITY. Mechanical 'auto' rules still apply to them.
 TRUSTED_CONFIDENCE_LEVELS = {"HIGH", "VERY_HIGH"}
 
-# ── SIGN GUARD — drop sign-impossible LLM suggestions before they become flags ─
 # Plaid's amount convention: a POSITIVE amount is money LEAVING the account (a debit —
 # purchase, payment, transfer out); a NEGATIVE amount is money ARRIVING (a credit —
 # refund, deposit, paycheck, transfer in). These INFLOW primaries are money-in ONLY, so a
@@ -69,7 +66,6 @@ TRUSTED_CONFIDENCE_LEVELS = {"HIGH", "VERY_HIGH"}
 # "negative-on-spend" rule would suppress correct re-categorizations.
 INFLOW_PRIMARIES = {"INCOME", "TRANSFER_IN"}
 
-# ── FLAG THRESHOLD — suppress intra-tier-1 laterals ───────────────────────────
 # A suggestion that keeps the same tier-1 primary and only changes the detailed (e.g.
 # FOOD_AND_DRINK_FAST_FOOD ↔ _RESTAURANT, _COFFEE ↔ _RESTAURANT) does not move tier-1
 # spend analysis but still costs a human review. qwen2.5:7b produced many such low-value
@@ -80,7 +76,6 @@ INFLOW_PRIMARIES = {"INCOME", "TRANSFER_IN"}
 FLAG_INTRA_PRIMARY_LATERALS = False
 
 
-# ── 2. HARDCODED MECHANICAL RULES (Stage 1) ───────────────────────────────────
 # Deterministic overrides applied BEFORE the LLM. Cascade order is fixed in rules.py:
 # merchant memory → POS prefix → website → keyword; FIRST hit wins. Every rule also shows
 # its suggestion to the LLM.
@@ -137,7 +132,6 @@ KEYWORD_RULES: list[tuple[str, tuple[str, str], str]] = [
 ]
 
 
-# ── PERSONAL RULE OVERLAY (kept OUT of this public repo) ───────────────────────
 # Personal / local-merchant rules (e.g. a neighborhood co-op) reveal where you live
 # and aren't useful to anyone else, so they live under the DATA ROOT, never in this
 # committed file. Optional JSON at
@@ -179,7 +173,6 @@ WEBSITE_RULES = _PERSONAL_RULES["website"] + WEBSITE_RULES
 KEYWORD_RULES = _PERSONAL_RULES["keyword"] + KEYWORD_RULES
 
 
-# ── 3. LLM STAGE (Stage 2) ────────────────────────────────────────────────────
 # Whether the local-LLM review stage runs by DEFAULT (no CLI flag given). Turned OFF after
 # the 2026-06 audit: qwen2.5:7b was too noisy to be worth the review time — 23% flag
 # precision, and it couldn't reliably read the amount-sign convention even with an explicit

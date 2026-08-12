@@ -7,8 +7,6 @@ from src.rules import (
 )
 
 
-# ── normalize_merchant / contains_word (ported helpers) ───────────────────────
-
 def given_noisy_descriptions_when_normalized_then_stable_key():
     assert normalize_merchant("STARBUCKS #1234") == "starbucks"
     assert normalize_merchant("TST* Blue Fern 12") == "tst blue fern"
@@ -18,8 +16,6 @@ def given_keyword_when_substring_only_then_no_whole_token_match():
     assert contains_word("uber eats", "uber")
     assert not contains_word("hubertize", "uber")
 
-
-# ── memory: entity-id (HIGH) then normalized-name (MEDIUM) ────────────────────
 
 def given_entity_id_in_memory_when_applied_then_high_confidence_hit(make_record):
     mem = MerchantMemory(path=None)
@@ -47,8 +43,6 @@ def given_name_only_in_memory_when_applied_then_medium_confidence_hit(make_recor
     assert hit.rule_name == "memory:name"
     assert hit.confidence == "MEDIUM"
 
-
-# ── static rules ───────────────────────────────────────────────────────────────
 
 def given_tst_prefix_when_applied_then_restaurant(make_record):
     rec = make_record(merchant_name=None, website=None,
@@ -91,8 +85,6 @@ def given_memory_present_when_applied_then_memory_wins_over_static(make_record):
     assert hit.rule_name == "memory:entity_id"
     assert hit.detailed == "ENTERTAINMENT_MUSIC_AND_AUDIO"
 
-
-# ── persistence (atomic, 0600) ─────────────────────────────────────────────────
 
 def given_memory_saved_when_reloaded_then_round_trips_and_is_owner_only(tmp_path, make_record):
     import os

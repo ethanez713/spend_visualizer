@@ -9,8 +9,6 @@ from conftest import ACCOUNT_META
 from src.fetch_transactions import CSV_COLUMNS, _csv_safe, _g, _v, txn_to_row, write_csv
 
 
-# --- _v: CSV-safe scalar coercion -------------------------------------------
-
 def given_none_when_v_then_empty_string():
     assert _v(None) == ""
 
@@ -31,8 +29,6 @@ def given_plain_scalar_when_v_then_unchanged():
     assert _v("hello") == "hello"
 
 
-# --- _g: safe nested get -----------------------------------------------------
-
 def given_none_obj_when_g_then_none():
     assert _g(None, "k") is None
 
@@ -41,8 +37,6 @@ def given_dict_when_g_then_value_or_none():
     assert _g({"k": 1}, "k") == 1
     assert _g({}, "k") is None
 
-
-# --- _csv_safe: spreadsheet formula-injection guard (regression) -------------
 
 @pytest.mark.parametrize(
     "value, expected",
@@ -70,8 +64,6 @@ def given_negative_float_when_csv_safe_then_unchanged():
     assert _csv_safe(True) is True
     assert _csv_safe(None) is None
 
-
-# --- txn_to_row: the core projection ----------------------------------------
 
 def given_full_txn_when_projected_then_fields_flattened(make_txn):
     row = txn_to_row(make_txn(), ACCOUNT_META)
@@ -119,8 +111,6 @@ def given_null_nested_objects_when_projected_then_empty(make_txn):
     assert row["payment_reference_number"] == ""
     assert row["pf_category_primary"] == ""
 
-
-# --- write_csv: file output -------------------------------------------------
 
 def _read_csv(path):
     with open(path, newline="") as f:

@@ -152,8 +152,6 @@ def given_flag_mechanical_rule_when_no_llm_then_flagged_not_applied(store_of):
     assert rec["category_review_source"] == "mechanical"
 
 
-# ── schema compatibility ───────────────────────────────────────────────────────
-
 def given_transformed_record_when_inspected_then_all_original_keys_kept(store_of, FakeLLM_cls):
     store = store_of({})
     original_keys = set(store["txn_1"].keys())
@@ -196,8 +194,6 @@ def given_full_run_when_persisted_then_jsonl_and_csv_round_trip(tmp_path, store_
     assert header == COLUMNS
 
 
-# ── logging + input loading ─────────────────────────────────────────────────────
-
 def given_changes_when_logged_then_jsonl_appended_owner_only(tmp_path):
     import os
 
@@ -210,8 +206,6 @@ def given_changes_when_logged_then_jsonl_appended_owner_only(tmp_path):
     assert json.loads(lines[0])["transaction_id"] == "t1"
     assert oct(os.stat(path).st_mode)[-3:] == "600"
 
-
-# ── LLM on/off resolution (the 7B is OFF by default; --llm opts in) ────────────
 
 def given_no_llm_flags_when_resolved_then_off_by_config_default():
     from src.transformer import _resolve_llm_mode

@@ -59,8 +59,6 @@ def _warn(msg: str) -> None:
     print(f"  manual: {msg}", file=sys.stderr)
 
 
-# ── Intent construction ───────────────────────────────────────────────────────
-
 def snapshot_of(record: dict) -> dict:
     """Freeze the row's signals + what the machines believed, at edit time.
 
@@ -147,8 +145,6 @@ def build_revoke(revokes_id: str, *, note: str = "", source: str = "cli") -> dic
     }
 
 
-# ── The log ───────────────────────────────────────────────────────────────────
-
 def append_intent(path: str, intent: dict) -> dict:
     """Append one intent to the JSONL log (creating it on first use)."""
     parent = os.path.dirname(os.path.abspath(path))
@@ -221,8 +217,6 @@ def resolve_intents(entries: list[dict]) -> list[dict]:
     return out
 
 
-# ── Matching ──────────────────────────────────────────────────────────────────
-
 class ManualIndex:
     """Resolved intents indexed for O(1) per-row matching.
 
@@ -269,8 +263,6 @@ class ManualIndex:
         return max(candidates, key=lambda c: c[0])[1]        # latest appended wins
 
 
-# ── Replay (the stage) ────────────────────────────────────────────────────────
-
 def apply_manual_edits(store: dict[str, dict], index: ManualIndex) -> dict:
     """Replay the resolved intents over the FULL store (mutates in place).
 
@@ -314,8 +306,6 @@ def apply_manual_edits(store: dict[str, dict], index: ManualIndex) -> dict:
     return {"applied": applied, "already": n_already,
             "reverted": reverted, "orphans": orphans}
 
-
-# ── Interactive edit session (the --edit CLI) ────────────────────────────────
 
 def search_rows(store: dict[str, dict], query: str,
                 limit: int = 10) -> list[tuple[str, dict]]:

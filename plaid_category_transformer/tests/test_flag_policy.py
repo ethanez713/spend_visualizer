@@ -33,8 +33,6 @@ def _record(**over):
     return base
 
 
-# ── _sign_violation unit ──────────────────────────────────────────────────────
-
 @pytest.mark.parametrize("amount,primary,expected", [
     (50.0, "INCOME", True),            # money OUT can't be income
     (50.0, "TRANSFER_IN", True),       # money OUT can't be an inbound transfer
@@ -50,8 +48,6 @@ def _record(**over):
 def given_amount_and_primary_when_checked_then_sign_violation(amount, primary, expected):
     assert _sign_violation(amount, primary) is expected
 
-
-# ── Sign guard through the engine ─────────────────────────────────────────────
 
 @pytest.mark.parametrize("primary,detailed", [
     ("INCOME", "INCOME_WAGES"),
@@ -110,8 +106,6 @@ def given_negative_amount_when_llm_suggests_spend_then_flagged_not_suppressed(
     assert len(flags) == 1
     assert store["txn_1"]["category_review_primary"] == "GENERAL_MERCHANDISE"
 
-
-# ── Intra-tier-1 lateral suppression ──────────────────────────────────────────
 
 def given_intra_primary_lateral_when_llm_suggests_then_not_flagged(store_of, FakeLLM_cls):
     # Same primary FOOD_AND_DRINK, only the detailed changes (RESTAURANT → FAST_FOOD):

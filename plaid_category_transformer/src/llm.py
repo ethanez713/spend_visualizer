@@ -89,8 +89,6 @@ def _spinner(label: str, eta_s: Optional[float] = None):
             print(f"  ✓ {label} ({elapsed:.1f}s)", flush=True)
 
 
-# ── Pydantic response models ──────────────────────────────────────────────────
-
 class CategoryDecision(BaseModel):
     row_index: int
     primary: str       # must be in pfc_taxonomy.PRIMARY
@@ -103,8 +101,6 @@ class CategoryDecision(BaseModel):
 class CategoryAudit(BaseModel):
     decisions: list[CategoryDecision]
 
-
-# ── System prompt (schema + taxonomy + output rules) ──────────────────────────
 
 _SYSTEM_PROMPT = """\
 You re-categorize bank/credit-card transactions into Plaid's Personal Finance Category
@@ -239,8 +235,6 @@ class CategoryLLM:
                 return True
         print("timed out — skipping LLM stage.")
         return False
-
-    # --- public API -----------------------------------------------------------
 
     def categorize(self, items: list[dict]) -> dict[int, CategoryDecision]:
         """Return ``{row_index: CategoryDecision}`` for valid decisions only.

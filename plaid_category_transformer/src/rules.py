@@ -40,8 +40,6 @@ class RuleHit:
     trust: str       # "auto" = overwrite in place | "flag" = suggest for human review
 
 
-# ── Text normalization ───────────────────────────────────────────────────────
-
 _NOISE = re.compile(
     r"((?<![a-z])x{2,}"          # masked card digits 'XXXX' (not 'exxon'/'maxx')
     r"|\d{2,}"                   # multi-digit runs (ref/account numbers)
@@ -84,8 +82,6 @@ def _candidate_text(record: dict) -> str:
              record.get("original_description")]
     return " ".join(_lc(p) for p in parts if p)
 
-
-# ── Merchant memory ────────────────────────────────────────────────────────────
 
 class MerchantMemory:
     """JSON map of a merchant key -> {"primary", "detailed"}.
@@ -156,8 +152,6 @@ class MerchantMemory:
                 os.unlink(tmp)
             raise
 
-
-# ── The cascade ─────────────────────────────────────────────────────────────
 
 def apply_rules(record: dict, memory: MerchantMemory | None = None) -> RuleHit | None:
     """Return the first mechanical suggestion for ``record``, or None.

@@ -160,16 +160,13 @@ def enrich(
                 "category_path": tags.category_path + [m["name"]],
                 "necessity": tags.tier0,
                 "unmapped": tags.unmapped,
-                # pfc signals
                 "pfc_primary": t.pfc_primary,
                 "pfc_detailed": t.pfc_detailed,
                 "confidence": t.pfc_confidence or "UNKNOWN",
-                # geo
                 "geo_scope": g["scope"],
                 "geo_country": g["country"],
                 "geo_city": g["city"],
                 "geo_path": g["path"],
-                # time
                 "date_resolved": iso,
                 "year": tm["year"],
                 "quarter": tm["quarter"],
@@ -184,7 +181,6 @@ def enrich(
                 "account_type": acct.get("type", "unknown"),
                 "account_name": acct.get("name", (t.account_id or "?")[:8]),
                 "institution": acct.get("institution", "Unknown"),
-                # presentation
                 "logo_url": t.logo_url,
                 "website": t.website,
                 "pending": t.pending,

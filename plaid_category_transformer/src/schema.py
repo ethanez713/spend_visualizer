@@ -27,7 +27,6 @@ from datetime import datetime, timezone
 
 from .config import AUDIT_CONFIDENCE_LEVELS
 
-# ── Selection ────────────────────────────────────────────────────────────────
 # Confidence levels we re-categorize, from config. Default audits ALL rows (even
 # HIGH/VERY_HIGH, which have been observed wrong); narrow ``AUDIT_CONFIDENCE_LEVELS`` in
 # config.py to skip trusted rows. A missing/blank level counts as UNKNOWN.
@@ -61,7 +60,6 @@ def should_process(record: dict, levels: set[str] = PROCESS_CONFIDENCE) -> bool:
     return conf in levels
 
 
-# ── Provenance + review columns (the new fields) ──────────────────────────────
 # Two groups:
 #   * provenance (``original_*`` + ``category_update_*``) — record an APPLIED correction
 #     (a mechanical 'auto' rule, an accepted review, or an LLM auto-apply). The category is
@@ -215,7 +213,6 @@ BASE_COLUMNS = [
     #     EXCEPT txn_owner, which the collector stamps into every record) ---
     "institution", "txn_owner", "account_id", "account_name", "account_mask",
     "account_official_name", "account_type", "account_subtype",
-    # --- transaction core ---
     "transaction_id", "pending", "pending_transaction_id", "date", "authorized_date",
     "datetime", "authorized_datetime", "name", "original_description", "merchant_name",
     "merchant_entity_id", "website", "logo_url", "amount", "iso_currency_code",
@@ -224,7 +221,6 @@ BASE_COLUMNS = [
     # --- categorization (personal_finance_category) ---
     "pf_category_primary", "pf_category_detailed", "pf_category_confidence",
     "pf_category_version", "pf_category_icon_url",
-    # --- location ---
     "location_address", "location_city", "location_region", "location_postal_code",
     "location_country", "location_lat", "location_lon", "location_store_number",
     # --- payment metadata ---
@@ -334,7 +330,6 @@ def row_fn(record: dict) -> dict:
     return row
 
 
-# ── Flagged-rows worklist (the dedicated review file) ─────────────────────────
 # A compact, human-readable CSV of every row carrying a pending review flag, so the
 # flagged rows can be triaged in bulk (in a spreadsheet, or via ``--review``). Far fewer
 # columns than the full store — just what's needed to decide a category at a glance.
@@ -367,7 +362,6 @@ def flag_row_fn(record: dict) -> dict:
     }
 
 
-# ── Schema description for the LLM system prompt ──────────────────────────────
 # (1) of the user-mandated system-prompt contents: what a row is + what each signal
 # means. The taxonomy block (2) and output rules (3) are assembled in llm.py.
 SCHEMA_PROMPT = """\

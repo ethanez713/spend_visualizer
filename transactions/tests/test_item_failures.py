@@ -60,8 +60,6 @@ def _drive_main(monkeypatch, client, tokens, argv):
     return ft.main(argv)
 
 
-# --- the exit contract ---------------------------------------------------------------
-
 def given_one_item_fails_when_fetch_then_exits_nonzero(state, monkeypatch):
     client = PerTokenClient({
         "ok": _page([FakeTxn(transaction_id="a1", date="2026-01-02")]),
@@ -124,8 +122,6 @@ def given_history_never_ready_when_fetch_then_counted_as_failure(state, monkeypa
 
     assert exc.value.code == 1
 
-
-# --- report / error-code helpers -----------------------------------------------------
 
 def given_failures_when_reported_then_message_names_the_banks(state, capsys):
     with pytest.raises(SystemExit):

@@ -12,7 +12,6 @@ e.g. ``amount``) are left untouched so negative amounts stay numeric.
 """
 from __future__ import annotations
 
-# A leading =, +, -, @, tab, or CR makes a spreadsheet treat a cell as a formula.
 _CSV_INJECTION_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 
 

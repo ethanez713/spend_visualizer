@@ -172,8 +172,6 @@ def given_service_error_when_push_then_none_not_raise(tmp_path):
     assert ds.push(_local_file(tmp_path)) is None
 
 
-# --- revision audit / rollback ----------------------------------------------------
-
 def given_pushed_file_when_list_revisions_then_returns_metadata(tmp_path):
     (tmp_path / "drive_state.json").write_text(json.dumps({"transactions.jsonl": "fid"}))
     revs = [{"id": "r1", "modifiedTime": "2026-01-01T00:00:00Z", "size": "100"},
@@ -221,8 +219,6 @@ def given_old_revision_when_restore_then_repushes_as_new_revision(tmp_path):
     assert "rev_get_media" in methods and "update" in methods
     assert "delete" not in methods and "rev_delete" not in methods
 
-
-# --- append-only guard: the library can NEVER delete or trash --------------------
 
 def given_guarded_service_when_files_delete_then_raises():
     guarded = _GuardedService(FakeService())

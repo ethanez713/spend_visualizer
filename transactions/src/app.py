@@ -31,7 +31,6 @@ def index():
 
 @app.route("/linked")
 def linked():
-    """Running list of already-linked institutions."""
     # require_owner=False: this must keep working on a pre-migration tokens file.
     return jsonify([t["institution"] for t in load_tokens(require_owner=False)])
 
@@ -59,7 +58,6 @@ def exchange():
     if not public_token:
         return jsonify({"error": "missing public_token"}), 400
 
-    # public_token -> access_token + item_id (persist immediately)
     try:
         exch = client.item_public_token_exchange(
             ItemPublicTokenExchangeRequest(public_token=public_token)
@@ -70,7 +68,6 @@ def exchange():
     access_token = exch["access_token"]
     item_id = exch["item_id"]
 
-    # Resolve a human-readable institution name.
     institution = "Unknown institution"
     try:
         item = client.item_get(ItemGetRequest(access_token=access_token))

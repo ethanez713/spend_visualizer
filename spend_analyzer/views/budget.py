@@ -130,7 +130,6 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
         grey_rows=grey_rows,
     )
 
-    # --- derived cuts (exclude hidden categories from totals) ---
     vis = table[~table["_hidden"]]
     tot_a = float(vis[avg_col].sum())
     tot_g = float(vis["Goal"].dropna().sum())

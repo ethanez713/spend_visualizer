@@ -213,8 +213,6 @@ def match_scan(records: list[dict] | None = None, memory=None) -> dict:
     return {"by_rule": by_rule, "by_memory_key": by_memory_key}
 
 
-# ── Converter (Google-Sheet budget mapping) — optional, separate taxonomy ─────
-
 def converter_dir() -> Path | None:
     """Resolve the external converter project like finance_pipeline does."""
     env = os.environ.get("SPEND_VISUALIZER_CONVERTER")

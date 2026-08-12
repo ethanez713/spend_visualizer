@@ -49,7 +49,6 @@ def render(cube: Cube, spec: GroupingSpec) -> None:
         column_config={"Logo": st.column_config.ImageColumn("", width="small")},
     )
 
-    # --- per-merchant detail: sparkline + transactions + hide + correct ---
     pick = st.selectbox("Merchant detail", table["Merchant"].tolist())
     if pick:
         sub = rows[rows["merchant"] == pick]
@@ -66,7 +65,6 @@ def render(cube: Cube, spec: GroupingSpec) -> None:
             fix_categorization(row=sub.iloc[0], label=pick, key=f"merch_{mid}",
                                default_scope="merchant")
 
-    # --- recurring / subscriptions ---
     st.subheader("Recurring & subscriptions")
     rec = rows[(rows["recurrence"] == "recurring") & (~rows["hidden"] if "hidden" in rows else True)]
     if rec.empty:

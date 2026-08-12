@@ -35,8 +35,6 @@ def _write_ledger(path: Path, rows=_ROWS) -> Path:
     return path
 
 
-# ── loader ───────────────────────────────────────────────────────────────────
-
 def test_load_ledger_parses_money_dates_and_drops_non_transactions(tmp_path):
     df = load_ledger(_write_ledger(tmp_path / "ledger.csv"))
 
@@ -64,8 +62,6 @@ def test_load_ledger_wrong_schema_returns_empty(tmp_path):
     assert load_ledger(p).empty
 
 
-# ── pivot + filters ────────────────────────────────────────────────────────────
-
 def test_monthly_pivot_groups_category_by_month(tmp_path):
     df = load_ledger(_write_ledger(tmp_path / "ledger.csv"))
     piv = monthly_pivot(df)
@@ -89,8 +85,6 @@ def test_monthly_pivot_date_window_excludes_earlier_months(tmp_path):
     assert list(piv.columns) == ["2026-06"]               # April (Travel) dropped
     assert "Travel" not in piv.index
 
-
-# ── budget.yaml switch ──────────────────────────────────────────────────────────
 
 def test_budget_without_ledger_key_is_none(tmp_path):
     p = tmp_path / "budget.yaml"

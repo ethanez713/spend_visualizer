@@ -31,7 +31,6 @@ DATA_DIR = Path(os.environ.get("SPEND_ANALYZER_DATA_DIR",
 STORE = DATA_DIR / "hidden_rules.json"
 
 
-# --------------------------------------------------------------- persistence
 def _load() -> list[dict]:
     """Read the durable hide rules; [] if missing or unreadable (fail-soft)."""
     if not STORE.exists():
@@ -56,7 +55,6 @@ def _save(rules: list[dict]) -> None:
         pass                                    # a read-only FS must not break the UI
 
 
-# --------------------------------------------------------------------- hiding
 def hidden_rules() -> list[dict]:
     """The active hide rules, loaded from disk once per session then cached."""
     if HIDDEN_KEY not in st.session_state:

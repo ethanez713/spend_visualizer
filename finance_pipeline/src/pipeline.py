@@ -54,8 +54,6 @@ from .git_push import push_data
 _DRIVE_CRED_FILES = ("client_secret.json", "token.json")
 
 
-# ── CLI ───────────────────────────────────────────────────────────────────────
-
 def parse_args(argv=None, *, default_port: int = 8501) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         prog="finance_pipeline",
@@ -108,8 +106,6 @@ def parse_args(argv=None, *, default_port: int = 8501) -> argparse.Namespace:
                    help=f"Streamlit port (default {default_port})")
     return p.parse_args(argv)
 
-
-# ── Component commands (pure: easy to test) ───────────────────────────────────
 
 def fetch_cmd(cfg: Config, args: argparse.Namespace) -> list[str]:
     cmd = [str(cfg.transactions_python), "fetch_transactions.py"]
@@ -186,8 +182,6 @@ def ui_cmd(cfg: Config, args: argparse.Namespace) -> list[str]:
     return [str(cfg.analyzer_streamlit), "run", "app.py",
             "--server.port", str(args.port)]
 
-
-# ── Preflight ─────────────────────────────────────────────────────────────────
 
 def ensure_drive_creds(cfg: Config) -> None:
     """Seed the transformer's .secrets with Drive credentials if it has none.
@@ -274,8 +268,6 @@ def preflight(cfg: Config, args: argparse.Namespace) -> None:
               f"127.0.0.1:{cfg.ollama_port} — the transformer will skip its LLM review "
               "stage (mechanical rules still apply). Start it with `ollama serve`.")
 
-
-# ── Steps ─────────────────────────────────────────────────────────────────────
 
 @contextmanager
 def pipeline_lock(data_root):
@@ -517,8 +509,6 @@ def step_analyze(cfg: Config, args: argparse.Namespace,
         print("\n✓ UI stopped.")
         return 0
 
-
-# ── Entry point ───────────────────────────────────────────────────────────────
 
 def main(argv=None, cfg: Config | None = None) -> None:
     cfg = cfg or default_config()

@@ -26,8 +26,6 @@ def _unit(name: str) -> configparser.ConfigParser:
     return cp
 
 
-# ── Shell scripts ─────────────────────────────────────────────────────────────
-
 @pytest.mark.parametrize("script", SCRIPTS, ids=lambda p: p.name)
 def given_shell_script_when_bash_n_then_syntax_ok(script):
     proc = subprocess.run(["bash", "-n", str(script)],
@@ -39,8 +37,6 @@ def given_shell_script_when_bash_n_then_syntax_ok(script):
 def given_shell_script_then_executable(script):
     assert os.access(script, os.X_OK), f"{script.name} lost its +x bit"
 
-
-# ── Unit-file shape (the keys the design depends on) ─────────────────────────
 
 def given_timer_then_daily_persistent_and_jittered():
     timer = _unit("finance-daily.timer")["Timer"]
@@ -85,8 +81,6 @@ def given_units_with_exec_scripts_then_scripts_exist_and_are_executable():
             checked += 1
     assert checked == 2                           # daily + alert wrappers
 
-
-# ── Wrapper wiring (drift guards against finance_pipeline) ───────────────────
 
 def given_daily_wrapper_then_flags_match_the_server_contract():
     text = (DEPLOY / "bin" / "finance-daily.sh").read_text()

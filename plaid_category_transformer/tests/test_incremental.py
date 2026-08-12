@@ -20,8 +20,6 @@ def _prior(rec: dict, **extra) -> dict:
     return out
 
 
-# ── source_hash ───────────────────────────────────────────────────────────────
-
 def given_record_when_our_columns_added_then_hash_unchanged(make_record):
     # The hash covers only raw Plaid content, so our own provenance/review/bookkeeping
     # columns must never shift it (else every audited row would look "changed" next run).
@@ -46,8 +44,6 @@ def given_record_when_txn_owner_added_or_changed_then_hash_unchanged(make_record
     assert source_hash(dict(rec, txn_owner="Alice")) == base
     assert source_hash(dict(rec, txn_owner="someone_else")) == base
 
-
-# ── classify ──────────────────────────────────────────────────────────────────
 
 def given_input_key_absent_from_prior_then_new_and_to_process(make_record):
     inp = {"a": make_record(transaction_id="a")}
@@ -101,8 +97,6 @@ def given_full_then_everything_reaudited_but_removals_still_found(make_record):
     assert d.removed == ["gone"]
 
 
-# ── flagged-rows worklist ───────────────────────────────────────────────────────
-
 def given_mixed_store_when_worklist_written_then_only_flagged_rows(tmp_path, make_record):
     store = {
         "flagged": make_record(transaction_id="flagged", category_review_flag="1",
@@ -136,8 +130,6 @@ def given_formula_like_merchant_when_worklist_written_then_guarded(tmp_path, mak
     # prefixing the cell with a single quote, so it can't execute when opened in a sheet.
     assert "'=cmd()" in path.read_text()
 
-
-# ── run(): incremental orchestration end-to-end (no LLM, no Drive) ──────────────
 
 def given_two_runs_when_input_changes_then_delta_applied(tmp_path, make_record):
     inp = tmp_path / "input.jsonl"

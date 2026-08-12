@@ -89,8 +89,6 @@ DRIVE_FOLDER = "transactions_archive"
 DRIVE_JSONL_NAME = "transactions_categorized.jsonl"
 
 
-# ── Input loading ──────────────────────────────────────────────────────────────
-
 def load_input(path: str) -> dict[str, dict]:
     """Load the input store into ``{transaction_id: record}``.
 
@@ -110,7 +108,6 @@ def load_input(path: str) -> dict[str, dict]:
     return persister.load_jsonl(path)
 
 
-# ── Decision ────────────────────────────────────────────────────────────────
 # A resolved outcome for one row. ``action`` is one of:
 #   "apply" — overwrite the category in place (record provenance).
 #   "flag"  — leave the category; record a suggestion for human review.
@@ -233,8 +230,6 @@ def _build_item(idx: int, record: dict, mech: RuleHit | None) -> dict:
     return item
 
 
-# ── Engine (I/O-free; testable) ───────────────────────────────────────────────
-
 def transform(store: dict[str, dict], *, levels=PROCESS_CONFIDENCE,
               memory: MerchantMemory | None = None, llm=None, authority=LLM_AUTHORITY,
               manual: ManualIndex | None = None):
@@ -303,8 +298,6 @@ def transform(store: dict[str, dict], *, levels=PROCESS_CONFIDENCE,
     return store, changes, flags
 
 
-# ── Logging ────────────────────────────────────────────────────────────────
-
 def write_category_log(path: str, changes: list[dict]) -> None:
     """Append one JSONL line per change to ``.secrets/category_log.jsonl`` (0600)."""
     if not changes:
@@ -334,8 +327,6 @@ def write_flags_file(path: str, store: dict[str, dict]) -> int:
     persister.derive_csv(flagged, path, FLAG_COLUMNS, row_fn=flag_row_fn)
     return len(flagged)
 
-
-# ── Drive head adoption (two-writer safety) ──────────────────────────────────
 
 def _adopt_remote_edits(edits_path: str, secrets_dir: str = _SECRETS_DIR) -> None:
     """Union-merge the Drive copy of the manual-edits intent log into the local one.
@@ -506,8 +497,6 @@ def adopt_drive_head(prior: dict[str, dict], *, edits_path: str | None = None,
           f"{len(report.local_only)} local-only row(s) kept.")
     return report.merged
 
-
-# ── Orchestration (I/O) ───────────────────────────────────────────────────────
 
 def run(*, input_path: str, out_jsonl: str, out_csv: str, flags_csv: str, log_path: str,
         levels: set[str], memory_path: str | None, do_drive: bool,

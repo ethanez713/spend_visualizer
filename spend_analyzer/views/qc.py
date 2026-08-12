@@ -23,7 +23,6 @@ def render(cube: Cube, qc: dict, spec: GroupingSpec) -> None:
     c[2].metric("Net", money(qc.get("net_total", 0.0)))
     c[3].metric("Settled pending dropped", qc.get("n_settled_pending_dropped", 0))
 
-    # --- unmapped atoms ---
     st.subheader("Taxonomy coverage")
     unmapped = qc.get("unmapped_atoms", [])
     if unmapped:
@@ -35,7 +34,6 @@ def render(cube: Cube, qc: dict, spec: GroupingSpec) -> None:
     else:
         st.success("All atoms are mapped in taxonomy.yaml.")
 
-    # --- tie-out: grand total == sum over any single grouping ---
     st.subheader("Totals tie-out (double-count guard)")
     grand = cube.total(GroupingSpec(filters={**spec.filters, "flow": "spend"},
                                     date_from=spec.date_from, date_to=spec.date_to))["spend"]

@@ -48,8 +48,6 @@ _SETUP_HINT = """\
   Then re-run."""
 
 
-# --- OAuth + folder management (least-privilege drive.file scope) -------------------
-
 def _get_credentials(client_secret: str, token_path: str):
     """Load cached creds, refreshing if expired, or run the browser OAuth flow."""
     from google.oauth2.credentials import Credentials
@@ -110,7 +108,6 @@ def _get_or_create_folder(service, name: str) -> str:
     return folder["id"]
 
 
-# --- Append-only safety: the library must NEVER be able to destroy Drive data ------
 # persister only reads, creates, and updates-in-place (each update is a new revision;
 # Drive preserves the old ones). It must not hard-delete files/revisions or trash them.
 # The guard below wraps the REAL Drive service so that even a future code change — or a
@@ -203,8 +200,6 @@ class DriveSync:
         # Cached Drive service; tests inject a fake here to stub out the network.
         self._service = None
 
-    # --- file_id persistence (.secrets/drive_state.json, 0600) -------------------------
-
     def _load_state(self) -> dict:
         if not os.path.exists(self.state_path):
             return {}
@@ -236,8 +231,6 @@ class DriveSync:
         state[self.file_name] = file_id
         self._save_state(state)
 
-    # --- Drive service (lazy; injectable for tests) -------------------------------
-
     def _get_service(self):
         """Build (and cache) the Drive v3 service, or return None if unavailable.
 
@@ -263,8 +256,6 @@ class DriveSync:
         # Wrap in the append-only guard so the library can never delete or trash a file.
         self._service = _GuardedService(build("drive", "v3", credentials=creds))
         return self._service
-
-    # --- public API ---------------------------------------------------------------
 
     def pull(self) -> bytes | None:
         """Download the current Drive file content as bytes.
@@ -334,8 +325,6 @@ class DriveSync:
         except Exception as e:  # noqa: BLE001 — never let a push failure lose local data
             print(f"  drive: push failed for {self.file_name!r}: {type(e).__name__}: {e}")
             return None
-
-    # --- revision audit / rollback (read-only history; rollback appends) ----------
 
     def list_revisions(self) -> list[dict]:
         """List the synced file's revision history (Drive's order, oldest→newest).

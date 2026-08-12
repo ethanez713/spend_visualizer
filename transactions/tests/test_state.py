@@ -16,8 +16,6 @@ from src.plaid_client import (
 )
 
 
-# --- _save_json: atomic write + owner-only perms (security regression) -------
-
 def given_secret_written_when_save_json_then_mode_is_0600(state):
     add_token("access-secret", "item_1", "Chase", "u1")
     mode = state.tokens.stat().st_mode & 0o777
@@ -34,8 +32,6 @@ def given_data_when_saved_then_round_trips(state):
     save_cursor("item_2", "cursor-def")
     assert load_cursors() == {"item_1": "cursor-abc", "item_2": "cursor-def"}
 
-
-# --- add_token: append-or-update-by-item_id ----------------------------------
 
 def given_new_items_when_add_token_then_appended_with_owner(state):
     add_token("tokA", "item_A", "Chase", "u1")
@@ -64,8 +60,6 @@ def given_invalid_owner_when_add_token_then_systemexit(state, bad):
     assert load_tokens() == []  # nothing persisted
 
 
-# --- load_tokens: the un-migrated-data gate -----------------------------------
-
 def given_ownerless_entry_when_load_tokens_then_systemexit_names_migration(state):
     # A pre-multi-user tokens file must fail loudly: a fetch over it would write
     # un-attributed records. The error points at the migration script.
@@ -83,8 +77,6 @@ def given_ownerless_entry_when_load_tokens_tolerant_then_returned(state):
     tokens = load_tokens(require_owner=False)
     assert len(tokens) == 1 and "owner" not in tokens[0]
 
-
-# --- raw store: xz JSONL round-trip ------------------------------------------
 
 def given_store_when_saved_then_loads_identically(state):
     store = {
@@ -115,8 +107,6 @@ def given_mixed_date_types_when_saved_then_sorted_and_iso_serialized(state):
     assert loaded["t_new"]["datetime"] == "2026-01-01T12:30:00"  # isoformat, not str()
     assert loaded["t_old"] == store["t_old"]
 
-
-# --- get_client: env validation ----------------------------------------------
 
 def given_missing_credentials_when_get_client_then_systemexit(monkeypatch):
     monkeypatch.delenv("PLAID_CLIENT_ID", raising=False)

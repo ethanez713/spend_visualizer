@@ -24,8 +24,6 @@ from src.schema import COLUMNS, row_fn
 from src.transformer import claude_apply_run, claude_export_run
 
 
-# ── selection ─────────────────────────────────────────────────────────────────
-
 def given_mixed_store_when_rows_for_claude_then_only_unreviewed_posted(store_of):
     store = store_of(
         {"transaction_id": "fresh"},
@@ -55,8 +53,6 @@ def given_claude_audited_at_when_hashed_then_source_hash_unchanged(make_record):
     assert source_hash(rec) == before
 
 
-# ── export ────────────────────────────────────────────────────────────────────
-
 def given_store_when_exported_then_queue_has_unreviewed_rows(tmp_path, store_of):
     store = store_of(
         {"transaction_id": "a", "merchant_name": "Chipotle", "amount": 14.2},
@@ -71,8 +67,6 @@ def given_store_when_exported_then_queue_has_unreviewed_rows(tmp_path, store_of)
     assert rows[0]["merchant_name"] == "Chipotle"
     assert "current_primary" in rows[0] and "current_detailed" in rows[0]
 
-
-# ── verdict application ───────────────────────────────────────────────────────
 
 def given_flag_verdict_when_applied_then_review_flag_set_and_stamped(store_of):
     store = store_of({"transaction_id": "a", "personal_finance_category": {
@@ -143,8 +137,6 @@ def given_verdicts_file_when_loaded_then_blank_lines_tolerated(tmp_path):
     assert [v["transaction_id"] for v in load_verdicts(str(p))] == ["a", "b"]
 
 
-# ── CLI wrappers (offline: do_drive=False) ────────────────────────────────────
-
 def given_store_and_verdicts_when_apply_run_then_persisted_with_flag(tmp_path, store_of):
     store = store_of({"transaction_id": "a", "personal_finance_category": {
         "primary": "GENERAL_MERCHANDISE",
@@ -181,8 +173,6 @@ def given_store_when_export_run_then_queue_and_scan_written(tmp_path, store_of):
     bundle = json.loads(scan.read_text())
     assert "findings" in bundle and bundle["store_rows"] == 2
 
-
-# ── deterministic pre-scan (the extra sweeps, one pass) ───────────────────────
 
 def given_store_when_scanned_then_taxonomy_sign_and_uncategorized_found(store_of):
     store = store_of(

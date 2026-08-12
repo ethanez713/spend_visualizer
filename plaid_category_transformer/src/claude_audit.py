@@ -137,7 +137,6 @@ def apply_verdicts(store: dict[str, dict], verdicts: list[dict]) -> dict:
     return summary
 
 
-# ── Deterministic pre-scan (the "extra sweeps", computed in one pass) ──────────
 # Mechanical, store-wide checks Claude shouldn't eyeball 500 rows for. Bundled with the
 # review queue so the ritual is a SINGLE judgment pass: Claude reads the rows + these
 # findings together. Each finding is a candidate the human/Claude confirms — never an

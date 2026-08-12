@@ -20,8 +20,6 @@ def _flagged(make_record, suggested=("FOOD_AND_DRINK", "FOOD_AND_DRINK_COFFEE"),
     return rec
 
 
-# ── pure actions ──────────────────────────────────────────────────────────────
-
 def given_a_flag_when_accepted_then_applied_and_memory_taught(make_record):
     mem = MerchantMemory(path=None)
     rec = _flagged(make_record, merchant_entity_id="ent_x")
@@ -69,8 +67,6 @@ def given_a_store_when_listed_then_only_flagged_rows_returned(make_record):
     store = {"a": flagged, "b": clean}
     assert [tid for tid, _ in flagged_rows(store)] == ["a"]
 
-
-# ── interactive loop (TTY forced on; input injected) ──────────────────────────
 
 @pytest.fixture
 def _tty(monkeypatch):
