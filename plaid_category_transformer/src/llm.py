@@ -46,8 +46,6 @@ def _dbg(msg: str):
         print(f"  [DEBUG] {msg}", flush=True)
 
 
-# ── Spinner (copied from reviewer.py) ─────────────────────────────────────────
-
 _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
 
@@ -191,8 +189,6 @@ class CategoryLLM:
         self.ran_ok = False
         global _DEBUG
         _DEBUG = debug
-
-    # --- Ollama lifecycle (copied from reviewer.py) ---------------------------
 
     def _ping(self) -> bool:
         try:
