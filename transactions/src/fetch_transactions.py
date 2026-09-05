@@ -25,6 +25,7 @@ from plaid.model.transactions_sync_request_options import TransactionsSyncReques
 
 from .overfetch import overfetch_due, run_overfetch
 from .plaid_client import (
+    CHECKPOINT_PRESET,
     CSV_FILE,
     RAW_FILE,
     get_client,
@@ -324,7 +325,7 @@ def sync_item(client, entry, raw_store) -> dict:
                 counts["removed"] += 1
 
         cursor = resp["next_cursor"]
-        save_raw_store(raw_store)  # checkpoint raw archive before advancing cursor
+        save_raw_store(raw_store, preset=CHECKPOINT_PRESET)  # before advancing cursor
         save_cursor(item_id, cursor)  # checkpoint after every page
 
         if not resp["has_more"]:

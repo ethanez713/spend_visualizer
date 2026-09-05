@@ -49,6 +49,12 @@ OVERFETCH_LOG_FILE = DATA_DIR / "overfetch_log.jsonl"
 # transaction_id, persisted as xz-compressed JSONL (one JSON object per line).
 # The CSV is a derived projection of this. Kept for audit / QC.
 RAW_FILE = DATA_DIR / "transactions_raw.jsonl.xz"
+# The archive is rewritten WHOLE on every save, and sync checkpoints it once per
+# fetched page — so max compression there costs O(pages x archive) CPU on a first
+# link. Checkpoints exist only to survive a crash, and every run ends with a full
+# ARCHIVE_PRESET write, so they trade ratio for speed.
+ARCHIVE_PRESET = 9 | lzma.PRESET_EXTREME
+CHECKPOINT_PRESET = 1
 # The CSV is the user-facing deliverable.
 CSV_FILE = DATA_ROOT / "transactions" / "transactions.csv"
 
@@ -214,8 +220,8 @@ def load_raw_store() -> dict:
     return store
 
 
-def save_raw_store(store: dict):
-    """Write {transaction_id: raw_dict} as xz-compressed JSONL (atomic, max compression)."""
+def save_raw_store(store: dict, preset: int = ARCHIVE_PRESET):
+    """Write {transaction_id: raw_dict} as xz-compressed JSONL (atomic)."""
     _ensure_secure_dir(RAW_FILE.parent)
     # str() the keys defensively (mirrors persister.save_jsonl): a not-yet-normalized
     # record holding a datetime.date must never break the sort against ISO strings.
@@ -224,7 +230,7 @@ def save_raw_store(store: dict):
         key=lambda r: (str(r.get("date") or ""), str(r.get("transaction_id") or "")),
     )
     tmp = RAW_FILE.parent / (RAW_FILE.name + ".tmp")
-    with lzma.open(tmp, "wt", encoding="utf-8", preset=9 | lzma.PRESET_EXTREME) as f:
+    with lzma.open(tmp, "wt", encoding="utf-8", preset=preset) as f:
         for r in rows:
             f.write(json.dumps(r, default=_json_default, ensure_ascii=False))
             f.write("\n")

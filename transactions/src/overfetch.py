@@ -22,6 +22,7 @@ from datetime import date, timedelta
 
 from .fetch_window import _fetch_window_items
 from .plaid_client import (
+    CHECKPOINT_PRESET,
     append_overfetch_log,
     load_overfetch_state,
     save_overfetch_state,
@@ -142,7 +143,7 @@ def run_overfetch(client, tokens, raw_store: dict) -> dict:
 
     # Checkpoint the merged store before advancing the cadence clock (mirrors
     # sync_item's store-then-cursor order): a crash in between re-runs the overfetch.
-    save_raw_store(raw_store)
+    save_raw_store(raw_store, preset=CHECKPOINT_PRESET)
     # The clock means "the whole 90-day window has been verified". A partial run did
     # NOT verify the failed item's accounts, so advancing would retire the safety net
     # for data it never looked at — and a permanently broken item would never get

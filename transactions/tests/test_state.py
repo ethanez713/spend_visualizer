@@ -6,6 +6,8 @@ from plaid.api import plaid_api
 
 import src.plaid_client as plaid_client
 from src.plaid_client import (
+    ARCHIVE_PRESET,
+    CHECKPOINT_PRESET,
     add_token,
     get_client,
     load_cursors,
@@ -90,6 +92,15 @@ def given_store_when_saved_then_loads_identically(state):
 
 def given_no_archive_when_load_raw_store_then_empty(state):
     assert load_raw_store() == {}
+
+
+def given_checkpoint_preset_when_saved_then_still_reloads(state):
+    """A cheap checkpoint is only worth anything if a crashed run can reload it."""
+    store = {"t1": {"transaction_id": "t1", "date": "2026-01-01", "amount": 9.0}}
+    save_raw_store(store, preset=CHECKPOINT_PRESET)
+    assert load_raw_store() == store
+    save_raw_store(store, preset=ARCHIVE_PRESET)
+    assert load_raw_store() == store
 
 
 def given_mixed_date_types_when_saved_then_sorted_and_iso_serialized(state):
