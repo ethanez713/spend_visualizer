@@ -40,7 +40,7 @@ from .incremental import HASH_PENDING_REVOKED, SOURCE_HASH_FIELD
 from .paths import DATA_DIR
 from .pfc_taxonomy import is_valid
 from .rules import normalize_merchant
-from .schema import clear_review_flag, set_provenance
+from .schema import clear_review_flag, set_provenance, stamp_audited_at
 
 # The intent log is SOURCE data the store is rebuilt from — it lives with the data,
 # outside the repo.
@@ -431,3 +431,4 @@ def _revert_manual(rec: dict) -> None:
     rec["category_update_reason"] = ""
     rec["category_update_confidence"] = ""
     rec[SOURCE_HASH_FIELD] = HASH_PENDING_REVOKED
+    stamp_audited_at(rec)

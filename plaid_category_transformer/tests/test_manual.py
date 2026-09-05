@@ -180,6 +180,22 @@ def given_a_revoked_intent_when_replayed_then_row_reverted_and_marked_for_reaudi
     assert summary["reverted"] == ["txn_1"]
 
 
+def given_a_revoked_intent_when_replayed_then_audit_stamp_advances(make_record):
+    """A revert changes audit content, so it must outrank a peer's untouched copy.
+
+    Without the stamp the reverted row ties the pre-revert stamp still held on the
+    other machine, and `_newer_audit_wins` keeps REMOTE on a tie — undoing the revert.
+    """
+    rec = make_record()
+    it = _intent(rec)
+    apply_manual_edits({"txn_1": rec}, ManualIndex([it]))
+    stale = "2000-01-01T00:00:00.000000+00:00"
+    rec["category_audited_at"] = stale
+    apply_manual_edits(
+        {"txn_1": rec}, ManualIndex(resolve_intents([it, build_revoke(it["id"])])))
+    assert rec["category_audited_at"] > stale
+
+
 def given_an_intent_for_a_pruned_row_when_replayed_then_orphan_reported_store_untouched(
         make_record):
     gone = _intent(make_record(transaction_id="txn_gone"))
