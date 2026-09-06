@@ -97,6 +97,11 @@ class Cube:
         # always expose count for avg_ticket convenience
         if "count" not in measures:
             select_parts.append("SUM(count) AS count")
+        # avg_ticket must divide by the SPEND rows only: `count` includes the
+        # group's income and excluded rows, which would deflate the average in
+        # any rollup not already filtered to flow='spend'.
+        select_parts.append(
+            "SUM(CASE WHEN flow = 'spend' THEN 1 ELSE 0 END) AS _spend_rows")
 
         where, params = self._where(spec)
         sql = f"SELECT {', '.join(select_parts)} FROM txns{where}"
@@ -108,11 +113,12 @@ class Cube:
             sql += f" LIMIT {int(spec.limit)}"
 
         out = self.con.execute(sql, params).df()
-        if "spend" in out.columns and "count" in out.columns:
+        if "spend" in out.columns:
             out["avg_ticket"] = out.apply(
-                lambda r: (r["spend"] / r["count"]) if r["count"] else 0.0, axis=1
+                lambda r: (r["spend"] / r["_spend_rows"]) if r["_spend_rows"] else 0.0,
+                axis=1,
             )
-        return out
+        return out.drop(columns=["_spend_rows"])
 
     def total(self, spec: GroupingSpec) -> dict[str, float]:
         """Grand totals (no group_by) for the same filters — for tie-out QC."""

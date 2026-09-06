@@ -56,3 +56,25 @@ def test_topk_frontier_grows_to_k():
     assert len(front) >= 3
     # largest node (A=150) should have been expanded first
     assert ("A", "x") in front or ("A",) in front
+
+
+def test_avg_ticket_divides_by_spend_rows_only():
+    """`count` covers income + excluded rows too, so it deflates the average.
+
+    A rollup that isn't already filtered to flow='spend' (the Merchants and QC
+    surfaces group without it) reported an avg ticket well below the real one.
+    """
+    df = pd.DataFrame({
+        "merchant": ["Acme"] * 4,
+        "flow": ["spend", "spend", "income", "excluded"],
+        "spend": [30.0, 10.0, 0.0, 0.0],
+        "income": [0.0, 0.0, 500.0, 0.0],
+        "abs_amount": [30.0, 10.0, 500.0, 99.0],
+        "count": [1, 1, 1, 1],
+    })
+    out = Cube(df).rollup(GroupingSpec(group_by=["merchant"], measures=["spend"],
+                                       order_by=None))
+    assert out.loc[0, "spend"] == 40.0
+    assert out.loc[0, "count"] == 4          # every row in the group
+    assert out.loc[0, "avg_ticket"] == 20.0  # but only the 2 spend rows average
+    assert "_spend_rows" not in out.columns
