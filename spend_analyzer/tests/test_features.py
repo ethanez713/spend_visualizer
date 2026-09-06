@@ -1,4 +1,6 @@
 """Tests for the v2 feature set: necessity slicing, budget, corrections, viz."""
+from pathlib import Path
+
 import pandas as pd
 
 import corrections as corr
@@ -85,3 +87,36 @@ def test_data_root_resolution(tmp_path, monkeypatch):
 
     root_file.unlink()
     assert str(config_io.data_root()).endswith("/finance_data")  # default
+
+
+def test_accounts_yaml_is_read_from_the_personal_config_dir():
+    """build_cube must not look for accounts.yaml in the project config dir.
+
+    It only ever lives under the data root, so a CONFIG_DIR default made
+    load_accounts return {} in production — silently disabling every per-account
+    facet AND the `include: false` opt-out asserted below.
+    """
+    import inspect
+
+    from config_io import PERSONAL_CONFIG_DIR
+    from data import build_cube
+
+    default = inspect.signature(build_cube).parameters["accounts_path"].default
+    assert Path(default).parent == PERSONAL_CONFIG_DIR
+
+
+def test_accounts_include_false_drops_the_account_from_the_cube():
+    from enrich import enrich
+    from ingest.normalize import normalize_one
+
+    def raw(tid, account):
+        return {"transaction_id": tid, "account_id": account, "amount": 10.0,
+                "date": "2026-03-04", "name": "COFFEE",
+                "personal_finance_category": {"primary": "FOOD_AND_DRINK",
+                                              "detailed": "FOOD_AND_DRINK_COFFEE"}}
+
+    txns = [normalize_one(raw("t1", "keep")), normalize_one(raw("t2", "drop"))]
+    accounts = {"keep": {"person": "A"}, "drop": {"person": "B", "include": False}}
+    df = enrich(txns, load_taxonomy(), accounts)
+    assert list(df["transaction_id"]) == ["t1"]
+    assert list(df["person"]) == ["A"], "accounts.yaml person is the un-stamped fallback"

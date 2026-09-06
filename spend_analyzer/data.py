@@ -10,7 +10,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from config_io import AppConfig, load_accounts, load_app_config, CONFIG_DIR
+from config_io import (AppConfig, load_accounts, load_app_config,
+                       CONFIG_DIR, PERSONAL_CONFIG_DIR)
 from cube import Cube
 from enrich import enrich
 from ingest import ingest
@@ -55,7 +56,7 @@ def _qc(df: pd.DataFrame, taxonomy: Taxonomy, ingest_qc: dict) -> dict:
 def build_cube(
     app: AppConfig | None = None,
     taxonomy_path: str | Path = CONFIG_DIR / "taxonomy.yaml",
-    accounts_path: str | Path = CONFIG_DIR / "accounts.yaml",
+    accounts_path: str | Path = PERSONAL_CONFIG_DIR / "accounts.yaml",
 ) -> BuildResult:
     app = app or load_app_config()
     taxonomy = load_taxonomy(taxonomy_path)

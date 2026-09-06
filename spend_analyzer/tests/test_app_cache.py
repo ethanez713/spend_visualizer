@@ -37,3 +37,32 @@ def test_changed_signature_reloads(monkeypatch):
     app._load(("archive", 1.0, 10))
     app._load(("archive", 2.0, 11))  # archive mtime/size changed (new fetch)
     assert len(calls) == 2, "a changed signature must bust the cache and reload"
+
+
+def _sig_names(sig) -> set:
+    return {entry[0] for entry in sig if isinstance(entry, tuple)}
+
+
+def test_personal_config_files_are_stat_in_the_data_root(monkeypatch, tmp_path):
+    """accounts/budget.yaml live under the data root, not the project config dir.
+
+    Statting them under CONFIG_DIR found nothing, so editing the real files never
+    busted the cube cache. The two dirs collapse to one under
+    SPEND_ANALYZER_CONFIG_DIR, so this test must point them somewhere different.
+    """
+    project, personal = tmp_path / "project", tmp_path / "personal"
+    project.mkdir()
+    personal.mkdir()
+    (project / "app.yaml").write_text("archive_paths: []\n")
+    (personal / "accounts.yaml").write_text("acc_1: {person: A}\n")
+    (personal / "budget.yaml").write_text("goals: {}\n")
+    monkeypatch.setattr(app, "CONFIG_DIR", project)
+    monkeypatch.setattr(app, "PERSONAL_CONFIG_DIR", personal)
+    cfg = SimpleNamespace(resolved_archive_paths=[])
+
+    before = app._config_signature(cfg)
+    assert _sig_names(before) == {"app.yaml", "accounts.yaml", "budget.yaml"}
+
+    (personal / "accounts.yaml").write_text("acc_1: {person: A, include: false}\n")
+    assert app._config_signature(cfg) != before, \
+        "editing the personal accounts.yaml must bust the cube cache"

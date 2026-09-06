@@ -10,7 +10,7 @@ from pathlib import Path
 import streamlit as st
 
 import state
-from config_io import CONFIG_DIR, load_app_config, load_budget
+from config_io import CONFIG_DIR, PERSONAL_CONFIG_DIR, load_app_config, load_budget
 from cube import Cube, GroupingSpec
 from data import build_cube
 from ingest.load import stat_source
@@ -54,8 +54,14 @@ def _config_signature(app) -> tuple:
             sig.append(stat_source(p).cache_key)
         except FileNotFoundError:
             sig.append((p, 0.0, 0))
-    for name in ("taxonomy.yaml", "accounts.yaml", "app.yaml", "budget.yaml"):
-        fp = CONFIG_DIR / name
+    # Each file must be stat'd in the dir it actually lives in: the personal
+    # pair sits under the data root, so statting them under CONFIG_DIR would
+    # silently never invalidate the cube when the user edits them.
+    for directory, name in ((CONFIG_DIR, "taxonomy.yaml"),
+                            (CONFIG_DIR, "app.yaml"),
+                            (PERSONAL_CONFIG_DIR, "accounts.yaml"),
+                            (PERSONAL_CONFIG_DIR, "budget.yaml")):
+        fp = directory / name
         if fp.exists():
             s = fp.stat()
             sig.append((name, s.st_mtime, s.st_size))
