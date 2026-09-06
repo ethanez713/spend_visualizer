@@ -99,6 +99,8 @@ def _personal_patterns() -> set[tuple[str, str]]:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return out
+    if not isinstance(data, dict):  # json.loads accepts null/[]/scalars too
+        return out
     for kind in ("pos_prefix", "website", "keyword"):
         for entry in data.get(kind, []) or []:
             if entry:

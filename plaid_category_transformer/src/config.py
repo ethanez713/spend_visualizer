@@ -157,6 +157,11 @@ def _load_personal_rules() -> dict[str, list]:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return out
+    # json.loads accepts `null`, `[]` and bare scalars, none of which have .get —
+    # and this runs at import time, so an unguarded AttributeError here takes down
+    # every module that imports config.
+    if not isinstance(data, dict):
+        return out
     for key in out:
         for entry in data.get(key, []) or []:
             try:

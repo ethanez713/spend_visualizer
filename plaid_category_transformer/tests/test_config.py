@@ -87,3 +87,12 @@ def given_bad_entry_shape_when_loaded_then_skipped(tmp_path, monkeypatch):
     # The well-formed entry survives; the malformed one is dropped.
     assert config._load_personal_rules()["keyword"] == [
         ("ok phrase", ("FOOD_AND_DRINK", "FOOD_AND_DRINK_GROCERIES"), "auto")]
+
+
+def given_well_formed_but_non_dict_file_when_loaded_then_fail_soft(tmp_path, monkeypatch):
+    # `null`, `[]` and bare scalars all parse fine but have no .get — and this runs at
+    # import time, so an AttributeError here would take the whole package down.
+    for text in ("null", "[]", "7", '"hi"'):
+        _write_personal(tmp_path / text, monkeypatch, text)
+        assert config._load_personal_rules() == {
+            "pos_prefix": [], "website": [], "keyword": []}, text
