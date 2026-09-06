@@ -1,4 +1,5 @@
 """Tests for the v2 feature set: necessity slicing, budget, corrections, viz."""
+from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -120,3 +121,27 @@ def test_accounts_include_false_drops_the_account_from_the_cube():
     df = enrich(txns, load_taxonomy(), accounts)
     assert list(df["transaction_id"]) == ["t1"]
     assert list(df["person"]) == ["A"], "accounts.yaml person is the un-stamped fallback"
+
+
+def test_iso_week_stays_out_of_the_hierarchical_time_path():
+    """A named bucket in the path must not be split across parents.
+
+    2026-12-31 and 2027-01-01 are the same ISO week (2026-W53) but different
+    calendar years, so nesting the week under the year filed one real week under
+    two — and a week straddling a month boundary does the same every month. The
+    week label is self-contained, so it is grouped on directly instead. (`dow`
+    stays: path nodes are keyed by their full prefix, so a repeating leaf label
+    is a distinct node per month, not a split bucket.)
+    """
+    from enrich import _time_dims
+
+    dec, jan = _time_dims("2026-12-31"), _time_dims("2027-01-01")
+    assert dec["week"] == jan["week"] == "2026-W53"
+    assert dec["year"] != jan["year"]
+
+    d = date(2026, 1, 1)
+    while d < date(2028, 1, 1):
+        dims = _time_dims(d.isoformat())
+        assert dims["week"] not in dims["path"], d
+        assert dims["path"] == [str(d.year), dims["quarter"], dims["month"], dims["dow"]]
+        d += timedelta(days=1)

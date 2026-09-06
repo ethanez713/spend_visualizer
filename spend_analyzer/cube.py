@@ -15,7 +15,9 @@ import pandas as pd
 # Hierarchical dimensions -> ordered level columns (shallow -> deep).
 CATEGORY_LEVELS = ["tier0", "tier1", "tier2", "atom", "merchant"]
 GEO_LEVELS = ["geo_scope", "geo_country", "geo_city"]
-TIME_LEVELS = ["year", "quarter", "month", "week", "dow"]
+# `week` is deliberately absent: an ISO week is not a refinement of a calendar
+# month (see enrich._time_dims). Group on it directly instead of walking it.
+TIME_LEVELS = ["year", "quarter", "month", "dow"]
 
 # Friendly selector label -> column for the category granularity control.
 CATEGORY_LEVEL_BY_NAME = {

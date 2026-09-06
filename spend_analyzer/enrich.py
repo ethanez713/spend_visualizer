@@ -42,9 +42,13 @@ def _time_dims(iso: str | None) -> dict:
     week = f"{iso_year}-W{iso_week:02d}"
     month = f"{d.year}-{d.month:02d}"
     dow = d.strftime("%a")
+    # `week` is an ISO week and so is NOT a refinement of the calendar month above
+    # it — most weeks straddle two months, and the week of Jan 1 often belongs to the
+    # previous ISO year — so it stays out of the hierarchical path and is only ever
+    # grouped on its own, where its self-contained label is unambiguous.
     return dict(
         year=d.year, quarter=q, month=month, week=week, dow=dow,
-        path=[str(d.year), q, month, week, dow],
+        path=[str(d.year), q, month, dow],
     )
 
 
