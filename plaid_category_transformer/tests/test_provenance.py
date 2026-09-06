@@ -47,6 +47,21 @@ def given_second_correction_when_provenance_set_then_true_originals_preserved(ma
     assert rec["category_update_step"] == "review"
 
 
+def given_plaid_never_classified_when_recorrected_then_originals_stay_empty(make_record):
+    # Same invariant, but Plaid returned no PFC — so the true original IS None. The
+    # sentinel used to be `original_* is None`, which stayed true after the first
+    # correction and let the second one record the intermediate fix as "Plaid's".
+    rec = make_record(personal_finance_category={})
+
+    set_provenance(rec, "FOOD_AND_DRINK", "FOOD_AND_DRINK_COFFEE", "mechanical", "rule", "MEDIUM")
+    set_provenance(rec, "TRAVEL", "TRAVEL_FLIGHTS", "review", "re-pick", "HIGH")
+
+    assert rec["original_pf_category_primary"] is None
+    assert rec["original_pf_category_detailed"] is None
+    assert rec["personal_finance_category"]["detailed"] == "TRAVEL_FLIGHTS"
+    assert rec["category_update_step"] == "review"
+
+
 def given_no_change_when_provenance_set_then_columns_stay_empty(make_record):
     rec = make_record(personal_finance_category={
         "primary": "FOOD_AND_DRINK", "detailed": "FOOD_AND_DRINK_COFFEE",

@@ -145,9 +145,13 @@ def set_provenance(record: dict, primary: str, detailed: str,
 
     # Write the originals only ONCE: on a re-correction (e.g. a review re-pick over an
     # earlier mechanical fix) the current values are themselves a correction, and
-    # overwriting original_* with them would lose Plaid's true original.
-    if (record.get("original_pf_category_primary") is None
-            and record.get("original_pf_category_detailed") is None):
+    # overwriting original_* with them would lose Plaid's true original. The "not yet
+    # captured" test is the empty update step, NOT `original_* is None` — None is also
+    # Plaid's own value for a row it never classified, so that test stayed true after
+    # the first correction and let the second one clobber the originals.
+    # `_revert_manual` clears the step alongside original_*, so a reverted row
+    # correctly captures again.
+    if not record.get("category_update_step"):
         record["original_pf_category_primary"] = orig_primary
         record["original_pf_category_detailed"] = orig_detailed
         record["original_pf_category_confidence"] = orig_conf
