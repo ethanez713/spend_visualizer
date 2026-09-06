@@ -53,7 +53,7 @@ def test_load_ledger_parses_money_dates_and_drops_non_transactions(tmp_path):
 def test_load_ledger_missing_file_returns_empty():
     df = load_ledger("/no/such/ledger.csv")
     assert df.empty
-    assert list(df.columns) == ["person", "month", "category", "spend"]
+    assert list(df.columns) == ["person", "date", "month", "category", "spend"]
 
 
 def test_load_ledger_wrong_schema_returns_empty(tmp_path):
@@ -103,3 +103,21 @@ def test_budget_ledger_relative_path_resolves_from_data_root():
     resolved = Path(b.resolved_ledger_csv)
     assert resolved.is_absolute()
     assert resolved == (DATA_ROOT / "spend_analyzer/data/budget_ledger.csv").resolve()
+
+
+def test_pivot_date_filter_matches_the_cube_day_precision(tmp_path):
+    """A partial boundary month must not pull in the whole month.
+
+    The filter compared YYYY-MM-DD bounds against the row's MONTH, so any range
+    not landing on month boundaries made the Budget tab's ledger source disagree
+    with its cube source.
+    """
+    led = load_ledger(_write_ledger(tmp_path / "ledger.csv"))
+
+    # June rows: 06/01 House -58.28, 06/02 Groceries 1234.56, 06/10 Dining Out 80.47.
+    mid_june = monthly_pivot(led, date_from="2026-06-02", date_to="2026-06-09")
+    assert set(mid_june.index) == {"Groceries"}
+    assert mid_june.loc["Groceries", "2026-06"] == 1234.56
+
+    whole_june = monthly_pivot(led, date_from="2026-06-01", date_to="2026-06-30")
+    assert set(whole_june.index) == {"House", "Groceries", "Dining Out"}

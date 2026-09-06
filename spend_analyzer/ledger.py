@@ -48,12 +48,13 @@ def _money(series: pd.Series) -> pd.Series:
 def load_ledger(path: str | Path) -> pd.DataFrame:
     """Read the converter ledger CSV into a tidy frame.
 
-    Returns columns ``person``, ``month`` (``YYYY-MM``), ``category``, ``spend``
-    (net, positive = out). Rows with an unparseable date or a zero/blank amount
-    are dropped. Returns an empty frame if the file is missing or unreadable.
+    Returns columns ``person``, ``date`` (``YYYY-MM-DD``), ``month`` (``YYYY-MM``),
+    ``category``, ``spend`` (net, positive = out). Rows with an unparseable date or
+    a zero/blank amount are dropped. Returns an empty frame if the file is missing
+    or unreadable.
     """
     p = Path(path)
-    cols = ["person", "month", "category", "spend"]
+    cols = ["person", "date", "month", "category", "spend"]
     if not p.is_file():
         return pd.DataFrame(columns=cols)
 
@@ -70,6 +71,9 @@ def load_ledger(path: str | Path) -> pd.DataFrame:
     out = pd.DataFrame(
         {
             "person": (df[_PERSON_COL] if _PERSON_COL in df.columns else "").astype(str),
+            # The day is kept so the date filter can match the cube's precision;
+            # the month is what the pivot buckets on.
+            "date": dates.dt.strftime("%Y-%m-%d"),
             "month": dates.dt.strftime("%Y-%m"),
             "category": df[_CATEGORY_COL].astype(str).str.strip(),
             "spend": spend,
@@ -89,7 +93,10 @@ def monthly_pivot(
     """Category × month pivot of net spend, honoring the supported filters.
 
     ``persons`` filters by ``Source``; ``date_from``/``date_to`` are inclusive
-    ``YYYY-MM-DD`` bounds compared against each row's month. Index = category,
+    ``YYYY-MM-DD`` bounds compared against each row's DAY, matching the precision
+    the cube filters at — comparing them against the month instead pulled in the
+    whole of a partial boundary month, so the Budget tab's two sources disagreed
+    on any range not starting and ending on a month boundary. Index = category,
     columns = month, mirroring the cube's ``_monthly_pivot`` so the Budget view
     can feed either source through the same downstream rendering.
     """
@@ -99,9 +106,9 @@ def monthly_pivot(
     if persons:
         df = df[df["person"].isin(persons)]
     if date_from:
-        df = df[df["month"] >= date_from[:7]]
+        df = df[df["date"] >= date_from[:10]]
     if date_to:
-        df = df[df["month"] <= date_to[:7]]
+        df = df[df["date"] <= date_to[:10]]
     if df.empty:
         return pd.DataFrame()
     return df.pivot_table(index="category", columns="month", values="spend",
