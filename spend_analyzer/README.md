@@ -89,8 +89,24 @@ warns and falls back to the built-in categorization rather than erroring.
 ## Run
 
 ```bash
-./venv/bin/streamlit run app.py
+./run.sh                        # or: ./venv/bin/streamlit run app.py
 ```
+
+This **only opens the UI over the archive as it stands** — it is offline and
+read-only, and does **not** fetch or refresh data. Use it when the store is
+already current and you just want to look at it.
+
+**To ingest new data first, then open the UI, run the orchestrator instead:**
+
+```bash
+../finance_pipeline/run.py               # fetch Plaid → categorize → persist → launch this UI
+../finance_pipeline/run.py --sheet       # same, plus the monthly Google-Sheet upload + pinned tabs
+                                         # (this is the `run_finances` ritual)
+```
+
+Ingestion lives in `finance_pipeline`, not here — this app never calls Plaid or
+imports collector code (see Architecture). Both live-run flags follow the repo's
+authorization rules (`../CLAUDE.md`, golden rule 1).
 
 Tabs: **Drilldown** (spend table with running avgs, sunburst/treemap/sankey with
 click-to-zoom + transaction detail) · **Budget** (budget vs actual heatmap) ·
