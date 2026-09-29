@@ -19,8 +19,8 @@ venv from its own repo root, stopping at the first non-zero exit:
   2c. (``--sheet``, on by default when a converter is configured) the converter
      again, in its month-Sheet mode: converts the chosen month (default: the last
      complete one) and uploads it as a new Google Sheet. NON-fatal; the Sheet URL is
-     captured via the converter's ``--url-file`` and opened as an extra browser tab, along with any URLs pinned
-     in ``<data_root>/pinned_tabs`` (e.g. the master budget spreadsheet). Warns
+     captured via the converter's ``--url-file`` and opened as an extra browser tab,
+     along with any URLs pinned in ``<data_root>/pinned_tabs`` (e.g. the master budget spreadsheet). Warns
      first (never blocks) when the window still holds PENDING rows — each run
      uploads a NEW Sheet, so an early snapshot stays wrong forever.
   3. ``spend_analyzer`` — serves the Streamlit UI over the categorized store and
