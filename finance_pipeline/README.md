@@ -6,17 +6,17 @@ the categorized stores (locally **and** to Google Drive), then serves the Spend
 Analyzer UI and opens it in your default browser:
 
 ```bash
-# The entire pipeline: fetch → categorize → budget ledger → Streamlit UI
+# The entire pipeline: fetch → categorize → budget ledger → data-repo push
+#   → last complete month's Google Sheet → Streamlit UI (+ Sheet + pinned tabs)
 ./run.py
 
-# …plus the monthly Google-Sheet export (opens UI + Sheet + pinned tabs):
-./run.py --sheet                                          # last complete month (default)
-./run.py --sheet --sheet-month 2026-06                    # a past month
-./run.py --sheet --sheet-since 2026-06-15 --sheet-until 2026-07-09   # a specific window
+./run.py --sheet-month 2026-06                            # Sheet for a past month
+./run.py --sheet-since 2026-06-15 --sheet-until 2026-07-09   # a specific window
+./run.py --no-sheet --no-push-data                        # data steps + UI only
 ```
 
-(Wrap the `--sheet` form in a tiny PATH script — e.g. `run_finances` — to make the
-monthly ritual a single word.)
+The Sheet step is on by default only when a converter is configured; without one
+it is skipped (an explicit `--sheet` fails preflight instead).
 
 This component is deliberately thin — just preflight + choreography over the sibling
 component directories, which own all the domain logic. It needs **only the Python standard
@@ -46,8 +46,8 @@ repo root.
     │                                    Skipped unless a converter is configured; local-only
     │                                    and non-fatal (it only derives a view).
     ▼
-2c. sheet        converter/  (--sheet)   convert the chosen month and upload it as a new
-    │                                    Google Sheet (explicit opt-in egress); the Sheet
+2c. sheet        converter/  (default)   convert the chosen month and upload it as a new
+    │                                    Google Sheet (skipped without a converter); the Sheet
     │                                    URL comes back via --url-file and opens as an
     │                                    extra browser tab, plus any URLs pinned in
     │                                    <data_root>/pinned_tabs. Non-fatal.
@@ -77,15 +77,15 @@ repo root.
 | `--llm-defer` | server mode: rules-only now, rows stay LLM-pending so a later LLM-enabled run audits them (mutually exclusive with `--no-llm`) |
 | `--force-push` | skip the transformer's Drive head adoption: local store wins |
 | `--no-convert` | skip the optional budget-ledger regen even if a converter is configured |
-| `--sheet` | monthly ritual: also run the converter's Google-Sheet upload (opt-in egress) and open the fresh Sheet + `<data_root>/pinned_tabs` URLs as extra browser tabs |
-| `--sheet-month YYYY-MM` | month window for `--sheet` (default: the last **complete** month) |
-| `--sheet-since/--sheet-until DATE` | arbitrary inclusive date window for `--sheet` (overrides `--sheet-month`) |
+| `--no-sheet` | skip the converter's Google-Sheet upload (on by default when a converter is configured), which also opens the fresh Sheet + `<data_root>/pinned_tabs` URLs as extra browser tabs |
+| `--sheet-month YYYY-MM` | month window for the Sheet (default: the last **complete** month) |
+| `--sheet-since/--sheet-until DATE` | arbitrary inclusive date window for the Sheet (overrides `--sheet-month`) |
 | `--no-ui` | stop after the data steps (e.g. for scheduled runs) |
-| `--push-data` | after the data steps: commit the data-root git repo (if dirty) and push to its `origin` — explicit opt-in upload (no remote ⇒ warn, commit locally) |
+| `--no-push-data` | skip committing the data-root git repo (if dirty) and pushing it to its `origin` after the data steps (on by default; no remote ⇒ warn, commit locally). Pass it on any machine that isn't the data repo's sole pusher |
 | `--no-browser` | serve the UI but don't open a browser |
 | `--port N` | Streamlit port (default 8501) |
 
-The data steps (and `--push-data`) run under an exclusive lock on
+The data steps (and the data push) run under an exclusive lock on
 `<data_root>/.pipeline.lock`, so a scheduled run and a manual one can't
 interleave on the same machine; a second run exits immediately with a clear
 message. The lock is released before the UI step. Scheduled/server runs are
@@ -101,7 +101,7 @@ directly when you want to work the queue:
 If you keep your budget in a *different* category set than this stack's built-in
 `tier1` taxonomy, point the pipeline at an external **converter** project that maps the
 categorized store onto those categories. When configured, the pipeline runs the
-converter after categorize (inside the lock, before `--push-data`) to regenerate
+converter after categorize (inside the lock, before the data push) to regenerate
 `<data_root>/spend_analyzer/data/budget_ledger.csv`, which the Spend Analyzer's Budget
 tab reads when `ledger.csv` is set in its `budget.yaml` (see spend_analyzer's README).
 
@@ -115,16 +115,16 @@ tab reads when `ledger.csv` is set in its `budget.yaml` (see spend_analyzer's RE
   **non-fatal** — a converter hiccup warns loudly and the run continues (it derives a
   view; it never touches the source stores). `--no-convert` skips it outright.
 
-### `--sheet`: the monthly ritual (step 2c)
+### The month Sheet (step 2c)
 
-`./run.py --sheet` additionally runs the converter in its month-Sheet mode
-(`refresh.py --url-file …`, upload ON — the explicit opt-in egress), then opens **all**
+With a converter configured, `./run.py` also runs it in its month-Sheet mode
+(`refresh.py --url-file …`, upload ON), then opens **all**
 the month-in-review tabs at once: the Streamlit UI, the freshly uploaded Google Sheet,
 and every URL listed in `<data_root>/pinned_tabs` (one per line, `#` comments allowed —
 e.g. the master budget spreadsheet; personal URLs, so the file lives in the private
 data root). The step runs *outside* the pipeline lock (it's read-only over the store)
-and is non-fatal. A `run_finances` wrapper script on the PATH that just executes
-`run.py --sheet "$@"` makes this a single command.
+and is non-fatal. Each run uploads a **new** Sheet, so pass `--no-sheet` for runs
+that aren't the monthly review.
 
 ## First-run notes
 
@@ -150,7 +150,7 @@ and is non-fatal. A `run_finances` wrapper script on the PATH that just executes
 ├── run.py            # entry-point shim → src/pipeline.py
 ├── src/
 │   ├── pipeline.py   # preflight + the steps (incl. optional convert) + CLI + the lock
-│   ├── git_push.py   # --push-data: snapshot-commit + push the data-root repo
+│   ├── git_push.py   # data push: snapshot-commit + push the data-root repo
 │   └── config.py     # where the component repos/venvs, data root, + optional converter live
 └── tests/            # offline: fake component repos + a local bare "GitHub" in tmp dirs
 ```

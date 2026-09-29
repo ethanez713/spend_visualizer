@@ -87,6 +87,7 @@ def given_daily_wrapper_then_flags_match_the_server_contract():
     for flag in ("--no-ui", "--no-llm", "--push-data"):
         assert flag in text
     assert "--no-drive" not in text               # Drive push stays ON
+    assert "--no-sheet" in text                   # else a new Google Sheet every day
     # Server is rules-only and FINAL: never enable the local LLM, and never --llm-defer —
     # the latter would leave rows perpetually LLM-pending (no desktop LLM run exists now;
     # deep review is the desktop Claude audit ritual). "--llm" is a substring of both

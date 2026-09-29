@@ -103,7 +103,7 @@ then open the URL in your laptop browser.
 
 ```bash
 cd ~/spend_visualizer/finance_pipeline
-python3 run.py --no-ui --no-llm --push-data
+python3 run.py --no-ui --no-llm --push-data --no-sheet
 ```
 
 Expect: fetch reconciles cleanly against Drive (proof `drive_state.json` came
@@ -227,7 +227,7 @@ the daily git push preserves. The rules that keep it that way:
 | Anything failing? | `cat ~/finance_data/logs/failures.log` (written by the OnFailure hook) |
 | Did a two-machine conflict resolve? | `cat ~/finance_data/plaid_category_transformer/data/adopt_conflicts.jsonl` (both versions of every resolved conflict) |
 | UI health | `systemctl --user status spend-analyzer` (auto-restarts on crash) |
-| Manual run | `cd ~/spend_visualizer/finance_pipeline && python3 run.py --no-ui --no-llm --push-data` |
+| Manual run | `cd ~/spend_visualizer/finance_pipeline && python3 run.py --no-ui --no-llm --push-data --no-sheet` |
 | Pause the schedule | `systemctl --user stop finance-daily.timer` (start to resume) |
 | Remove everything | `~/spend_visualizer/deploy/uninstall.sh` |
 

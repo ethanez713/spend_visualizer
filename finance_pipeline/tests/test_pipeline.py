@@ -180,6 +180,12 @@ def given_flags_when_building_cmds_then_they_propagate(fake_world):
     assert ui_cmd(cfg, args)[-1] == "9999"
 
 
+def given_no_flags_when_parsing_then_push_on_and_sheet_left_to_converter_presence():
+    args = parse_args([])
+    assert args.push_data is True
+    assert args.sheet is None
+
+
 def given_llm_defer_when_building_cmds_then_it_propagates(fake_world):
     cfg, _ = fake_world
     args = parse_args(["--llm-defer"])
@@ -202,7 +208,7 @@ def given_no_llm_and_llm_defer_together_then_rejected():
 def given_healthy_components_when_main_then_steps_run_in_order(fake_world, capsys):
     cfg, log = fake_world
 
-    main(["--no-llm", "--no-browser"], cfg=cfg)
+    main(["--no-push-data", "--no-llm", "--no-browser"], cfg=cfg)
 
     lines = _log_lines(log)
     assert [l.split()[0] for l in lines] == ["fetch", "categorize", "streamlit"]
@@ -216,7 +222,7 @@ def given_healthy_components_when_main_then_steps_run_in_order(fake_world, capsy
 def given_no_ui_when_main_then_streamlit_never_launches(fake_world):
     cfg, log = fake_world
 
-    main(["--no-ui"], cfg=cfg)
+    main(["--no-push-data", "--no-ui"], cfg=cfg)
 
     assert [l.split()[0] for l in _log_lines(log)] == ["fetch", "categorize"]
 
@@ -226,7 +232,7 @@ def given_fetch_fails_when_main_then_pipeline_stops_before_categorize(fake_world
     _fail_next(cfg.transactions_python, 1)   # e.g. unresolved raw-store conflict
 
     with pytest.raises(SystemExit) as exc:
-        main(["--no-ui"], cfg=cfg)
+        main(["--no-push-data", "--no-ui"], cfg=cfg)
 
     assert "fetch" in str(exc.value)
     assert [l.split()[0] for l in _log_lines(log)] == ["fetch"]   # nothing after
@@ -237,7 +243,7 @@ def given_categorize_fails_when_main_then_ui_never_launches(fake_world):
     _fail_next(cfg.transformer_python, 2)    # e.g. Drive divergence gate
 
     with pytest.raises(SystemExit) as exc:
-        main([], cfg=cfg)
+        main(["--no-push-data"], cfg=cfg)
 
     assert "categorize" in str(exc.value)
     assert [l.split()[0] for l in _log_lines(log)] == ["fetch", "categorize"]
@@ -248,7 +254,7 @@ def given_ui_dies_before_serving_when_main_then_clear_error(fake_world):
     _fail_next(cfg.analyzer_streamlit, 3)    # streamlit exits without listening
 
     with pytest.raises(SystemExit) as exc:
-        main(["--no-browser"], cfg=cfg)
+        main(["--no-push-data", "--no-browser"], cfg=cfg)
 
     assert "before serving" in str(exc.value)
 
@@ -258,7 +264,7 @@ def given_no_linked_banks_when_preflight_then_stops_with_link_hint(fake_world):
     (cfg.transactions_dir / ".secrets" / "tokens.json").unlink()
 
     with pytest.raises(SystemExit) as exc:
-        main(["--no-ui"], cfg=cfg)
+        main(["--no-push-data", "--no-ui"], cfg=cfg)
 
     assert "link" in str(exc.value).lower()
     assert _log_lines(log) == []             # no component ever ran
@@ -305,7 +311,7 @@ def given_no_drive_creds_anywhere_when_drive_run_then_stops_with_setup_hint(fake
     (cfg.transactions_secrets / "client_secret.json").unlink()
 
     with pytest.raises(SystemExit) as exc:
-        main(["--no-ui"], cfg=cfg)
+        main(["--no-push-data", "--no-ui"], cfg=cfg)
 
     assert "--no-drive" in str(exc.value)    # offers the offline alternative
     assert _log_lines(log) == []
@@ -315,7 +321,7 @@ def given_no_drive_flag_when_main_then_no_cred_seeding_needed(fake_world):
     cfg, log = fake_world
     (cfg.transactions_secrets / "client_secret.json").unlink()  # no creds at all
 
-    main(["--no-drive", "--no-ui"], cfg=cfg)                 # still fine offline
+    main(["--no-push-data", "--no-drive", "--no-ui"], cfg=cfg)                 # still fine offline
 
     assert [l.split()[0] for l in _log_lines(log)] == ["fetch", "categorize"]
     assert not cfg.transformer_secrets.exists()
@@ -339,16 +345,16 @@ def given_lock_held_when_main_then_exits_before_any_component(fake_world):
         fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
 
         with pytest.raises(SystemExit) as exc:
-            main(["--no-ui", "--no-drive"], cfg=cfg)
+            main(["--no-push-data", "--no-ui", "--no-drive"], cfg=cfg)
 
     assert "in progress" in str(exc.value)
     assert _log_lines(log) == []                 # nothing ran under a held lock
 
 
-def given_no_push_flag_when_main_then_data_repo_never_touched(fake_world):
+def given_no_push_data_flag_when_main_then_data_repo_never_touched(fake_world):
     cfg, log = fake_world                        # data_root isn't even a git repo
 
-    main(["--no-ui", "--no-drive"], cfg=cfg)     # would die if a push were tried
+    main(["--no-push-data", "--no-ui", "--no-drive"], cfg=cfg)     # would die if a push were tried
 
     assert [l.split()[0] for l in _log_lines(log)] == ["fetch", "categorize"]
 
@@ -387,7 +393,7 @@ def given_push_flag_when_fetch_fails_then_nothing_committed(fake_world, data_rep
 def given_no_converter_when_main_then_no_convert_step(fake_world):
     cfg, log = fake_world                         # default fake_world has no converter
 
-    main(["--no-drive", "--no-ui"], cfg=cfg)
+    main(["--no-push-data", "--no-drive", "--no-ui"], cfg=cfg)
 
     assert "convert" not in [l.split()[0] for l in _log_lines(log)]
 
@@ -403,7 +409,7 @@ def given_converter_configured_when_building_convert_cmd_then_local_and_offline(
 def given_converter_configured_when_main_then_convert_runs_after_categorize(with_converter):
     cfg, log = with_converter
 
-    main(["--no-drive", "--no-browser"], cfg=cfg)
+    main(["--no-sheet", "--no-push-data", "--no-drive", "--no-browser"], cfg=cfg)
 
     assert [l.split()[0] for l in _log_lines(log)] == \
         ["fetch", "categorize", "convert", "streamlit"]
@@ -414,7 +420,7 @@ def given_converter_configured_when_main_then_convert_runs_after_categorize(with
 def given_no_convert_flag_when_main_then_ledger_not_regenerated(with_converter):
     cfg, log = with_converter
 
-    main(["--no-drive", "--no-ui", "--no-convert"], cfg=cfg)
+    main(["--no-sheet", "--no-push-data", "--no-drive", "--no-ui", "--no-convert"], cfg=cfg)
 
     assert [l.split()[0] for l in _log_lines(log)] == ["fetch", "categorize"]
 
@@ -423,7 +429,7 @@ def given_converter_fails_when_main_then_pipeline_continues(with_converter, caps
     cfg, log = with_converter
     _fail_next(cfg.converter_python, 5)           # converter breaks — must not sink the run
 
-    main(["--no-drive", "--no-browser"], cfg=cfg)  # does NOT raise
+    main(["--no-sheet", "--no-push-data", "--no-drive", "--no-browser"], cfg=cfg)  # does NOT raise
 
     assert [l.split()[0] for l in _log_lines(log)] == \
         ["fetch", "categorize", "convert", "streamlit"]   # UI still served
@@ -434,7 +440,7 @@ def given_converter_venv_missing_when_main_then_warns_and_continues(with_convert
     cfg, log = with_converter
     cfg.converter_python.unlink()                 # configured but venv not built
 
-    main(["--no-drive", "--no-ui"], cfg=cfg)
+    main(["--no-sheet", "--no-push-data", "--no-drive", "--no-ui"], cfg=cfg)
 
     assert [l.split()[0] for l in _log_lines(log)] == ["fetch", "categorize"]
     assert "venv python is missing" in capsys.readouterr().out
@@ -446,7 +452,7 @@ def given_converter_and_push_when_main_then_convert_precedes_push(with_converter
     assert repo == cfg.data_root
     (repo / "transactions.csv").write_text("synthetic\n")
 
-    main(["--no-drive", "--no-ui", "--push-data"], cfg=cfg)
+    main(["--no-sheet", "--no-drive", "--no-ui", "--push-data"], cfg=cfg)
 
     assert [l.split()[0] for l in _log_lines(log)] == ["fetch", "categorize", "convert"]
     assert _remote_commits(origin) == 1           # ledger regen happens before the push
@@ -511,7 +517,7 @@ def given_sheet_flag_when_main_then_sheet_runs_last_and_tabs_open(
         with_converter, opened_urls):
     cfg, log = with_converter
 
-    main(["--no-drive", "--sheet"], cfg=cfg)
+    main(["--no-push-data", "--no-drive", "--sheet"], cfg=cfg)
 
     assert [l.split()[0] for l in _log_lines(log)] == \
         ["fetch", "categorize", "convert", "convert", "streamlit"]
@@ -531,7 +537,7 @@ def given_pinned_tabs_when_sheet_run_then_pinned_urls_open_after_sheet(
         "\n"
         "https://docs.google.com/document/d/notes\n")
 
-    main(["--no-drive", "--sheet"], cfg=cfg)
+    main(["--no-push-data", "--no-drive", "--sheet"], cfg=cfg)
 
     assert opened_urls == [f"http://localhost:{cfg.ui_port}",
                            "https://sheet.example/fake",
@@ -545,7 +551,7 @@ def given_no_sheet_flag_when_main_then_no_upload_and_no_pinned_tabs(
     cfg.data_root.mkdir(parents=True, exist_ok=True)
     (cfg.data_root / "pinned_tabs").write_text("https://example.com/pinned\n")
 
-    main(["--no-drive"], cfg=cfg)
+    main(["--no-sheet", "--no-push-data", "--no-drive"], cfg=cfg)
 
     convert_lines = [l for l in _log_lines(log) if l.startswith("convert")]
     assert len(convert_lines) == 1                # ledger regen only, no Sheet mode
@@ -553,11 +559,31 @@ def given_no_sheet_flag_when_main_then_no_upload_and_no_pinned_tabs(
     assert opened_urls == [f"http://localhost:{cfg.ui_port}"]   # pinned tabs are --sheet-only
 
 
+def given_converter_configured_when_main_without_sheet_flag_then_sheet_uploads(
+        with_converter, opened_urls):
+    cfg, log = with_converter
+
+    main(["--no-push-data", "--no-drive"], cfg=cfg)
+
+    convert_lines = [l for l in _log_lines(log) if l.startswith("convert")]
+    assert len(convert_lines) == 2 and "--url-file" in convert_lines[1]
+    assert "https://sheet.example/fake" in opened_urls
+
+
+def given_no_converter_when_main_without_sheet_flag_then_no_sheet_and_no_preflight_stop(
+        fake_world):
+    cfg, log = fake_world
+
+    main(["--no-push-data", "--no-drive", "--no-ui"], cfg=cfg)
+
+    assert [l.split()[0] for l in _log_lines(log)] == ["fetch", "categorize"]
+
+
 def given_sheet_without_converter_when_preflight_then_stops(fake_world):
     cfg, log = fake_world                         # no converter configured
 
     with pytest.raises(SystemExit) as exc:
-        main(["--no-drive", "--no-ui", "--sheet"], cfg=cfg)
+        main(["--no-push-data", "--no-drive", "--no-ui", "--sheet"], cfg=cfg)
 
     assert "--sheet" in str(exc.value)
     assert _log_lines(log) == []                  # nothing ran
@@ -568,7 +594,7 @@ def given_sheet_upload_fails_when_main_then_ui_still_serves(
     cfg, log = with_converter
     _fail_next(cfg.converter_python, 7)           # both converter calls fail — non-fatal
 
-    main(["--no-drive", "--sheet"], cfg=cfg)      # does NOT raise
+    main(["--no-push-data", "--no-drive", "--sheet"], cfg=cfg)      # does NOT raise
 
     assert _log_lines(log)[-1].startswith("streamlit")
     assert opened_urls == [f"http://localhost:{cfg.ui_port}"]   # no broken Sheet tab
@@ -580,7 +606,7 @@ def given_converter_reports_no_url_when_sheet_then_warns_without_tab(
     cfg, _ = with_converter
     (cfg.converter_python.parent / "no_url.txt").write_text("")  # upload failed inside
 
-    main(["--no-drive", "--sheet"], cfg=cfg)
+    main(["--no-push-data", "--no-drive", "--sheet"], cfg=cfg)
 
     assert opened_urls == [f"http://localhost:{cfg.ui_port}"]
     assert "reported no Sheet URL" in capsys.readouterr().out
@@ -614,7 +640,7 @@ def given_pending_rows_in_window_when_sheet_run_then_warns_but_uploads(
     _write_store(cfg, _pending("p1", "2026-06-30", 165.17),
                  _posted("s1", "2026-06-15", 20.0))
 
-    main(["--no-drive", "--sheet", "--sheet-month", "2026-06"], cfg=cfg)
+    main(["--no-push-data", "--no-drive", "--sheet", "--sheet-month", "2026-06"], cfg=cfg)
 
     out = capsys.readouterr().out
     assert "1 row(s) in this window are still PENDING ($165.17)" in out
@@ -629,7 +655,7 @@ def given_no_pending_rows_when_sheet_run_then_no_warning(
     cfg, _ = with_converter
     _write_store(cfg, _posted("s1", "2026-06-15"), _posted("s2", "2026-06-20"))
 
-    main(["--no-drive", "--sheet", "--sheet-month", "2026-06"], cfg=cfg)
+    main(["--no-push-data", "--no-drive", "--sheet", "--sheet-month", "2026-06"], cfg=cfg)
 
     assert "PENDING" not in capsys.readouterr().out
 
@@ -639,7 +665,7 @@ def given_pending_row_outside_window_when_sheet_run_then_not_warned(
     cfg, _ = with_converter
     _write_store(cfg, _pending("p1", "2026-07-02"))   # settles in July, June export
 
-    main(["--no-drive", "--sheet", "--sheet-month", "2026-06"], cfg=cfg)
+    main(["--no-push-data", "--no-drive", "--sheet", "--sheet-month", "2026-06"], cfg=cfg)
 
     assert "PENDING" not in capsys.readouterr().out
 
@@ -648,7 +674,7 @@ def given_missing_store_when_sheet_run_then_no_warning_and_no_crash(
         with_converter, opened_urls, capsys):
     cfg, _ = with_converter                       # categorized_jsonl never written
 
-    main(["--no-drive", "--sheet", "--sheet-month", "2026-06"], cfg=cfg)
+    main(["--no-push-data", "--no-drive", "--sheet", "--sheet-month", "2026-06"], cfg=cfg)
 
     assert "PENDING" not in capsys.readouterr().out
 
@@ -694,7 +720,7 @@ def given_sheet_with_no_ui_when_main_then_urls_printed_not_opened(
         with_converter, opened_urls, capsys):
     cfg, log = with_converter
 
-    main(["--no-drive", "--no-ui", "--sheet"], cfg=cfg)
+    main(["--no-push-data", "--no-drive", "--no-ui", "--sheet"], cfg=cfg)
 
     assert [l.split()[0] for l in _log_lines(log)] == \
         ["fetch", "categorize", "convert", "convert"]

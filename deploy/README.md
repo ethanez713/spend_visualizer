@@ -10,7 +10,7 @@ The shape of the deployment:
   it is reached over the tailnet via `tailscale serve` (HTTPS), never the public
   internet. Login = being on the tailnet; the app itself has no auth code.
 - **Data** — `finance-daily.timer` runs `bin/finance-daily.sh` each morning:
-  `run.py --no-ui --no-llm --push-data` (fetch → deterministic-rules categorize
+  `run.py --no-ui --no-llm --push-data --no-sheet` (fetch → deterministic-rules categorize
   → Drive push → git push of the data repo). The ~30-day overfetch safety net
   self-triggers inside the fetch — one timer covers both cadences. Deep review is
   the occasional desktop Claude audit ritual (RUNBOOK §12); both machines rebase

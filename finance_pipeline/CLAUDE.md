@@ -9,14 +9,16 @@ exit codes. The categorized store ADOPTS the Drive head instead of stopping:
 two machines legitimately write it — see the transformer's CLAUDE.md).
 
 - Test: `./venv/bin/python -m pytest` (house `given_*` naming; subprocesses faked
-  via `fake_world`; `--push-data` tested against a local bare repo, never a remote).
-- `./run.py` is a LIVE run (Plaid + Drive; + GitHub with `--push-data`) — hand it
+  via `fake_world`; the data push tested against a local bare repo, never a remote).
+- `./run.py` is a LIVE run (Plaid + Drive + GitHub data push + a new Google Sheet
+  when a converter is configured; the last two are default-on, opted out with
+  `--no-push-data` / `--no-sheet`) — hand it
   to the user by default; execute it only on the user's explicit in-session
   go-ahead (see the root golden rules).
 - The data steps run under `<data_root>/.pipeline.lock` (flock; same-machine
   overlap guard for timer + manual runs). It is released BEFORE the UI step —
   don't extend its scope, or a long-lived UI blocks the next day's scheduled run.
-- `src/git_push.py` (the `--push-data` step) runs after categorize, inside the
+- `src/git_push.py` (the data-push step) runs after categorize, inside the
   lock, only on success — stop-on-failure covers the push. It commits with an
   automated identity and must stay loud-on-failure (the deploy timer's OnFailure
   alert relies on the non-zero exit). No-remote is a warn-and-continue, not an
@@ -24,9 +26,11 @@ two machines legitimately write it — see the transformer's CLAUDE.md).
 - `tools/migrate_multiuser.py`: one-off owner back-fill for pre-multi-user data
   (scan-then-apply, idempotent, aborts on foreign owners). Operates on tokens.json
   (repo .secrets) + the stores under the data root (`--data-root` to override).
-- `--sheet` (the `run_finances` monthly ritual) is EXTRA egress on top of the live
-  run: a second converter invocation with upload ON (a new Google Sheet) — same
-  user-authorization rule as the rest of `./run.py`. It runs OUTSIDE the lock
+- The month Sheet (`--sheet`, default-on when a converter is configured) is EXTRA
+  egress on top of the live run: a second converter invocation with upload ON (a
+  new Google Sheet) — same user-authorization rule as the rest of `./run.py`. An
+  explicit `--sheet` without a converter fails preflight; the default just skips.
+  It runs OUTSIDE the lock
   (read-only over the store; a slow Google API must not block the next scheduled
   run) and is non-fatal. The Sheet URL comes back via the converter's `--url-file`
   and opens as an extra browser tab together with `<data_root>/pinned_tabs` URLs.

@@ -16,10 +16,10 @@ venv from its own repo root, stopping at the first non-zero exit:
      (see ``config._converter_dir``). Regenerates the budget ledger CSV the Budget
      tab reads so its categories match the established budget. Local-only and
      NON-fatal: it derives a view, never touches the source stores.
-  2c. (optional, ``--sheet``) the converter again, in its month-Sheet mode: converts
-     the chosen month and uploads it as a new Google Sheet (explicit opt-in egress,
-     like every upload). NON-fatal; the Sheet URL is captured via the converter's
-     ``--url-file`` and opened as an extra browser tab, along with any URLs pinned
+  2c. (``--sheet``, on by default when a converter is configured) the converter
+     again, in its month-Sheet mode: converts the chosen month (default: the last
+     complete one) and uploads it as a new Google Sheet. NON-fatal; the Sheet URL is
+     captured via the converter's ``--url-file`` and opened as an extra browser tab, along with any URLs pinned
      in ``<data_root>/pinned_tabs`` (e.g. the master budget spreadsheet). Warns
      first (never blocks) when the window still holds PENDING rows — each run
      uploads a NEW Sheet, so an early snapshot stays wrong forever.
@@ -77,18 +77,20 @@ def parse_args(argv=None, *, default_port: int = 8501) -> argparse.Namespace:
     p.add_argument("--force-push", action="store_true",
                    help="pass through to the transformer: override its Drive divergence "
                         "gate and treat the local categorized store as authoritative")
-    p.add_argument("--push-data", action="store_true",
+    p.add_argument("--push-data", action=argparse.BooleanOptionalAction, default=True,
                    help="after the data steps succeed, commit the data-root git repo "
-                        "(if dirty) and push it to its 'origin' remote — explicit "
-                        "opt-in upload, like every off-machine egress")
+                        "(if dirty) and push it to its 'origin' remote (default: on; "
+                        "--no-push-data on any machine that isn't the data repo's "
+                        "sole pusher)")
     p.add_argument("--no-convert", action="store_true",
                    help="skip regenerating the external budget ledger even if a "
                         "converter is configured (see the README's converter step)")
-    p.add_argument("--sheet", action="store_true",
+    p.add_argument("--sheet", action=argparse.BooleanOptionalAction, default=None,
                    help="after the data steps, run the external converter's monthly "
                         "Google-Sheet upload and open the new Sheet (plus any URLs in "
-                        "<data_root>/pinned_tabs) as extra browser tabs — explicit "
-                        "opt-in egress; needs a configured converter")
+                        "<data_root>/pinned_tabs) as extra browser tabs (default: on "
+                        "when a converter is configured; an explicit --sheet without "
+                        "one fails preflight)")
     p.add_argument("--sheet-month", default=None, metavar="YYYY-MM",
                    help="month window for the --sheet upload (default: the last "
                         "COMPLETE month, i.e. the month that just ended)")
@@ -134,8 +136,8 @@ def convert_cmd(cfg: Config) -> list[str]:
 
     ``--all`` converts the whole history so the Budget tab's trailing averages have
     every month, and ``--no-upload`` keeps it offline (no Google-Sheet egress —
-    Drive/Sheet pushes stay opt-in). The converter never fetches: this pipeline is
-    its upstream (invocation is one-directional, pipeline → converter)."""
+    the month-Sheet upload is a separate step). The converter never fetches: this
+    pipeline is its upstream (invocation is one-directional, pipeline → converter)."""
     return [str(cfg.converter_python), "refresh.py", "--all",
             "--no-upload", "--output", str(cfg.budget_ledger_csv)]
 
@@ -513,6 +515,8 @@ def step_analyze(cfg: Config, args: argparse.Namespace,
 def main(argv=None, cfg: Config | None = None) -> None:
     cfg = cfg or default_config()
     args = parse_args(argv, default_port=cfg.ui_port)
+    if args.sheet is None:
+        args.sheet = cfg.converter_dir is not None
 
     # When stdout is redirected (cron, `./run.py > log`), Python block-buffers it and
     # the status lines below would only land at exit — AFTER the components' own

@@ -14,10 +14,9 @@ outside the repo** (see "Data root").
    - `fetch_transactions.py` / `app.py` — hit Plaid.
    - `--persist`/Drive-enabled runs, and `categorize.py` without `--no-drive` — push to
      Google Drive.
-   - `run.py --sheet` (the `run_finances` ritual) — additionally uploads a new Google
-     Sheet via the external converter.
-   - `--push-data`, and `deploy/bin/finance-daily.sh` which passes it — pushes the data
-     repo to GitHub.
+   - `run.py` — by default ALSO pushes the data repo to GitHub and, when a converter is
+     configured, uploads a new Google Sheet (`--no-push-data` / `--no-sheet` turn them
+     off). `deploy/bin/finance-daily.sh` pushes the data repo too.
    - `deploy/install.sh` — enables live timers.
 
    *Default to* verifying with the offline test suites and synthetic data, and handing
@@ -66,7 +65,7 @@ self-contained): `transactions/src/plaid_client.py:_data_root`,
 | personal analyzer config (accounts, budget) | `spend_analyzer/config/…` |
 | corrections queue | `spend_analyzer/data/corrections.jsonl` |
 | external budget ledger (optional Budget-tab source) | `spend_analyzer/data/budget_ledger.csv` |
-| pinned browser tabs for `--sheet` runs (one URL/line, `#` comments) | `pinned_tabs` |
+| pinned browser tabs for Sheet runs (one URL/line, `#` comments) | `pinned_tabs` |
 
 The optional **external converter** (Budget-tab categorization) is located by
 `finance_pipeline/src/config.py:_converter_dir`: `$SPEND_VISUALIZER_CONVERTER`, else
@@ -81,7 +80,7 @@ A plain-text pointer, not YAML, because finance_pipeline is stdlib-only.
 | `persister/` | `./.venv` | library (`import persister`); `persist.py` CLI | `./.venv/bin/python -m pytest` |
 | `plaid_category_transformer/` | `./.venv` | `categorize.py [--no-drive --llm --llm-defer --full --review --edit --claude-export --claude-apply]` (local LLM OFF by default — Claude ritual is the reviewer) | `./.venv/bin/python -m pytest` |
 | `spend_analyzer/` | `./venv` | `streamlit run app.py` | `pytest` (unit+UI); browser e2e opt-in: `pytest tests/e2e -m e2e` |
-| `finance_pipeline/` | `./venv` | `./run.py [--no-drive --llm --llm-defer --no-convert --no-ui --push-data --sheet]` (`--sheet` = the `run_finances` monthly ritual: converter Sheet upload + extra browser tabs); `tools/migrate_multiuser.py` | `./venv/bin/python -m pytest` |
+| `finance_pipeline/` | `./venv` | `./run.py [--no-drive --llm --llm-defer --no-convert --no-ui --no-push-data --no-sheet --sheet-month YYYY-MM]` (bare `./run.py` = the monthly ritual: data push + last complete month's converter Sheet + extra browser tabs); `tools/migrate_multiuser.py` | `./venv/bin/python -m pytest` |
 | `deploy/` | `./.venv` | static server artifacts — units/scripts are user-run only (see its CLAUDE.md) | `./.venv/bin/python -m pytest` |
 
 Conventions: tests are named `given_<precondition>_when_<action>_then_<result>`
@@ -143,9 +142,10 @@ Plaid ──sync (cursor/Item)──▶ raw xz store ──persist/reconcile─�
   persister's DriveSync is append-only by construction (revisions, never delete)
   with file-id memory in `.secrets/drive_state.json` — local path moves don't
   affect Drive identity.
-- **One GitHub pusher**: when a server runs the daily job (`--push-data`), the
-  server is the SOLE pusher of the finance_data repo; other machines `git pull`
-  only. Cross-machine data merging is the Drive reconcile's job, not git's.
+- **One GitHub pusher**: when a server runs the daily job, the server is the SOLE
+  pusher of the finance_data repo; other machines `git pull` only and must run
+  `run.py --no-push-data` (the push is on by default). Cross-machine data merging
+  is the Drive reconcile's job, not git's.
   Same-machine run overlap is guarded by `<data_root>/.pipeline.lock` (flock,
   held for the data steps, released before the UI).
 - **Categorization authority**: mechanical `auto` rules overwrite; the LLM only
@@ -178,10 +178,11 @@ Plaid ──sync (cursor/Item)──▶ raw xz store ──persist/reconcile─�
   non-fatal (derives a view). Invocation is one-directional (pipeline →
   converter): refresh.py never fetches — don't reintroduce a fetch there, it
   would recurse into run.py.
-- **`--sheet` (step 2c / `run_finances`)**: opt-in monthly egress — a second
-  converter invocation with upload ON creates a new Google Sheet; its URL (via
-  the converter's `--url-file`) plus `<data_root>/pinned_tabs` URLs open as extra
-  browser tabs after the UI. Non-fatal, runs outside the pipeline lock. Same
+- **Month Sheet (step 2c, on by default when a converter is configured;
+  `--no-sheet` skips it)**: a second converter invocation with upload ON creates
+  a new Google Sheet for the last complete month (`--sheet-month` overrides); its
+  URL (via the converter's `--url-file`) plus `<data_root>/pinned_tabs` URLs open
+  as extra browser tabs after the UI. Non-fatal, runs outside the pipeline lock. Same
   live-run authorization rules as the rest of `run.py` (golden rule 1).
 - `PLAN.md` files are historical design docs; READMEs are the current truth.
 - Component-level `CLAUDE.md` files hold per-component specifics.

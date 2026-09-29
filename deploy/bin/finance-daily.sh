@@ -8,6 +8,8 @@
 #                audit ritual (RUNBOOK.md §12). Passed explicitly so the server
 #                stays rules-only even if the default ever flips back on.
 #   --push-data  commit + push the finance_data repo to GitHub after success
+#   --no-sheet   the month-Sheet upload is the desktop ritual; left on, every
+#                daily run would upload a new Google Sheet
 #
 # Drive push stays ON (the default). Output goes to stdout → journald:
 #   journalctl --user -u finance-daily
@@ -17,4 +19,4 @@ set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")/../../finance_pipeline"
 
 echo "━━━ finance-daily $(date '+%Y-%m-%d %H:%M:%S %Z') ━━━"
-exec python3 run.py --no-ui --no-llm --push-data
+exec python3 run.py --no-ui --no-llm --push-data --no-sheet
