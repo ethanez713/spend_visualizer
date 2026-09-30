@@ -7,11 +7,9 @@ Analyzer UI and opens it in your default browser:
 
 ```bash
 # The entire pipeline: fetch → categorize → budget ledger → data-repo push
-#   → last complete month's Google Sheet → Streamlit UI (+ Sheet + pinned tabs)
+#   → incremental Google Sheet → Streamlit UI (+ Sheet + pinned tabs)
 ./run.py
 
-./run.py --sheet-month 2026-06                            # Sheet for a past month
-./run.py --sheet-since 2026-06-15 --sheet-until 2026-07-09   # a specific window
 ./run.py --no-sheet --no-push-data                        # data steps + UI only
 ```
 
@@ -46,8 +44,8 @@ repo root.
     │                                    Skipped unless a converter is configured; local-only
     │                                    and non-fatal (it only derives a view).
     ▼
-2c. sheet        converter/  (default)   convert the chosen month and upload it as a new
-    │                                    Google Sheet (skipped without a converter); the Sheet
+2c. sheet        converter/  (default)   upload everything earlier Sheets don't hold as a
+    │                                    new Google Sheet (skipped without a converter); the Sheet
     │                                    URL comes back via --url-file and opens as an
     │                                    extra browser tab, plus any URLs pinned in
     │                                    <data_root>/pinned_tabs. Non-fatal.
@@ -78,8 +76,6 @@ repo root.
 | `--force-push` | skip the transformer's Drive head adoption: local store wins |
 | `--no-convert` | skip the optional budget-ledger regen even if a converter is configured |
 | `--no-sheet` | skip the converter's Google-Sheet upload (on by default when a converter is configured), which also opens the fresh Sheet + `<data_root>/pinned_tabs` URLs as extra browser tabs |
-| `--sheet-month YYYY-MM` | month window for the Sheet (default: the last **complete** month) |
-| `--sheet-since/--sheet-until DATE` | arbitrary inclusive date window for the Sheet (overrides `--sheet-month`) |
 | `--no-ui` | stop after the data steps (e.g. for scheduled runs) |
 | `--no-push-data` | skip committing the data-root git repo (if dirty) and pushing it to its `origin` after the data steps (on by default; no remote ⇒ warn, commit locally). Pass it on any machine that isn't the data repo's sole pusher |
 | `--no-browser` | serve the UI but don't open a browser |
@@ -115,16 +111,21 @@ tab reads when `ledger.csv` is set in its `budget.yaml` (see spend_analyzer's RE
   **non-fatal** — a converter hiccup warns loudly and the run continues (it derives a
   view; it never touches the source stores). `--no-convert` skips it outright.
 
-### The month Sheet (step 2c)
+### The incremental Sheet (step 2c)
 
-With a converter configured, `./run.py` also runs it in its month-Sheet mode
-(`refresh.py --url-file …`, upload ON), then opens **all**
-the month-in-review tabs at once: the Streamlit UI, the freshly uploaded Google Sheet,
+With a converter configured, `./run.py` also runs it in its incremental Sheet mode
+(`refresh.py --url-file …`, upload ON): a new Sheet named `plaid_<since>_<until>` with
+everything no earlier Sheet holds, up to today. Pending rows are included and marked;
+when one later settles differently or disappears, the next Sheet carries a warning row
+naming the stale row to delete by hand (the converter's `sheet_state` module explains
+the bookkeeping, kept in `<data_root>/sheet_exports/manifest.jsonl`). Nothing new means
+no Sheet. Then it opens **all**
+the review tabs at once: the Streamlit UI, the freshly uploaded Google Sheet,
 and every URL listed in `<data_root>/pinned_tabs` (one per line, `#` comments allowed —
 e.g. the master budget spreadsheet; personal URLs, so the file lives in the private
 data root). The step runs *outside* the pipeline lock (it's read-only over the store)
-and is non-fatal. Each run uploads a **new** Sheet, so pass `--no-sheet` for runs
-that aren't the monthly review.
+and is non-fatal. Each run with something new uploads a **new** Sheet, so pass
+`--no-sheet` for runs that shouldn't export.
 
 ## First-run notes
 

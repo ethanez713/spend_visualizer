@@ -66,6 +66,7 @@ self-contained): `transactions/src/plaid_client.py:_data_root`,
 | corrections queue | `spend_analyzer/data/corrections.jsonl` |
 | external budget ledger (optional Budget-tab source) | `spend_analyzer/data/budget_ledger.csv` |
 | pinned browser tabs for Sheet runs (one URL/line, `#` comments) | `pinned_tabs` |
+| what each uploaded Sheet held (converter-owned; drives the incremental export) | `sheet_exports/manifest.jsonl` |
 
 The optional **external converter** (Budget-tab categorization) is located by
 `finance_pipeline/src/config.py:_converter_dir`: `$SPEND_VISUALIZER_CONVERTER`, else
@@ -178,11 +179,14 @@ Plaid ──sync (cursor/Item)──▶ raw xz store ──persist/reconcile─�
   non-fatal (derives a view). Invocation is one-directional (pipeline →
   converter): refresh.py never fetches — don't reintroduce a fetch there, it
   would recurse into run.py.
-- **Month Sheet (step 2c, on by default when a converter is configured;
+- **Incremental Sheet (step 2c, on by default when a converter is configured;
   `--no-sheet` skips it)**: a second converter invocation with upload ON creates
-  a new Google Sheet for the last complete month (`--sheet-month` overrides); its
-  URL (via the converter's `--url-file`) plus `<data_root>/pinned_tabs` URLs open
-  as extra browser tabs after the UI. Non-fatal, runs outside the pipeline lock. Same
-  live-run authorization rules as the rest of `run.py` (golden rule 1).
+  a new Google Sheet with everything earlier Sheets don't hold, up to today, pending
+  rows included; its URL (via the converter's `--url-file`) plus
+  `<data_root>/pinned_tabs` URLs open as extra browser tabs after the UI.
+  Non-fatal, runs outside the pipeline lock. Same live-run authorization rules as
+  the rest of `run.py` (golden rule 1). The converter owns the bookkeeping (what each
+  Sheet held, pending-row reconciliation, warning rows) in
+  `<data_root>/sheet_exports/manifest.jsonl` — the orchestrator passes no window.
 - `PLAN.md` files are historical design docs; READMEs are the current truth.
 - Component-level `CLAUDE.md` files hold per-component specifics.

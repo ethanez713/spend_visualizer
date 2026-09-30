@@ -27,11 +27,10 @@ your browser (setup: see "Full setup for a new user" below):
 cd finance_pipeline
 ./run.py                                  # entire pipeline + open the UI
 
-# …with the monthly Google-Sheet export (optional external converter; also opens
-# the fresh Sheet + your pinned tabs as extra browser tabs):
-./run.py --sheet                                                     # last complete month (default)
-./run.py --sheet --sheet-month 2026-06                               # a past month
-./run.py --sheet --sheet-since 2026-06-15 --sheet-until 2026-07-09   # a specific window
+# …with the incremental Google-Sheet export (optional external converter; uploads
+# everything not yet exported, pending rows included, and also opens the fresh
+# Sheet + your pinned tabs as extra browser tabs):
+./run.py --sheet
 ```
 
 ## Highlights
@@ -175,8 +174,7 @@ the full flag list.
 | …also git-push the data-root repo to its remote | `./run.py --no-ui --push-data` |
 | Fully offline (no Drive pull/push) | `./run.py --no-drive` |
 | Opt IN to the local LLM reviewer (off by default; needs Ollama) | `./run.py --llm` |
-| …plus the monthly Google-Sheet export + extra tabs (optional converter) | `./run.py --sheet` |
-| Sheet for a past month / a specific window | `./run.py --sheet --sheet-month 2026-06` · `--sheet-since 2026-06-15 --sheet-until 2026-07-09` |
+| …plus the incremental Google-Sheet export + extra tabs (optional converter) | `./run.py --sheet` |
 
 ### Transactions (Plaid collector)
 

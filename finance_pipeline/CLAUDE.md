@@ -26,7 +26,7 @@ two machines legitimately write it — see the transformer's CLAUDE.md).
 - `tools/migrate_multiuser.py`: one-off owner back-fill for pre-multi-user data
   (scan-then-apply, idempotent, aborts on foreign owners). Operates on tokens.json
   (repo .secrets) + the stores under the data root (`--data-root` to override).
-- The month Sheet (`--sheet`, default-on when a converter is configured) is EXTRA
+- The incremental Sheet (`--sheet`, default-on when a converter is configured) is EXTRA
   egress on top of the live run: a second converter invocation with upload ON (a
   new Google Sheet) — same user-authorization rule as the rest of `./run.py`. An
   explicit `--sheet` without a converter fails preflight; the default just skips.
@@ -36,9 +36,8 @@ two machines legitimately write it — see the transformer's CLAUDE.md).
   and opens as an extra browser tab together with `<data_root>/pinned_tabs` URLs.
   Invocation is one-directional (pipeline → converter): the converter's refresh.py
   no longer fetches, so never re-add a fetch flag to its invocations.
-  `warn_pending_rows` prints a heads-up first when the window still holds PENDING
-  rows (provisional amounts; a new transaction_id on settle) — each `--sheet` run
-  uploads a NEW Sheet and never revisits the old one, so an early snapshot is wrong
-  forever. It WARNS, never blocks: a mid-month export is legitimate. `sheet_window`
-  is shared with `sheet_cmd` so the warning can't describe a different window than
-  the one uploaded.
+  The orchestrator passes the converter no window: what to export (everything earlier
+  Sheets don't hold, pending rows and their reconciliation included) is the
+  converter's `sheet_state` module's decision, tracked in
+  `<data_root>/sheet_exports/manifest.jsonl`. Don't re-add window flags or pending
+  handling here.
