@@ -41,10 +41,6 @@ class Config:
     converter_python: Path | None = None
     budget_ledger_csv: Path | None = None
 
-    # The transformer's categorized store, read READ-ONLY by the --sheet pending
-    # check (see pipeline.warn_pending_rows). None disables the check.
-    categorized_jsonl: Path | None = None
-
     ui_port: int = 8501
     ui_start_timeout_s: float = 120.0   # streamlit cold start can be slow
     ollama_port: int = 11434            # local LLM; probed (warn-only) in preflight
@@ -115,6 +111,4 @@ def default_config() -> Config:
         converter_dir=converter,
         converter_python=converter_python,
         budget_ledger_csv=budget_ledger_csv,
-        categorized_jsonl=(data_root / "plaid_category_transformer" / "data"
-                           / "transactions_categorized.jsonl"),
     )

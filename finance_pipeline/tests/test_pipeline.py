@@ -97,8 +97,6 @@ def fake_world(tmp_path):
         analyzer_streamlit=analyzer / "venv" / "bin" / "streamlit",
         transactions_secrets=transactions / ".secrets",
         transformer_secrets=transformer / ".secrets",
-        categorized_jsonl=(tmp_path / "finance_data" / "plaid_category_transformer"
-                           / "data" / "transactions_categorized.jsonl"),
         ui_port=_free_port(),
         ui_start_timeout_s=10.0,
     )
@@ -471,46 +469,18 @@ def opened_urls(monkeypatch):
     return urls
 
 
-def given_sheet_flag_when_building_sheet_cmd_then_upload_stays_on(with_converter):
-    cfg, _ = with_converter
-    args = parse_args(["--sheet"])
-    cmd = sheet_cmd(cfg, args, "/tmp/u.txt")
-    assert cmd[:2] == [str(cfg.converter_python), "refresh.py"]
-    assert "--no-upload" not in cmd               # this step IS the (opt-in) egress
-    assert "--url-file" in cmd and "/tmp/u.txt" in cmd
-
-
-def given_no_sheet_window_when_building_sheet_cmd_then_defaults_to_last_complete_month(
+def given_converter_when_building_sheet_cmd_then_upload_stays_on_and_window_is_left_to_it(
         with_converter):
-    from src.pipeline import _last_complete_month
     cfg, _ = with_converter
-    cmd = sheet_cmd(cfg, parse_args(["--sheet"]), "/tmp/u.txt")
-    # No explicit window → the month that just ended, NOT the sparse current one.
-    assert cmd[cmd.index("--month") + 1] == _last_complete_month()
-    assert "--since" not in cmd and "--until" not in cmd
+    cmd = sheet_cmd(cfg, "/tmp/u.txt")
+    assert cmd == [str(cfg.converter_python), "refresh.py", "--url-file", "/tmp/u.txt"]
+    assert "--no-upload" not in cmd               # this step IS the (opt-in) egress
 
 
-def given_last_complete_month_when_computed_then_is_prior_month():
-    from datetime import date
-    from src.pipeline import _last_complete_month
-    assert _last_complete_month(date(2026, 7, 11)) == "2026-06"
-    assert _last_complete_month(date(2026, 1, 1)) == "2025-12"   # year rollover
-
-
-def given_sheet_month_when_building_sheet_cmd_then_month_propagates(with_converter):
-    cfg, _ = with_converter
-    args = parse_args(["--sheet", "--sheet-month", "2026-06"])
-    cmd = sheet_cmd(cfg, args, "/tmp/u.txt")
-    assert "--month" in cmd and "2026-06" in cmd
-
-
-def given_sheet_window_when_building_sheet_cmd_then_since_until_propagate(with_converter):
-    cfg, _ = with_converter
-    args = parse_args(["--sheet", "--sheet-since", "2026-06-15",
-                       "--sheet-until", "2026-07-09"])
-    cmd = sheet_cmd(cfg, args, "/tmp/u.txt")
-    assert cmd[cmd.index("--since") + 1] == "2026-06-15"
-    assert cmd[cmd.index("--until") + 1] == "2026-07-09"
+def given_removed_window_flags_when_parsing_then_rejected():
+    for flag in ("--sheet-month", "--sheet-since", "--sheet-until"):
+        with pytest.raises(SystemExit):
+            parse_args([flag, "2026-06"])
 
 
 def given_sheet_flag_when_main_then_sheet_runs_last_and_tabs_open(
@@ -610,110 +580,6 @@ def given_converter_reports_no_url_when_sheet_then_warns_without_tab(
 
     assert opened_urls == [f"http://localhost:{cfg.ui_port}"]
     assert "reported no Sheet URL" in capsys.readouterr().out
-
-
-# A pending row's amount is provisional and it gets a NEW transaction_id when it
-# settles, so a Sheet snapshot taken before the window settled is permanently
-# wrong (each --sheet run uploads a NEW Sheet; the old one is never updated).
-# The check WARNS and never blocks — a mid-month export is legitimate.
-
-def _write_store(cfg, *records):
-    """Write a minimal categorized store at the Config's categorized_jsonl path."""
-    import json as _json
-    cfg.categorized_jsonl.parent.mkdir(parents=True, exist_ok=True)
-    cfg.categorized_jsonl.write_text(
-        "".join(_json.dumps(r) + "\n" for r in records), encoding="utf-8")
-
-
-def _pending(tid, date, amount=10.0, name="Amazon"):
-    return {"transaction_id": tid, "date": date, "amount": amount,
-            "pending": True, "merchant_name": name}
-
-
-def _posted(tid, date, amount=10.0, name="Amazon"):
-    return {**_pending(tid, date, amount, name), "pending": False}
-
-
-def given_pending_rows_in_window_when_sheet_run_then_warns_but_uploads(
-        with_converter, opened_urls, capsys):
-    cfg, log = with_converter
-    _write_store(cfg, _pending("p1", "2026-06-30", 165.17),
-                 _posted("s1", "2026-06-15", 20.0))
-
-    main(["--no-push-data", "--no-drive", "--sheet", "--sheet-month", "2026-06"], cfg=cfg)
-
-    out = capsys.readouterr().out
-    assert "1 row(s) in this window are still PENDING ($165.17)" in out
-    assert "2026-06-30" in out and "Amazon" in out
-    # Warned, not blocked: the upload still ran and its Sheet tab still opened.
-    assert any("--url-file" in line for line in _log_lines(log))
-    assert "https://sheet.example/fake" in opened_urls
-
-
-def given_no_pending_rows_when_sheet_run_then_no_warning(
-        with_converter, opened_urls, capsys):
-    cfg, _ = with_converter
-    _write_store(cfg, _posted("s1", "2026-06-15"), _posted("s2", "2026-06-20"))
-
-    main(["--no-push-data", "--no-drive", "--sheet", "--sheet-month", "2026-06"], cfg=cfg)
-
-    assert "PENDING" not in capsys.readouterr().out
-
-
-def given_pending_row_outside_window_when_sheet_run_then_not_warned(
-        with_converter, opened_urls, capsys):
-    cfg, _ = with_converter
-    _write_store(cfg, _pending("p1", "2026-07-02"))   # settles in July, June export
-
-    main(["--no-push-data", "--no-drive", "--sheet", "--sheet-month", "2026-06"], cfg=cfg)
-
-    assert "PENDING" not in capsys.readouterr().out
-
-
-def given_missing_store_when_sheet_run_then_no_warning_and_no_crash(
-        with_converter, opened_urls, capsys):
-    cfg, _ = with_converter                       # categorized_jsonl never written
-
-    main(["--no-push-data", "--no-drive", "--sheet", "--sheet-month", "2026-06"], cfg=cfg)
-
-    assert "PENDING" not in capsys.readouterr().out
-
-
-def given_malformed_store_line_when_checked_then_skipped(with_converter):
-    from src.pipeline import pending_in_window
-    cfg, _ = with_converter
-    cfg.categorized_jsonl.parent.mkdir(parents=True, exist_ok=True)
-    cfg.categorized_jsonl.write_text(
-        'not json\n{"transaction_id":"p1","date":"2026-06-30","pending":true}\n',
-        encoding="utf-8")
-
-    rows = pending_in_window(cfg.categorized_jsonl, "2026-06", None, None)
-
-    assert [r["transaction_id"] for r in rows] == ["p1"]
-
-
-def given_since_until_window_when_checked_then_bounds_are_inclusive(with_converter):
-    from src.pipeline import pending_in_window
-    cfg, _ = with_converter
-    _write_store(cfg, _pending("before", "2026-06-14"), _pending("lo", "2026-06-15"),
-                 _pending("hi", "2026-07-09"), _pending("after", "2026-07-10"))
-
-    rows = pending_in_window(cfg.categorized_jsonl, None, "2026-06-15", "2026-07-09")
-
-    assert sorted(r["transaction_id"] for r in rows) == ["hi", "lo"]
-
-
-def given_sheet_window_when_resolved_then_matches_the_uploaded_window(with_converter):
-    """The warning and the upload must never describe different windows."""
-    from src.pipeline import sheet_window
-    cfg, _ = with_converter
-    args = parse_args(["--sheet", "--sheet-month", "2026-06"])
-
-    month, since, until = sheet_window(args)
-    cmd = sheet_cmd(cfg, args, "/tmp/u.txt")
-
-    assert (month, since, until) == ("2026-06", None, None)
-    assert cmd[cmd.index("--month") + 1] == month
 
 
 def given_sheet_with_no_ui_when_main_then_urls_printed_not_opened(
