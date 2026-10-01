@@ -25,5 +25,14 @@ it never edits records — category fixes append INTENTS to the transformer's lo
   merchant memory, and the optional converter's Sheet mapping (loaded fail-soft
   via `$SPEND_VISUALIZER_CONVERTER` / `<data_root>/converter_root`) — never a
   write path. Rule authoring stays a code edit in the owning project.
+- UI: the look and behaviour follow the Ethan design system (`~/ethan_design_system`,
+  start at its `readme.md`); `theme.py` is the only place tokens are mapped, and views
+  take colours and chart styling from it. Sentence case, no emoji, Markdown money via
+  `viz.money_md` (two bare `$` in one caption render as LaTeX).
+- Only the active view renders (`app._current_view`), so a UI test opens the view it
+  asserts on (`tests/ui/_harness.go`). Don't move views back into `st.tabs`: the
+  hierarchy chart drops its labels when mounted inside a hidden tab panel.
+- `st.segmented_control` in single-select mode crashes AppTest on streamlit 1.40.2;
+  use a horizontal `st.radio`.
 - Tie-out invariant: every grouping must sum to the grand total (no double count);
   `tests/test_cube.py` checks it on the real archive.

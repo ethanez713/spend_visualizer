@@ -61,7 +61,9 @@ def test_given_drilled_chart_when_zoomed_out_then_pops_one_level_and_stays(app):
     app.get_by_role("button", name="Zoom out").click()
     wait_idle(app)
     assert breadcrumbs(app) == drilled[:-1]
-    app.get_by_text("3 mo", exact=True).click()   # unrelated rerun
+    app.get_by_text("Income", exact=True).click()     # unrelated reruns
+    wait_idle(app)
+    app.get_by_text("Spending", exact=True).click()
     wait_idle(app)
     assert breadcrumbs(app) == drilled[:-1], "stale click re-fired after a rerun"
 
@@ -83,11 +85,9 @@ def test_given_treemap_when_tile_clicked_then_drills(app):
     assert_no_exception(app)
 
 
-def test_given_window_narrowed_then_chart_rerenders_without_error(app):
-    app.get_by_text("3 mo", exact=True).click()
+def test_given_period_narrowed_then_chart_rerenders_without_error(app):
+    app.locator('section[data-testid="stSidebar"] [data-baseweb="select"]').first.click()
+    app.get_by_role("option", name="Last 3 months", exact=True).click()
     wait_idle(app)
     assert_no_exception(app)
-    app.get_by_text("1 mo", exact=True).click()
-    wait_idle(app)
-    assert_no_exception(app)
-    assert sector_labels(app), "no sectors after narrowing the window"
+    assert sector_labels(app), "no sectors after narrowing the period"

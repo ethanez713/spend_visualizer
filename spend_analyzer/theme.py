@@ -111,7 +111,8 @@ _CSS = f"""
 }}
 .stApp h1 {{ font-size: 28px; letter-spacing: -0.012em; padding-top: 0; }}
 .stApp h2 {{ font-size: 22px; letter-spacing: -0.009em; }}
-.stApp h3 {{ font-size: 18px; letter-spacing: -0.006em; padding-top: 6px; }}
+.stApp h3 {{ font-size: 18px; letter-spacing: -0.006em; padding: 6px 0 4px; line-height: 1.28; }}
+.stApp [data-testid="stHeadingWithActionElements"] {{ overflow: visible; }}
 .stApp code, .stApp [data-testid="stMetricValue"] {{ font-family: var(--font-mono); }}
 .stApp code {{ background: var(--paper-2); color: var(--text-body); border-radius: 3px; }}
 
@@ -157,6 +158,24 @@ section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] {{ gap: 8px; }}
 .stApp button[kind="primary"]:active {{ background: var(--accent-press); }}
 .stApp button:disabled {{ opacity: .45; cursor: not-allowed; }}
 
+/* The view switcher is a radio dressed as the tab row. */
+.st-key-view [role="radiogroup"] {{
+  gap: 2px; border-bottom: 1px solid var(--ink-rule); flex-wrap: wrap;
+}}
+.st-key-view label[data-baseweb="radio"] {{
+  height: 36px; padding: 0 10px; margin: 0 0 -1px; cursor: pointer;
+  border-bottom: 2px solid transparent; border-radius: 5px 5px 0 0;
+}}
+.st-key-view label[data-baseweb="radio"] > div:first-child {{ display: none; }}
+.st-key-view label[data-baseweb="radio"] p {{
+  font-size: 15px; font-weight: 500; color: var(--text-muted);
+}}
+.st-key-view label[data-baseweb="radio"]:hover {{ background: var(--surface-hover); }}
+.st-key-view label[data-baseweb="radio"]:has(input:checked) {{
+  border-bottom-color: var(--accent);
+}}
+.st-key-view label[data-baseweb="radio"]:has(input:checked) p {{ color: var(--text-heading); }}
+
 .stApp [data-baseweb="tab-list"] {{ gap: 2px; border-bottom: 1px solid var(--ink-rule); }}
 .stApp [data-baseweb="tab"] {{ height: 36px; padding: 0 10px; color: var(--text-muted); }}
 .stApp [data-baseweb="tab"][aria-selected="true"] {{ color: var(--text-heading); }}
@@ -178,6 +197,7 @@ section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] {{ gap: 8px; }}
 }}
 
 .eyebrow {{
+  padding: 4px 0 2px;
   font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.075em;
   text-transform: uppercase; color: var(--text-muted); margin: 0;
 }}

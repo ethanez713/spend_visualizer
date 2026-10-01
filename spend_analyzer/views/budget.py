@@ -23,7 +23,7 @@ import theme
 from config_io import Budget
 from cube import Cube, GroupingSpec
 from ledger import load_ledger, monthly_pivot as ledger_monthly_pivot
-from viz import sanitize_for_csv, style_table
+from viz import sanitize_for_csv, style_table, table_height
 
 
 def _monthly_pivot(cube: Cube, spec: GroupingSpec) -> pd.DataFrame:
@@ -79,7 +79,7 @@ def _ytd_avg(pivot: pd.DataFrame) -> pd.Series:
 
 
 def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
-    st.subheader("Budget vs Actual")
+    st.subheader("Budget vs actual")
     if not budget.goals:
         st.info("No `config/budget.yaml` found — add monthly goals to enable this view.")
         return
@@ -112,9 +112,9 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
             "Category": cat,
             "YTD Avg": y,
             avg_col: a,
-            "Goal": g,
-            "% of Goal": (a / g * 100.0) if g else None,
-            "Budget Diff": (a - g) if g is not None else None,
+            "Goal": g if g is not None else float("nan"),
+            "% of Goal": (a / g * 100.0) if g else float("nan"),
+            "Budget Diff": (a - g) if g is not None else float("nan"),
             "_hidden": state.is_hidden("tier1", cat),
         })
     table = pd.DataFrame(rows)
@@ -151,7 +151,7 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
     # Each table fills its column and is drag-resizable (global CSS).
     left, right = st.columns([3, 2])
     with left:
-        st.dataframe(styler, use_container_width=True)
+        st.dataframe(styler, use_container_width=True, height=table_height(len(indexed)))
     with right:
         st.dataframe(style_table(derived.set_index(""), money_cols=["Actual", "Goal"]),
                      use_container_width=True)
@@ -209,7 +209,8 @@ def _trends(pivot: pd.DataFrame, window: int) -> None:
     fig.add_scatter(x=piv.index, y=roll, mode="lines+markers",
                     name=f"{window}-month average", line=dict(color=theme.NET, width=2))
     fig.update_layout(barmode="stack", height=430, margin=dict(t=10),
-                      yaxis_title="Spend")
+                      xaxis_title=None, legend_title_text="",
+                      yaxis=dict(title=None, tickprefix="$", tickformat=",.0f"))
     st.plotly_chart(fig, use_container_width=True)
 
 

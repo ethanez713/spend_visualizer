@@ -10,6 +10,7 @@ from viz import money
 
 def render(cube: Cube, qc: dict, spec: GroupingSpec) -> None:
     st.subheader("Pipeline health")
+    st.caption("Whole-archive figures; the sidebar filters do not apply to this block.")
     c = st.columns(4)
     c[0].metric("Transactions", qc.get("n_transactions", 0))
     c[1].metric("Excluded rows", qc.get("n_excluded", 0),
@@ -18,9 +19,9 @@ def render(cube: Cube, qc: dict, spec: GroupingSpec) -> None:
     c[3].metric("Spend in 'Other'", f"{qc.get('pct_spend_other', 0.0):.1f}%")
 
     c = st.columns(4)
-    c[0].metric("Total spend", money(qc.get("spend_total", 0.0)))
-    c[1].metric("Total income", money(qc.get("income_total", 0.0)))
-    c[2].metric("Net", money(qc.get("net_total", 0.0)))
+    c[0].metric("Archive spend", money(qc.get("spend_total", 0.0)))
+    c[1].metric("Archive income", money(qc.get("income_total", 0.0)))
+    c[2].metric("Archive net", money(qc.get("net_total", 0.0)))
     c[3].metric("Settled pending dropped", qc.get("n_settled_pending_dropped", 0))
 
     st.subheader("Taxonomy coverage")

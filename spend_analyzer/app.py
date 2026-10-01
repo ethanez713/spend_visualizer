@@ -5,6 +5,7 @@ network. Run with:  streamlit run app.py
 """
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
 import streamlit as st
@@ -16,7 +17,8 @@ from cube import Cube, GroupingSpec
 from data import build_cube
 from ingest.load import stat_source
 from views import budget as budget_view
-from views import cashflow, drilldown, merchants
+from periods import CUSTOM, DEFAULT_PRESET, PRESETS, preset_range
+from views import cashflow, drilldown, merchants, overview, transactions
 from views import corrections_view, rules_view
 from views import qc as qc_view
 
@@ -64,9 +66,6 @@ def main() -> None:
         st.caption("Set the path in `config/app.yaml`. The collector owns the archive.")
         st.stop()
 
-    if st.sidebar.button("Reload data"):
-        _load.clear()
-
     df, qc = _load(_config_signature(app))
     if df.empty:
         st.warning("No transactions after ingest. Check the archive and accounts.yaml.")
@@ -77,65 +76,80 @@ def main() -> None:
     df["hidden"] = state.hidden_mask(df)
     cube = Cube(df)
 
-    spec = _sidebar_filters(cube, df)
+    spec, earliest, anchor = _sidebar_filters(cube, df)
 
-    # Drilldown first so it is the default tab on load.
-    t_drill, t_budget, t_merch, t_cash, t_over, t_rules, t_qc = st.tabs(
-        ["Drilldown", "Budget", "Merchants and recurring",
-         "Cash flow", "Overrides", "Rules", "Checks"]
-    )
-    with t_drill:
-        drilldown.render(cube, spec, app.trailing_avg_months)
-    with t_budget:
-        budget_view.render(cube, spec, budget, app.trailing_avg_months)
-    with t_merch:
-        merchants.render(cube, spec)
-    with t_cash:
-        cashflow.render(cube, spec)
-    with t_over:
-        corrections_view.render()
-    with t_rules:
-        rules_view.render(df)
-    with t_qc:
-        qc_view.render(cube, qc, spec)
+    views = {
+        "Overview": lambda: overview.render(cube, spec, earliest, anchor),
+        "Drilldown": lambda: drilldown.render(cube, spec, earliest),
+        "Transactions": lambda: transactions.render(cube, spec),
+        "Budget": lambda: budget_view.render(cube, spec, budget, app.trailing_avg_months),
+        "Merchants and recurring": lambda: merchants.render(cube, spec, anchor),
+        "Cash flow": lambda: cashflow.render(cube, spec),
+        "Overrides": corrections_view.render,
+        "Rules": lambda: rules_view.render(df),
+        "Checks": lambda: qc_view.render(cube, qc, spec),
+    }
+    views[_current_view(list(views))]()
 
 
-def _sidebar_filters(cube: Cube, df) -> GroupingSpec:
+VIEW_KEY = "view"
+
+
+def _current_view(names: list[str]) -> str:
+    """The view switcher. Only the chosen view runs: a chart mounted inside a
+    hidden st.tabs panel measures a zero-width container and drops its labels.
+    The choice is mirrored into the URL so a reload or bookmark returns to it."""
+    if VIEW_KEY not in st.session_state:
+        asked = st.query_params.get(VIEW_KEY)
+        st.session_state[VIEW_KEY] = asked if asked in names else names[0]
+    view = st.radio("View", names, horizontal=True, key=VIEW_KEY,
+                    label_visibility="collapsed")
+    st.query_params[VIEW_KEY] = view
+    return view
+
+
+_FLOW_LABELS = {"spend": "Spending", "income": "Income", "All": "All"}
+
+
+def _sidebar_filters(cube: Cube, df) -> tuple[GroupingSpec, date, date]:
+    """The filter spec plus the archive's first and last transaction dates."""
     sb = st.sidebar
     theme.eyebrow_in(sb, "Filters")
-    dmin, dmax = df["date_resolved"].dropna().min(), df["date_resolved"].dropna().max()
-    if dmin and dmax:
-        picked = sb.date_input(
-            "Date range", value=(_d(dmin), _d(dmax)),
-            min_value=_d(dmin), max_value=_d(dmax),
-        )
+    dates = df["date_resolved"].dropna()
+    earliest, anchor = _d(dates.min()), _d(dates.max())
+
+    preset = sb.selectbox("Period", PRESETS, index=PRESETS.index(DEFAULT_PRESET),
+                          key="period_preset")
+    date_from, date_to = preset_range(preset, anchor, earliest)
+    if preset == CUSTOM:
+        picked = sb.date_input("Date range", value=(earliest, anchor),
+                               min_value=earliest, max_value=anchor)
         # st.date_input returns a 1-tuple *mid-selection* (after the user clicks the
         # start date, before the end date) — unpacking it into two names crashes the
         # whole app until the second click. Keep the full range until both ends exist.
         if isinstance(picked, (list, tuple)) and len(picked) == 2:
             date_from, date_to = picked
-        else:
-            date_from, date_to = _d(dmin), _d(dmax)
-    else:
-        date_from = date_to = None
+    date_from = max(date_from, earliest)
+    sb.caption(f"{date_from:%-d %b %Y} – {date_to:%-d %b %Y}")
 
     filters: dict = {}
-    flow = sb.radio("Flow", ["spend", "income", "All"], horizontal=True)
+    flow = sb.radio("Flow", list(_FLOW_LABELS), horizontal=True,
+                    format_func=_FLOW_LABELS.get)
     if flow != "All":
         filters["flow"] = flow
     for label, col in [("Person", "person"), ("Account type", "account_type"),
                        ("Channel", "channel"), ("Necessity", "necessity")]:
-        sel = sb.multiselect(label, cube.distinct(col), default=[])
+        sel = sb.multiselect(label, cube.distinct(col), default=[], placeholder="All")
         if sel:
             filters[col] = sel
 
     _hidden_manager(sb)
+    if sb.button("Reload data", help="Re-read the archive and taxonomy from disk."):
+        _load.clear()
+        st.rerun()
 
-    return GroupingSpec(
-        filters=filters,
-        date_from=str(date_from) if date_from else None,
-        date_to=str(date_to) if date_to else None,
-    )
+    return (GroupingSpec(filters=filters, date_from=str(date_from), date_to=str(date_to)),
+            earliest, anchor)
 
 
 def _hidden_manager(sb) -> None:
@@ -155,9 +169,8 @@ def _hidden_manager(sb) -> None:
         st.rerun()
 
 
-def _d(iso: str):
-    from datetime import date
-    return date.fromisoformat(iso[:10]) if iso else None
+def _d(iso: str) -> date:
+    return date.fromisoformat(iso[:10])
 
 
 if __name__ == "__main__":

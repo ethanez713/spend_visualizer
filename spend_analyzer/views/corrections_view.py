@@ -16,7 +16,7 @@ import streamlit as st
 
 import corrections as corr
 import manual_edits
-from viz import sanitize_for_csv
+from viz import sanitize_for_csv, table_height
 
 
 def render() -> None:
@@ -70,14 +70,20 @@ def _render_overrides() -> None:
         "source": it.get("source", ""),
         "note": it.get("note", ""),
     } for it in items]
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True,
+    st.dataframe(pd.DataFrame(rows).iloc[::-1], use_container_width=True, hide_index=True,
+                 height=table_height(len(rows), 12),
                  column_config={"rows covered": st.column_config.NumberColumn(
                      "rows covered",
                      help="Archive rows this intent currently applies to "
                           "(merchant scope keeps growing; 0 = target row not "
                           "in the archive yet)")})
-    st.caption("Revoke an override (the row reverts and is re-audited next run):")
-    for it, row in zip(items, rows):
+    with st.expander(f"Revoke an override · {len(items)}"):
+        st.caption("The row reverts and is re-audited on the next categorize run.")
+        _revoke_list(items, rows)
+
+
+def _revoke_list(items: list[dict], rows: list[dict]) -> None:
+    for it, row in zip(reversed(items), reversed(rows)):
         c1, c2 = st.columns([5, 1])
         c1.write(f"`{it['id']}` · {it['scope']} · **{row['target']}** → "
                  f"{it['set']['detailed']} · covers {row['rows covered']} row(s)"
@@ -115,15 +121,20 @@ def _render_triage_notes() -> None:
     e2.download_button("Table (CSV)", sanitize_for_csv(df).to_csv(index=False),
                        file_name="corrections.csv", mime="text/csv",
                        use_container_width=True)
-    if e3.button("Clear all", use_container_width=True):
-        corr.clear_corrections()
-        st.rerun()
+    with e3.popover("Clear all", use_container_width=True):
+        st.caption(f"Deletes all {len(items)} triage notes. This cannot be undone.")
+        if st.button(f"Delete {len(items)} notes", key="clear_notes_confirm"):
+            corr.clear_corrections()
+            st.rerun()
 
     with st.expander("Preview the copy/paste report"):
         st.markdown(md)
 
-    st.divider()
-    st.caption("Remove a single note:")
+    with st.expander(f"Remove a single note · {len(items)}"):
+        _note_list(items)
+
+
+def _note_list(items: list[dict]) -> None:
     for c in items:
         cols = st.columns([5, 1])
         diff = ", ".join(f"{k}→{c['suggestion'][k]}" for k in c["changed_fields"])

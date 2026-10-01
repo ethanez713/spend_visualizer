@@ -52,8 +52,9 @@ def browser_context_args(browser_context_args):
 
 @pytest.fixture
 def app(page, app_server):
-    """A fresh browser session with the app loaded and idle."""
+    """A fresh browser session on the Drilldown tab, loaded and idle."""
     _browser.open_app(page, app_server)
+    _browser.go(page, "Drilldown")
     return page
 
 

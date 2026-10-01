@@ -33,6 +33,12 @@ def wait_idle(page: Page, runs: int = 4) -> None:
                                state="detached", timeout=60000)
 
 
+def go(page: Page, view: str) -> None:
+    """Switch view through the switcher row."""
+    page.locator(".st-key-view").get_by_text(view, exact=True).click()
+    wait_idle(page)
+
+
 def chart_frame(page: Page) -> FrameLocator:
     return page.frame_locator(CHART_IFRAME)
 

@@ -16,8 +16,21 @@ ROOT = Path(__file__).resolve().parents[2]
 APP = str(ROOT / "app.py")
 
 
-def boot() -> AppTest:
-    """Run app.py once against the real archive; fail on any uncaught exception."""
+VIEWS = ["Overview", "Drilldown", "Transactions", "Budget", "Merchants and recurring",
+         "Cash flow", "Overrides", "Rules", "Checks"]
+
+
+def go(at: AppTest, view: str) -> AppTest:
+    """Switch to a view (only the active one renders) and fail on any exception."""
+    widget(at.radio, key="view").set_value(view)
+    at.run()
+    assert not at.exception, [str(e.value) for e in at.exception]
+    return at
+
+
+def boot(view: str = "Drilldown") -> AppTest:
+    """Run app.py against the real archive and open `view`; fail on any uncaught
+    exception."""
     from config_io import load_app_config
 
     archives = load_app_config().resolved_archive_paths
@@ -26,7 +39,7 @@ def boot() -> AppTest:
     at = AppTest.from_file(APP, default_timeout=60)
     at.run()
     assert not at.exception, [str(e.value) for e in at.exception]
-    return at
+    return go(at, view)
 
 
 def widget(seq, *, key: str | None = None, key_prefix: str | None = None,
@@ -46,8 +59,25 @@ def widget(seq, *, key: str | None = None, key_prefix: str | None = None,
 
 
 def metric(at: AppTest, label: str) -> str:
-    """Value of the first metric with this label (tabs render in app.py order)."""
+    """Value of the first metric with this label in the active view."""
     return widget(at.metric, label=label).value
+
+
+def spend_table(at: AppTest):
+    """The Drilldown 'Spend by …' table."""
+    for d in at.dataframe:
+        if "Actual" in d.value.columns:
+            return d.value
+    raise AssertionError("spend table not rendered")
+
+
+def open_first_merchant(at: AppTest) -> None:
+    """Open a merchant's detail (and its fix form) through the merchant search."""
+    go(at, "Merchants and recurring")
+    box = widget(at.selectbox, key="merchant_search")
+    box.set_value(box.options[0])
+    at.run()
+    assert not at.exception, [str(e.value) for e in at.exception]
 
 
 def metrics(at: AppTest, label: str) -> list[str]:

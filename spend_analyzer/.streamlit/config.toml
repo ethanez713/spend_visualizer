@@ -2,6 +2,10 @@
 [browser]
 gatherUsageStats = false
 
+[client]
+# No Deploy button or developer menu on a local, single-user app.
+toolbarMode = "minimal"
+
 [server]
 headless = true
 # Loopback-only: on a server the UI is reached through `tailscale serve`

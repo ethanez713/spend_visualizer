@@ -7,9 +7,25 @@ import theme
 
 def money(x: float) -> str:
     try:
-        return f"${x:,.0f}" if abs(x) >= 100 else f"${x:,.2f}"
+        sign = "−" if x < 0 else ""
+        return f"{sign}${abs(x):,.0f}" if abs(x) >= 100 else f"{sign}${abs(x):,.2f}"
     except (TypeError, ValueError):
         return "—"
+
+
+def money_md(x: float) -> str:
+    """`money` for Markdown surfaces (captions, st.markdown): two bare dollar signs
+    in one string are read as LaTeX delimiters and garble the text between them."""
+    return money(x).replace("$", "\\$")
+
+
+_ROW_PX = 35
+
+
+def table_height(n_rows: int, max_rows: int = 30) -> int:
+    """Pixel height that shows every row of an st.dataframe up to `max_rows`, so a
+    short table is never cut off above empty page."""
+    return _ROW_PX * (min(n_rows, max_rows) + 1) + 3
 
 
 def humanize_atom(s: str | None) -> str:
@@ -62,12 +78,13 @@ def _sequential_scale(series: pd.Series) -> list[str]:
             for v in vals]
 
 
-def _diverging_scale(series: pd.Series, midpoint: float) -> list[str]:
-    """Jade below the midpoint (under), hazard above it (over)."""
+def _diverging_scale(series: pd.Series, midpoint: float, sign: int = 1) -> list[str]:
+    """Jade on the good side of the midpoint, hazard on the bad side. `sign` is 1
+    where above the midpoint is bad (spend over budget), -1 where it is good (net)."""
     vals = pd.to_numeric(series, errors="coerce")
     hi = max(abs(vals.max() - midpoint), abs(vals.min() - midpoint)) or 1.0
     return ["" if pd.isna(v)
-            else f"background-color: {theme.diverging((v - midpoint) / hi)}; {theme.CELL_TEXT}"
+            else f"background-color: {theme.diverging(sign * (v - midpoint) / hi)}; {theme.CELL_TEXT}"
             for v in vals]
 
 
@@ -79,13 +96,15 @@ def style_table(
     pct_cols: list[str] | None = None,
     heat_cols: list[str] | None = None,
     diverging: dict[str, float] | None = None,
+    higher_is_better: list[str] | None = None,
     grey_rows: pd.Series | None = None,
 ):
     """One styler for every table: typed formatting + sequential / diverging heatmaps.
 
     money_cols  -> $ formatted     int_cols -> plain integers (NOT $)
     pct_cols    -> 0% formatted     heat_cols -> sequential magnitude fill
-    diverging   -> {col: midpoint}  over(>mid)/under(<mid)
+    diverging   -> {col: midpoint}  over(>mid)/under(<mid); columns also listed in
+                   higher_is_better flip, so above the midpoint reads as good
     grey_rows   -> boolean Series; True rows rendered greyed (hidden indicator)
     """
     money_cols = money_cols or []
@@ -99,7 +118,7 @@ def style_table(
         if c in money_cols:
             fmt[c] = lambda v: money(v) if pd.notna(v) else "—"
         elif c in pct_cols:
-            fmt[c] = lambda v: f"{v:,.0f}%" if pd.notna(v) else "—"
+            fmt[c] = lambda v: f"{v:,.0f}%".replace("-", "−") if pd.notna(v) else "—"
         elif c in int_cols:
             fmt[c] = lambda v: f"{int(v):,}" if pd.notna(v) else "—"
 
@@ -109,7 +128,8 @@ def style_table(
             styler = styler.apply(_sequential_scale, subset=[c])
     for c, mid in diverging.items():
         if c in df.columns:
-            styler = styler.apply(lambda s, m=mid: _diverging_scale(s, m), subset=[c])
+            sign = -1 if c in (higher_is_better or []) else 1
+            styler = styler.apply(lambda s, m=mid, g=sign: _diverging_scale(s, m, g), subset=[c])
     if grey_rows is not None and grey_rows.any():
         def _grey(row):
             if grey_rows.get(row.name, False):

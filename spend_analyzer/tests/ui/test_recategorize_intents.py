@@ -9,10 +9,11 @@ import pytest
 
 import manual_edits
 
-from tests.ui._harness import widget
+from tests.ui._harness import open_first_merchant, widget
 
 
 def test_given_new_category_when_save_clicked_then_intent_appended_to_log(at, isolate_writes):
+    open_first_merchant(at)
     primaries, detailed_map = manual_edits.taxonomy()
     cur_p = widget(at.selectbox, key_prefix="rc_p_").value
     new_p = [p for p in primaries if p != cur_p][0]
@@ -38,6 +39,7 @@ def test_given_new_category_when_save_clicked_then_intent_appended_to_log(at, is
 
 
 def test_given_unchanged_category_when_save_clicked_then_warning_and_no_write(at, isolate_writes):
+    open_first_merchant(at)
     widget(at.button, key_prefix="rc_b_").click()
     at.run()
     assert any("already the current category" in str(w.value) for w in at.warning)
@@ -52,7 +54,7 @@ def test_given_pending_intent_when_revoked_then_it_no_longer_applies(boot_app, i
     primaries, detailed_map = manual_edits.taxonomy()
     seeded = manual_edits.add_edit(raw, scope="transaction", primary=primaries[0],
                                    detailed=detailed_map[primaries[0]][0], note="seed")
-    at = boot_app()
+    at = boot_app("Overrides")
     widget(at.button, key=f"revoke_{seeded['id']}").click()
     at.run()
     assert not at.exception, [str(e.value) for e in at.exception]

@@ -34,8 +34,10 @@ independent schedules with no locks or coordination.
 | `cube.py` | DuckDB table + the single parameterized rollup engine + future top-K frontier. |
 | `data.py` | Assemble configs → `Cube` + QC (pure, testable). |
 | `ledger.py` | Load the optional external budget ledger CSV (Budget tab's alternative source). |
-| `views/` | `drilldown.py`, `budget.py`, `merchants.py`, `cashflow.py`, `qc.py`. |
-| `app.py` | Streamlit shell: granularity selector + global filters + tabs. |
+| `views/` | One module per view. |
+| `periods.py`, `insights.py`, `recurring.py` | Pure logic behind the period presets, period-over-period comparisons, and recurring cadence. |
+| `theme.py` | The design system (`~/ethan_design_system`) mapped onto Streamlit, Plotly and the table styler. |
+| `app.py` | Streamlit shell: global filters + the view switcher. |
 | `config/` | `taxonomy.yaml`, `app.yaml` (project config). Personal config (`accounts.yaml`, `budget.yaml`) lives under the data root. |
 | `tools/` | `gen_taxonomy.py`, `gen_accounts.py` bootstrap generators. |
 
@@ -108,19 +110,21 @@ Ingestion lives in `finance_pipeline`, not here — this app never calls Plaid o
 imports collector code (see Architecture). Both live-run flags follow the repo's
 authorization rules (`../CLAUDE.md`, golden rule 1).
 
-Tabs: **Drilldown** (spend table with running avgs, sunburst/treemap/sankey with
-click-to-zoom + transaction detail) · **Budget** (budget vs actual heatmap) ·
-**Merchants & recurring** (top merchants with logos + subscription burden) ·
-**Cash flow** (monthly income vs spend vs net + cumulative) · **Overrides**
-(my manual overrides with live row-coverage counts + the demoted triage-note queue) ·
-**Rules** (read-only browser over every rule table that can decide a category) · **QC**
-(unmapped atoms, % in "Other", excluded totals, and a double-count tie-out check).
+Views: **Overview** (the period at a glance, this month's spending pace against a
+reference month, biggest category changes) · **Drilldown** (spend table + click-to-zoom
+hierarchy + transaction detail) · **Transactions** (search and filter individual rows) ·
+**Budget** (budget vs actual) · **Merchants and recurring** (top merchants, recurring
+charges with cadence and next expected date) · **Cash flow** (income vs spending by
+month, quarter or year, and a flow diagram of where income went) · **Overrides** (manual
+overrides + the triage-note queue) · **Rules** (read-only browser over every rule table
+that can decide a category) · **Checks** (taxonomy coverage and the double-count tie-out).
+The active view is mirrored in the URL (`?view=`), so a bookmark or reload returns to it.
 
 ### Category provenance — "why is this row this category?"
 
-Every transaction table carries a **Why** column: 🔧 mechanical rule · 🤖 LLM ·
-👁 review · ✏️ manual override · blank = Plaid's own category, with the rule name /
-intent id alongside (⏳ marks a suggestion pending human review). The fix expander
+Every transaction table carries a **Why** column: rule · LLM · review · manual
+override · blank = Plaid's own category, with the rule name / intent id alongside
+(and a marker for a suggestion pending human review). The fix expander
 opens with the full decision chain — Plaid's original → who changed it → final —
 including the matched rule's definition inline. The **Rules** tab renders the
 transformer's pattern tables (built-in + personal overlay) and merchant memory with
@@ -130,19 +134,19 @@ read-only: rule authoring stays a code edit in the owning project.
 
 ### Override category — manual edits that stick
 
-🚩 a transaction (Drilldown) or open a merchant detail (Merchants) → **✅ Override
-category**: pick the correct category from the transformer's vendored taxonomy, scoped to
+Tick **Flag** on a row of any transaction table, or open a merchant detail
+(Merchants) → **Override category**: pick the correct category from the transformer's vendored taxonomy, scoped to
 *just this transaction* or *ALL transactions from this merchant*. This app **never edits
 records** — the edit is appended as an **intent** to the transformer's append-only log
 (`<data root>/plaid_category_transformer/data/manual_edits.jsonl`), which its pipeline
 replays on every categorize run: edits apply on the next run, survive full re-audits, and
 merchant-scope edits cover future transactions too. All overrides are listed (with how
 many rows each currently covers, and revocation) in the **Overrides** tab. The
-report-only **📝 Note for triage** path remains for merchant-name / tier-grouping
+report-only **Note for triage** path remains for merchant-name / tier-grouping
 fixes — it never changes records.
 
-Use the **Category level** slider (necessity → tier1 → tier2 → atom → merchant)
-and the global filters (date, person, account type, channel, flow, necessity).
+Use the **Table granularity** control (necessity → tier1 → tier2 → atom → merchant)
+and the global filters (period, person, account type, channel, flow, necessity).
 
 ## Tests
 
@@ -175,12 +179,12 @@ click→drill-path *mapping* is unit-tested in `tests/test_drilldown.py`.)
 interactions AppTest cannot reach — real clicks on the plotly hierarchy chart
 (click → drill lands on the clicked path, zoom-out/breadcrumb navigation that
 must *stay* (the stale-click re-fire trap), treemap clicks, sankey render,
-window switching) and canvas grid selections (spend-table row ticks → bulk
+period switching) and canvas grid selections (spend-table row ticks → bulk
 Hide/Flag with totals restored by Show-all, hidden categories dropped from the
-chart, the 🚩 data-editor checkbox, the merchant-detail dropdown). Isolation is
+chart, the Flag data-editor checkbox, the merchant search). Isolation is
 environmental, since a subprocess can't be monkeypatched: the server gets
-`SPEND_ANALYZER_CONFIG_DIR` / `SPEND_ANALYZER_DATA_DIR` pointed at throwaway
-dirs (real archive read-only; the intent log + corrections queue land in pytest
+`SPEND_ANALYZER_CONFIG_DIR` / `SPEND_ANALYZER_DATA_DIR` / `SPEND_VISUALIZER_DATA`
+pointed at throwaway dirs (real archive read-only; the intent log + corrections queue land in pytest
 tmp), and the same live-file hash guard wraps every test. One-time setup:
 `./venv/bin/playwright install chromium`. Without sudo for the few system libs
 Chromium needs, the suite auto-uses copies extracted under

@@ -1,7 +1,7 @@
 """Sidebar filters + granularity actually reshape the views (and never crash)."""
 from datetime import date, timedelta
 
-from tests.ui._harness import metric, money_to_f, texts, widget
+from tests.ui._harness import metric, money_to_f, spend_table, texts, widget
 
 
 def test_given_merchant_granularity_when_selected_then_table_groups_by_merchant(at):
@@ -9,7 +9,7 @@ def test_given_merchant_granularity_when_selected_then_table_groups_by_merchant(
     at.run()
     assert not at.exception, [str(e.value) for e in at.exception]
     assert "**Spend by Merchant**" in texts(at)
-    assert at.dataframe[0].value.index.name == "Merchant"
+    assert spend_table(at).index.name == "Merchant"
 
 
 def test_given_person_filter_when_applied_then_total_narrows(at, cube_df):
@@ -28,6 +28,8 @@ def test_given_narrowed_date_range_when_applied_then_total_shrinks_or_holds(at, 
     dates = cube_df["date_resolved"].dropna().astype(str)
     dmin, dmax = date.fromisoformat(dates.min()[:10]), date.fromisoformat(dates.max()[:10])
     start = max(dmin, dmax - timedelta(days=30))
+    widget(at.selectbox, label="Period").set_value("Custom")
+    at.run()
     widget(at.date_input, label="Date range").set_value((start, dmax))
     at.run()
     assert not at.exception, [str(e.value) for e in at.exception]

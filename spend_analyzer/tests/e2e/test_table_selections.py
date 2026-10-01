@@ -6,7 +6,7 @@ import re
 import pytest
 from playwright.sync_api import expect
 
-from tests.e2e._browser import (assert_no_exception, click_grid_cell,
+from tests.e2e._browser import (assert_no_exception, click_grid_cell, go,
                                 grid_canvas, metric_value, money_to_f,
                                 sector_labels, wait_idle)
 
@@ -61,8 +61,8 @@ def test_given_transaction_flag_ticked_then_fix_expander_opens(app):
 
 
 def test_given_merchant_picked_in_dropdown_then_detail_follows(app):
-    app.get_by_role("tab", name="Merchants and recurring").click()
-    app.locator('[data-testid="stSelectbox"]:visible').first.click()
+    go(app, "Merchants and recurring")
+    app.locator('[data-testid="stMain"] [data-testid="stSelectbox"]:visible').first.click()
     second = app.locator('li[role="option"]').nth(1)
     picked = second.inner_text().strip()
     second.click()

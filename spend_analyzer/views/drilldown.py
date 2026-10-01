@@ -14,6 +14,8 @@ Interaction model:
 """
 from __future__ import annotations
 
+from datetime import date
+
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -22,7 +24,8 @@ from streamlit_plotly_events import plotly_events
 import state
 from cube import Cube, GroupingSpec, CATEGORY_LEVELS, CATEGORY_LEVEL_BY_NAME
 import theme
-from viz import humanize_atom, money, style_table
+from periods import month_start, previous_period
+from viz import humanize_atom, money, style_table, table_height
 from views._widgets import correction_form, hide_button, transaction_detail
 
 _LEVEL_LABELS = {
@@ -47,7 +50,7 @@ def granularity_control(cube: Cube, spec: GroupingSpec) -> tuple[str, str]:
     return level_name, CATEGORY_LEVEL_BY_NAME[level_name]
 
 
-def render(cube: Cube, spec: GroupingSpec, trailing_months: int) -> None:
+def render(cube: Cube, spec: GroupingSpec, earliest: date) -> None:
     level_name, level_col = granularity_control(cube, spec)
 
     table = cube.rollup(GroupingSpec(group_by=[level_col], filters=spec.filters,
@@ -63,7 +66,7 @@ def render(cube: Cube, spec: GroupingSpec, trailing_months: int) -> None:
     st.markdown(f"**Spend by {_LEVEL_LABELS[level_name]}**")
     st.caption("Tick rows to select, then Hide or Flag them in bulk. "
                "(Manage hidden categories from the sidebar.)")
-    _spend_table(cube, spec, level_col, level_name, table, raw_vals, hidden_flags)
+    _spend_table(cube, spec, level_col, level_name, table, raw_vals, hidden_flags, earliest)
 
     visible_total = float(table.loc[[not h for h in hidden_flags], "spend"].sum())
     n_months = max(1, _num_months(cube, spec))
@@ -79,31 +82,42 @@ def render(cube: Cube, spec: GroupingSpec, trailing_months: int) -> None:
                                       date_from=spec.date_from, date_to=spec.date_to,
                                       include_hidden=True))
     rows = rows[rows["spend"] > 0]
-    root = _hierarchy(rows, cube, spec)
+    root = _hierarchy(rows)
     _detail_section(rows, root)
 
 
-def _spend_table(cube, spec, level_col, level_name, table, raw_vals, hidden_flags) -> None:
-    """Styled spend table (Actual + 12m/3m running avgs + txns, green heatmap)
+def _spend_table(cube, spec, level_col, level_name, table, raw_vals, hidden_flags,
+                 earliest) -> None:
+    """Spend table (actual, monthly averages, change on the previous period, txns)
     with tickbox row selection → bulk Hide / Flag buttons."""
-    avg12 = _trailing_avg(cube, spec, level_col, 12)
+    n_months = _num_months(cube, spec)
+    avg_all = _trailing_avg(cube, spec, level_col, n_months)
     avg3 = _trailing_avg(cube, spec, level_col, 3)
     label = _LEVEL_LABELS[level_name]
     names = [_disp(level_col, v) for v in raw_vals]
-    disp = pd.DataFrame({
-        label: names,
-        "Actual": table["spend"].values,
-        "Avg/mo (12m)": [float(avg12.get(n, 0.0)) for n in names],
-        "Avg/mo (3m)": [float(avg3.get(n, 0.0)) for n in names],
-        "Txns": table["count"].astype(int).values,
-    }).set_index(label)
+    avg_col = f"Avg/mo ({n_months}m)"
+    cols = {label: names, "Actual": table["spend"].values}
+    money_cols, heat_cols, diverging = ["Actual"], ["Actual"], {}
+    if n_months > 1:
+        cols[avg_col] = [float(avg_all.get(n, 0.0)) for n in names]
+        money_cols.append(avg_col); heat_cols.append(avg_col)
+    if n_months > 3:
+        cols["Avg/mo (last 3m)"] = [float(avg3.get(n, 0.0)) for n in names]
+        money_cols.append("Avg/mo (last 3m)"); heat_cols.append("Avg/mo (last 3m)")
+    previous = _previous_spend(cube, spec, level_col, earliest)
+    if previous is not None:
+        cols["vs previous period"] = [float(a) - float(previous.get(v, 0.0))
+                                      for a, v in zip(table["spend"].values, raw_vals)]
+        money_cols.append("vs previous period")
+        diverging["vs previous period"] = 0.0
+    cols["Txns"] = table["count"].astype(int).values
+    disp = pd.DataFrame(cols).set_index(label)
     grey = pd.Series(hidden_flags, index=disp.index)
     event = st.dataframe(
-        style_table(disp, money_cols=["Actual", "Avg/mo (12m)", "Avg/mo (3m)"],
-                    int_cols=["Txns"], heat_cols=["Actual", "Avg/mo (12m)", "Avg/mo (3m)"],
-                    grey_rows=grey),
+        style_table(disp, money_cols=money_cols, int_cols=["Txns"], heat_cols=heat_cols,
+                    diverging=diverging, grey_rows=grey),
         use_container_width=True, on_select="rerun", selection_mode="multi-row",
-        key=f"spend_sel_{level_col}",
+        key=f"spend_sel_{level_col}", height=table_height(len(disp)),
     )
 
     sel = []
@@ -130,12 +144,17 @@ def _spend_table(cube, spec, level_col, level_name, table, raw_vals, hidden_flag
         _flag_category(cube, spec, level_col, v)
 
 
-def _max_date(cube, spec):
-    from datetime import date
-    if spec.date_to:
-        return date.fromisoformat(spec.date_to[:10])
-    dates = cube.distinct("date_resolved")
-    return date.fromisoformat(dates[-1][:10]) if dates else None
+def _previous_spend(cube, spec, level_col, earliest) -> pd.Series | None:
+    """Spend per value in the period before the selected one; None when the
+    archive does not cover that period."""
+    prev_from, prev_to = previous_period(date.fromisoformat(spec.date_from),
+                                         date.fromisoformat(spec.date_to))
+    if prev_from < month_start(earliest):
+        return None
+    prev = cube.rollup(GroupingSpec(group_by=[level_col], filters=spec.filters,
+                                    date_from=str(prev_from), date_to=str(prev_to),
+                                    measures=["spend"], order_by=None, include_hidden=True))
+    return prev.set_index(level_col)["spend"]
 
 
 def _flag_category(cube, spec, level_col, value) -> None:
@@ -153,20 +172,15 @@ def _flag_category(cube, spec, level_col, value) -> None:
                     key=f"flagcat_{level_col}_{value}")
 
 
-_WINDOW_DAYS = {"12 mo": 365, "3 mo": 90, "1 mo": 30}
-
-
-def _hierarchy(rows: pd.DataFrame, cube=None, spec=None) -> list:
+def _hierarchy(rows: pd.DataFrame) -> list:
     st.subheader("Hierarchy")
     root: list = st.session_state.setdefault(ROOT_KEY, [])
     if root and _drill_filter(rows, root).empty:
         root = st.session_state[ROOT_KEY] = []
 
-    c1, c2, c3 = st.columns([3, 3, 1])
+    c1, c3 = st.columns([6, 1])
     kind = c1.radio("Chart", ["Wheel", "Treemap"], horizontal=True,
                     key="hier_kind", label_visibility="collapsed")
-    win = c2.radio("Window", list(_WINDOW_DAYS), horizontal=True, key="hier_window",
-                   label_visibility="collapsed")
     if c3.button("Zoom out", disabled=not root):
         st.session_state[ROOT_KEY] = root[:-1]
         st.rerun()
@@ -174,12 +188,6 @@ def _hierarchy(rows: pd.DataFrame, cube=None, spec=None) -> list:
     _breadcrumb(root)
 
     sub = _drill_filter(rows, root)
-    # the Window selector restricts the chart (only) to the trailing 12 / 3 / 1 months
-    anchor = _max_date(cube, spec) if cube is not None else None
-    if anchor is not None:
-        from datetime import timedelta
-        start = (anchor - timedelta(days=_WINDOW_DAYS[win])).isoformat()
-        sub = sub[sub["date_resolved"] >= start]
     hidden = sub["hidden"] if "hidden" in sub.columns else pd.Series(False, index=sub.index)
     vis = sub[~hidden]
     # the chart always renders to maximum granularity (merchant) below the root
@@ -263,7 +271,6 @@ def _build_hierarchy_fig(vis, levels, root, treemap: bool):
     """
     totals: dict[tuple, float] = {}
     parent: dict[tuple, tuple] = {}
-    root_of: dict[tuple, str] = {}
     for _, r in vis.iterrows():
         rel = []
         for c in levels:
@@ -275,13 +282,15 @@ def _build_hierarchy_fig(vis, levels, root, treemap: bool):
             key = tuple(rel[: i + 1])
             totals[key] = totals.get(key, 0.0) + float(r["spend"])
             parent[key] = tuple(rel[:i])
-            root_of[key] = rel[0]
 
     ids, labels, parents, values, colors, abs_nodes = [], [], [], [], [], []
     # Colour follows the top-level node, largest first, so the big wedges get the
     # distinct hues and the long tail shares the neutral.
-    top = sorted((k for k in totals if len(k) == 1), key=totals.get, reverse=True)
-    cmap = theme.series_colors([k[0] for k in top])
+    # The necessity ring has two values, which would paint the whole wheel in two
+    # colours; hue follows the category ring beneath it and necessity stays neutral.
+    hue_depth = 2 if levels[0] == "tier0" and len(levels) > 1 else 1
+    top = sorted((k for k in totals if len(k) == hue_depth), key=totals.get, reverse=True)
+    cmap = theme.series_colors(top)
     for key, val in totals.items():
         ids.append("/".join(map(str, key)))
         # ids/parents/abs_nodes carry RAW values (so a click resolves to a filterable
@@ -289,7 +298,7 @@ def _build_hierarchy_fig(vis, levels, root, treemap: bool):
         labels.append(_disp(levels[len(key) - 1], key[-1]))
         parents.append("/".join(map(str, parent[key])) if parent[key] else "")
         values.append(val)
-        colors.append(cmap[root_of[key]])
+        colors.append(cmap[key[:hue_depth]] if len(key) >= hue_depth else theme.INK_700)
         abs_nodes.append(list(root) + list(key))
 
     trace_cls = go.Treemap if treemap else go.Sunburst

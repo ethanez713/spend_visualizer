@@ -8,16 +8,17 @@ import corrections as corr
 import manual_edits
 import rules_bridge
 import state
-from viz import (PROVENANCE_BADGES, blank_if_missing, humanize_atom, money,
-                 provenance_why)
+from viz import (PROVENANCE_BADGES, blank_if_missing, humanize_atom, money, money_md,
+                 provenance_why, table_height)
 
 # Columns shown in a raw transaction-detail table.
-_TXN_COLS = ["date_resolved", "name", "merchant", "tier1", "tier2", "atom_display",
-             "abs_amount", "person", "account_name", "confidence", "why"]
+_TXN_COLS = ["date_resolved", "abs_amount", "merchant", "name", "tier1", "tier2",
+             "atom_display", "person", "account_name", "confidence", "why"]
 
 
 def transaction_detail(rows: pd.DataFrame, title: str = "Transactions",
-                       key: str = "txn") -> None:
+                       key: str = "txn", *, sort: str = "abs_amount",
+                       ascending: bool = False, max_rows: int = 15) -> None:
     """Render the transactions behind a slice/merchant with a flag column.
 
     Checking on a row opens a transaction-scoped correction form (prefilled
@@ -26,7 +27,7 @@ def transaction_detail(rows: pd.DataFrame, title: str = "Transactions",
     if rows.empty:
         st.caption("No transactions.")
         return
-    ordered = rows.sort_values("abs_amount", ascending=False).reset_index(drop=True)
+    ordered = rows.sort_values(sort, ascending=ascending, kind="stable").reset_index(drop=True)
     view = ordered.copy()
     view["atom_display"] = view["atom"].map(humanize_atom)
     if "category_update_step" in view.columns:
@@ -39,19 +40,22 @@ def transaction_detail(rows: pd.DataFrame, title: str = "Transactions",
     disp = view[cols].copy()
     disp.insert(0, "Flag", False)
 
-    st.caption(f"{title} — {len(disp)} txns · {money(rows['abs_amount'].sum())}  "
+    st.caption(f"{title} — {len(disp)} txns · {money_md(rows['abs_amount'].sum())}  "
                "·  tick Flag on a row to fix its category")
     edited = st.data_editor(
-        disp, use_container_width=True, hide_index=True, key=f"txned_{key}",
+        disp.style.format({"abs_amount": "${:,.2f}"}), use_container_width=True, hide_index=True, key=f"txned_{key}",
+        height=table_height(len(disp), max_rows),
         disabled=[c for c in disp.columns if c != "Flag"],
         column_config={
             "Flag": st.column_config.CheckboxColumn("Flag", width="small",
                                                   help="Flag this transaction for correction"),
             "date_resolved": st.column_config.TextColumn("Date"),
-            "name": st.column_config.TextColumn("Description", width="large"),
-            "merchant": "Merchant",
+            "name": st.column_config.TextColumn("Description", width="medium"),
+            "merchant": st.column_config.TextColumn("Merchant", width="medium"),
+            "tier1": "Category",
+            "tier2": "Subcategory",
             "atom_display": "Atom",
-            "abs_amount": st.column_config.NumberColumn("Amount", format="$%.2f"),
+            "abs_amount": st.column_config.NumberColumn("Amount"),
             "person": "Person",
             "account_name": "Account",
             "why": st.column_config.TextColumn(
@@ -64,7 +68,7 @@ def transaction_detail(rows: pd.DataFrame, title: str = "Transactions",
     for i in flagged[:6]:
         r = ordered.iloc[i]
         label = f"{r.get('merchant')} · {money(r.get('abs_amount', 0))} · {r.get('date_resolved')}"
-        fix_categorization(row=r, label=label, key=f"txn_{key}_{i}")
+        fix_categorization(row=r, label=label, key=f"txn_{key}_{i}", expanded=True)
 
 
 def hide_button(dim: str, value, label: str, *, key: str) -> None:
@@ -147,13 +151,13 @@ def _rule_hint(rule: dict | None) -> None:
 
 
 def fix_categorization(*, row, label: str, key: str,
-                       default_scope: str = "transaction") -> None:
+                       default_scope: str = "transaction", expanded: bool = False) -> None:
     """Expander: provenance explainer + the two fix paths.
 
     The PRIMARY action is the sticky override intent; the report queue is a
     deliberately-secondary "note to self" that never changes records.
     """
-    with st.expander(f"Fix categorization — {label}"):
+    with st.expander(f"Fix categorization — {label}", expanded=expanded):
         provenance_explain(row)
         st.divider()
         t_re, t_rep = st.tabs(["Override category",
@@ -198,20 +202,21 @@ def recategorize_form(*, row, key: str, default_scope: str = "transaction") -> N
     c1, c2 = st.columns(2)
     p = c1.selectbox("Primary", primaries,
                      index=primaries.index(cur_p) if cur_p in primaries else 0,
-                     key=f"rc_p_{key}")
+                     format_func=humanize_atom, key=f"rc_p_{key}")
     details = detailed_map[p]
     d = c2.selectbox("Detailed", details,
                      index=details.index(cur_d) if cur_d in details else 0,
+                     format_func=lambda d: humanize_atom(d.removeprefix(p + "_")) or humanize_atom(d),
                      key=f"rc_d_{key}")
     merchant = raw.get("merchant_name") or row.get("merchant") or "this merchant"
     scopes = ["transaction", "merchant"]
     scope = st.radio(
         "Apply to", scopes, index=scopes.index(default_scope), horizontal=True,
         format_func=lambda s: ("just this transaction" if s == "transaction"
-                               else f"ALL transactions from “{merchant}”"),
+                               else f"every transaction from “{merchant}”"),
         key=f"rc_s_{key}")
     note = st.text_input("Note (why?)", key=f"rc_n_{key}")
-    if st.button("Save edit", key=f"rc_b_{key}"):
+    if st.button("Save edit", key=f"rc_b_{key}", type="primary"):
         if (p, d) == (cur_p, cur_d):
             st.warning("That is already the current category — nothing to save.")
             return
