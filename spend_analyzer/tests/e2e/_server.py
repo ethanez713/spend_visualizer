@@ -3,8 +3,10 @@
 A browser-driven app process cannot be monkeypatched, so isolation happens via
 environment: SPEND_ANALYZER_CONFIG_DIR points at a temp config whose app.yaml
 keeps the REAL archive (read-only) but swaps transformer_root for a temp clone
-(symlinked src/, empty data/), and SPEND_ANALYZER_DATA_DIR redirects the
-corrections queue. Every UI write path therefore lands in pytest tmp dirs.
+(symlinked src/, empty data/), SPEND_ANALYZER_DATA_DIR redirects the corrections
+queue and hide rules, and SPEND_VISUALIZER_DATA points the data root (where the
+intent log lives) at a temp copy. Every UI write path therefore lands in pytest
+tmp dirs.
 """
 from __future__ import annotations
 
@@ -24,7 +26,7 @@ REAL_CONFIG = ROOT / "config"
 
 
 def build_isolated_env(base: Path) -> dict[str, str]:
-    from config_io import AppConfig, load_app_config
+    from config_io import DATA_ROOT, PERSONAL_CONFIG_DIR, AppConfig, load_app_config
 
     real: AppConfig = load_app_config(REAL_CONFIG / "app.yaml")
     troot = base / "transformer"
@@ -33,9 +35,12 @@ def build_isolated_env(base: Path) -> dict[str, str]:
 
     cfg = base / "config"
     cfg.mkdir()
-    for name in ("taxonomy.yaml", "accounts.yaml", "budget.yaml"):
-        if (REAL_CONFIG / name).exists():
-            shutil.copy(REAL_CONFIG / name, cfg / name)
+    # SPEND_ANALYZER_CONFIG_DIR redirects the project AND the personal config, so
+    # the temp dir needs both: taxonomy from the repo, accounts/budget from the data root.
+    for src in (REAL_CONFIG / "taxonomy.yaml", PERSONAL_CONFIG_DIR / "accounts.yaml",
+                PERSONAL_CONFIG_DIR / "budget.yaml"):
+        if src.exists():
+            shutil.copy(src, cfg / src.name)
     (cfg / "app.yaml").write_text(yaml.safe_dump({
         "archive_paths": real.resolved_archive_paths,   # absolute; read-only
         "transformer_root": str(troot),
@@ -44,8 +49,18 @@ def build_isolated_env(base: Path) -> dict[str, str]:
 
     data = base / "data"
     data.mkdir()
+
+    # The intent log and the budget ledger resolve from the data root, not from
+    # transformer_root, so the app gets a throwaway data root seeded with copies.
+    data_root = base / "data_root"
+    for rel in (Path("plaid_category_transformer/data/manual_edits.jsonl"),
+                Path("spend_analyzer/data/budget_ledger.csv")):
+        (data_root / rel.parent).mkdir(parents=True, exist_ok=True)
+        if (DATA_ROOT / rel).exists():
+            shutil.copy(DATA_ROOT / rel, data_root / rel)
     return {"SPEND_ANALYZER_CONFIG_DIR": str(cfg),
-            "SPEND_ANALYZER_DATA_DIR": str(data)}
+            "SPEND_ANALYZER_DATA_DIR": str(data),
+            "SPEND_VISUALIZER_DATA": str(data_root)}
 
 
 def free_port() -> int:
