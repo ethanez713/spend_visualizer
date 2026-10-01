@@ -74,7 +74,9 @@ def _merchant_dims(t: CanonicalTransaction) -> dict:
         name = cp.get("name")
         brand = cp.get("name")
     label = name or (t.name or "Unknown")
-    mid = t.merchant_entity_id or _norm_merchant(name) or "unknown"
+    # A row Plaid gave no merchant falls back to its own description for identity:
+    # one shared id would merge every such row into a single bogus merchant.
+    mid = t.merchant_entity_id or _norm_merchant(name) or _norm_merchant(t.name) or "unknown"
     return dict(id=mid, name=label, brand=brand or name)
 
 
