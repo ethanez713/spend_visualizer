@@ -8,3 +8,14 @@ headless = true
 # (deploy/RUNBOOK.md), never bound to a public interface; harmless on the
 # desktop, where the browser is local anyway.
 address = "127.0.0.1"
+# Serves ./static (the self-hosted webfonts), so the page loads nothing from a CDN.
+enableStaticServing = true
+
+# The four values Streamlit's own theme takes from the design system; everything
+# else is mapped in theme.py.
+[theme]
+base = "light"
+primaryColor = "#DD7A32"
+backgroundColor = "#F8F6F1"
+secondaryBackgroundColor = "#F1EDE5"
+textColor = "#3E3830"

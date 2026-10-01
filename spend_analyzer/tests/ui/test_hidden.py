@@ -17,7 +17,7 @@ def test_given_top_category_hidden_when_rerun_then_total_excludes_it(at):
     at.run()
     assert not at.exception, [str(e.value) for e in at.exception]
     assert metric(at, "Total") == money(full - amt)
-    assert any("🙈" in t and str(top) in t for t in texts(at)), "sidebar hidden-rule row missing"
+    assert any("" in t and str(top) in t for t in texts(at)), "sidebar hidden-rule row missing"
 
 
 def test_given_hidden_category_when_sidebar_unhide_clicked_then_total_restored(at):

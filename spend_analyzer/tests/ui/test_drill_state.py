@@ -26,7 +26,7 @@ def test_given_drilled_root_when_rendered_then_breadcrumb_and_detail_follow(at, 
     at.run()
     assert not at.exception, [str(e.value) for e in at.exception]
     crumbs = [b.label for b in at.button if (b.key or "").startswith("crumb_")]
-    assert crumbs[0] == "🏠 All" and str(path[1]) in crumbs[2], crumbs
+    assert crumbs[0] == "All" and str(path[1]) in crumbs[2], crumbs
     assert any(f"{path[0]} › {path[1]}" in t for t in texts(at)), \
         "transaction detail does not follow the drill root"
 
@@ -35,7 +35,7 @@ def test_given_drilled_root_when_zoom_out_clicked_then_root_pops_one_level(at, c
     path = _top_full_path(cube_df)[:2]
     at.session_state[ROOT_KEY] = path
     at.run()
-    widget(at.button, label="⟲ Zoom out").click()
+    widget(at.button, label="Zoom out").click()
     at.run()
     assert at.session_state[ROOT_KEY] == path[:1]
 

@@ -74,7 +74,7 @@ def _provenance_counts(df: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
 
 
 def _render_pattern_rules(rules: list[dict], scan: dict, df: pd.DataFrame) -> None:
-    st.subheader("🔧 Transformer pattern rules")
+    st.subheader("Transformer pattern rules")
     st.caption(
         "First match wins, in table order: POS prefixes → website hints → keywords "
         "(merchant memory runs before all of these — next section). `auto` rules "
@@ -130,7 +130,7 @@ def _render_rule_inspector(rules: list[dict], scan: dict) -> None:
 
 
 def _render_memory(entries: list[dict], scan: dict) -> None:
-    with st.expander(f"🧠 Merchant memory — {len(entries)} learned merchants"):
+    with st.expander(f"Merchant memory — {len(entries)} learned merchants"):
         st.caption(
             "Once a merchant is resolved, its category is remembered "
             "(`.secrets/merchant_memory.json`): an exact entity-id hit re-applies "
@@ -150,9 +150,9 @@ def _render_memory(entries: list[dict], scan: dict) -> None:
 
 
 def _render_converter(conv: dict | None, df: pd.DataFrame) -> None:
-    st.subheader("🧾 Google-Sheet budget mapping (converter)")
+    st.subheader("Google Sheet budget mapping (converter)")
     st.caption(
-        "⚠️ A **separate taxonomy** for the monthly Google Sheet only — it maps the "
+        "A **separate taxonomy** for the monthly Google Sheet only — it maps the "
         "final PFC categories above onto the budget's own category set, and never "
         "touches this app's data or views. Shown here so all rule locations are "
         "visible in one place."

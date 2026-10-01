@@ -8,8 +8,8 @@ from streamlit.testing.v1 import AppTest
 
 from tests.ui._harness import APP, metric, metrics, money_to_f
 
-_TAB_LABELS = {"🧭 Drilldown", "💰 Budget", "🏪 Merchants & recurring",
-               "💵 Cash flow", "✏️ Overrides", "📐 Rules", "✅ QC"}
+_TAB_LABELS = {"Drilldown", "Budget", "Merchants and recurring",
+               "Cash flow", "Overrides", "Rules", "Checks"}
 
 
 def test_given_real_archive_when_app_boots_then_all_tabs_render_without_exception(at):

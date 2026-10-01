@@ -18,9 +18,9 @@ _TXN_COLS = ["date_resolved", "name", "merchant", "tier1", "tier2", "atom_displa
 
 def transaction_detail(rows: pd.DataFrame, title: str = "Transactions",
                        key: str = "txn") -> None:
-    """Render the transactions behind a slice/merchant with a 🚩 flag column.
+    """Render the transactions behind a slice/merchant with a flag column.
 
-    Checking 🚩 on a row opens a transaction-scoped correction form (prefilled
+    Checking on a row opens a transaction-scoped correction form (prefilled
     from that row). Flagging never edits records — it feeds the report.
     """
     if rows.empty:
@@ -37,15 +37,15 @@ def transaction_detail(rows: pd.DataFrame, title: str = "Transactions",
                 view["category_update_step"], view["category_update_reason"], pend)]
     cols = [c for c in _TXN_COLS if c in view.columns]
     disp = view[cols].copy()
-    disp.insert(0, "🚩", False)
+    disp.insert(0, "Flag", False)
 
     st.caption(f"{title} — {len(disp)} txns · {money(rows['abs_amount'].sum())}  "
-               "·  tick 🚩 to flag a miscategorization")
+               "·  tick Flag on a row to fix its category")
     edited = st.data_editor(
         disp, use_container_width=True, hide_index=True, key=f"txned_{key}",
-        disabled=[c for c in disp.columns if c != "🚩"],
+        disabled=[c for c in disp.columns if c != "Flag"],
         column_config={
-            "🚩": st.column_config.CheckboxColumn("🚩", width="small",
+            "Flag": st.column_config.CheckboxColumn("Flag", width="small",
                                                   help="Flag this transaction for correction"),
             "date_resolved": st.column_config.TextColumn("Date"),
             "name": st.column_config.TextColumn("Description", width="large"),
@@ -55,12 +55,12 @@ def transaction_detail(rows: pd.DataFrame, title: str = "Transactions",
             "person": "Person",
             "account_name": "Account",
             "why": st.column_config.TextColumn(
-                "Why", help="Who set this category: 🔧 mechanical rule · 🤖 LLM · "
-                            "👁 review · ✏️ manual override · blank = Plaid default. "
-                            "⏳ = a suggestion is pending human review."),
+                "Why", help="Who set this category: rule · LLM · "
+                            "review · manual override · blank = Plaid default. "
+                            "A pending suggestion awaits review."),
         },
     )
-    flagged = [i for i, f in enumerate(edited["🚩"].tolist()) if f]
+    flagged = [i for i, f in enumerate(edited["Flag"].tolist()) if f]
     for i in flagged[:6]:
         r = ordered.iloc[i]
         label = f"{r.get('merchant')} · {money(r.get('abs_amount', 0))} · {r.get('date_resolved')}"
@@ -70,7 +70,7 @@ def transaction_detail(rows: pd.DataFrame, title: str = "Transactions",
 def hide_button(dim: str, value, label: str, *, key: str) -> None:
     """An 'eye' toggle that hides/shows a category across all views."""
     hidden = state.is_hidden(dim, value)
-    icon = "🙈 Show" if hidden else "👁 Hide"
+    icon = "Show" if hidden else "Hide"
     if st.button(f"{icon} {label}", key=key, use_container_width=True):
         state.toggle_hidden(dim, value, label)
         st.rerun()
@@ -132,7 +132,7 @@ def provenance_explain(row) -> None:
                 f"{_txt(row.get('review_detailed'))}")
         src = _txt(row.get("review_source"))
         why = _txt(row.get("review_reason"))
-        st.markdown(f"⏳ **Pending suggestion** ({src}): `{sugg}` — {why}. "
+        st.markdown(f"**Pending suggestion** ({src}): `{sugg}` — {why}. "
                     "Adjudicate with `categorize.py --review`.")
         _rule_hint(details.get(why))
 
@@ -143,7 +143,7 @@ def _rule_hint(rule: dict | None) -> None:
     st.caption(f"↳ rule `{rule['rule_id']}` ({rule['kind']}, {rule['origin']}, "
                f"trust={rule['trust']}): pattern `{rule['pattern']}` → "
                f"`{rule['primary']} / {rule['detailed']}` — full tables in the "
-               "📐 Rules tab.")
+               "Rules tab.")
 
 
 def fix_categorization(*, row, label: str, key: str,
@@ -153,11 +153,11 @@ def fix_categorization(*, row, label: str, key: str,
     The PRIMARY action is the sticky override intent; the report queue is a
     deliberately-secondary "note to self" that never changes records.
     """
-    with st.expander(f"✏️ Fix categorization — {label}"):
+    with st.expander(f"Fix categorization — {label}"):
         provenance_explain(row)
         st.divider()
-        t_re, t_rep = st.tabs(["✅ Override category (sticky)",
-                               "📝 Note for triage (changes nothing)"])
+        t_re, t_rep = st.tabs(["Override category",
+                               "Note for triage"])
         with t_re:
             recategorize_form(row=row, key=key, default_scope=default_scope)
         with t_rep:
@@ -183,11 +183,11 @@ def recategorize_form(*, row, key: str, default_scope: str = "transaction") -> N
     """
     err = manual_edits.status()
     if err:
-        st.caption(f"⚠ Recategorize unavailable: {err}")
+        st.caption(f"Recategorize unavailable: {err}")
         return
     raw = _raw_index(manual_edits.archive_sig()).get(str(row.get("transaction_id")))
     if raw is None:
-        st.caption("⚠ Raw record not found in the archive — reload data and retry.")
+        st.caption("Raw record not found in the archive — reload data and retry.")
         return
     pfc = raw.get("personal_finance_category") or {}
     cur_p, cur_d = pfc.get("primary"), pfc.get("detailed")
@@ -211,7 +211,7 @@ def recategorize_form(*, row, key: str, default_scope: str = "transaction") -> N
                                else f"ALL transactions from “{merchant}”"),
         key=f"rc_s_{key}")
     note = st.text_input("Note (why?)", key=f"rc_n_{key}")
-    if st.button("💾 Save edit", key=f"rc_b_{key}"):
+    if st.button("Save edit", key=f"rc_b_{key}"):
         if (p, d) == (cur_p, cur_d):
             st.warning("That is already the current category — nothing to save.")
             return
@@ -234,7 +234,7 @@ def correction_form(*, scope: str, original: dict, target: dict, key: str,
     the expander (for callers already inside one — Streamlit can't nest them).
     """
     if wrap:
-        with st.expander(f"✏️ Flag a categorization problem — {target.get('label', scope)}"):
+        with st.expander(f"Flag a categorization problem — {target.get('label', scope)}"):
             _correction_form_body(scope=scope, original=original, target=target, key=key)
     else:
         _correction_form_body(scope=scope, original=original, target=target, key=key)

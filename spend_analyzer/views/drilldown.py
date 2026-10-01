@@ -6,7 +6,7 @@ Interaction model:
   • The top **Granularity** radio controls ONLY the "Spend by X" table.
   • The hierarchy chart has its own **Chart detail** control and starts at the
     deepest level by default. Click a slice to zoom in (captured via the
-    streamlit-plotly-events component); the breadcrumb and ⟲ Zoom-out navigate
+    streamlit-plotly-events component); the breadcrumb and Zoom-out navigate
     back. The chart focus and the transaction-detail table share one
     `wheel_root` so they stay in lock-step.
   • Hidden categories are dropped from the charts entirely (shown only as a note
@@ -15,13 +15,13 @@ Interaction model:
 from __future__ import annotations
 
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from streamlit_plotly_events import plotly_events
 
 import state
 from cube import Cube, GroupingSpec, CATEGORY_LEVELS, CATEGORY_LEVEL_BY_NAME
+import theme
 from viz import humanize_atom, money, style_table
 from views._widgets import correction_form, hide_button, transaction_detail
 
@@ -29,7 +29,6 @@ _LEVEL_LABELS = {
     "necessity": "Necessity", "tier1": "Category", "tier2": "Subcategory",
     "atom": "Atom", "merchant": "Merchant",
 }
-_PALETTE = px.colors.qualitative.Set3 + px.colors.qualitative.Pastel
 ROOT_KEY = "wheel_root"
 
 
@@ -86,7 +85,7 @@ def render(cube: Cube, spec: GroupingSpec, trailing_months: int) -> None:
 
 def _spend_table(cube, spec, level_col, level_name, table, raw_vals, hidden_flags) -> None:
     """Styled spend table (Actual + 12m/3m running avgs + txns, green heatmap)
-    with tickbox row selection → bulk 👁 Hide / 🚩 Flag buttons."""
+    with tickbox row selection → bulk Hide / Flag buttons."""
     avg12 = _trailing_avg(cube, spec, level_col, 12)
     avg3 = _trailing_avg(cube, spec, level_col, 3)
     label = _LEVEL_LABELS[level_name]
@@ -101,7 +100,7 @@ def _spend_table(cube, spec, level_col, level_name, table, raw_vals, hidden_flag
     grey = pd.Series(hidden_flags, index=disp.index)
     event = st.dataframe(
         style_table(disp, money_cols=["Actual", "Avg/mo (12m)", "Avg/mo (3m)"],
-                    int_cols=["Txns"], green_cols=["Actual", "Avg/mo (12m)", "Avg/mo (3m)"],
+                    int_cols=["Txns"], heat_cols=["Actual", "Avg/mo (12m)", "Avg/mo (3m)"],
                     grey_rows=grey),
         use_container_width=True, on_select="rerun", selection_mode="multi-row",
         key=f"spend_sel_{level_col}",
@@ -117,12 +116,12 @@ def _spend_table(cube, spec, level_col, level_name, table, raw_vals, hidden_flag
     if picked:
         all_hidden = all(state.is_hidden(level_col, v) for v in picked)
         c1, c2, _ = st.columns([2, 2, 6])
-        if c1.button(f"{'🙈 Show' if all_hidden else '👁 Hide'} {len(picked)}",
+        if c1.button(f"{'Show' if all_hidden else 'Hide'} {len(picked)}",
                      key=f"hidebtn_{level_col}", use_container_width=True):
             for v in picked:
                 state.unhide(level_col, v) if all_hidden else state.hide(level_col, v, _disp(level_col, v))
             st.rerun()
-        if c2.button(f"🚩 Flag {len(picked)}", key=f"flagbtn_{level_col}",
+        if c2.button(f"Flag {len(picked)}", key=f"flagbtn_{level_col}",
                      use_container_width=True):
             st.session_state[f"flagged_{level_col}"] = set(picked)
             st.rerun()
@@ -168,7 +167,7 @@ def _hierarchy(rows: pd.DataFrame, cube=None, spec=None) -> list:
                     key="hier_kind", label_visibility="collapsed")
     win = c2.radio("Window", list(_WINDOW_DAYS), horizontal=True, key="hier_window",
                    label_visibility="collapsed")
-    if c3.button("⟲ Zoom out", disabled=not root):
+    if c3.button("Zoom out", disabled=not root):
         st.session_state[ROOT_KEY] = root[:-1]
         st.rerun()
 
@@ -201,7 +200,7 @@ def _hierarchy(rows: pd.DataFrame, cube=None, spec=None) -> list:
         key = f"pe_{kind}_{warm}"
         clicks = plotly_events(fig, click_event=True, override_height=560,
                                override_width="100%", key=key)
-        st.caption("Click a slice to zoom in · breadcrumb or ⟲ Zoom out to go back.")
+        st.caption("Click a slice to zoom in · breadcrumb or Zoom out to go back.")
         # The component keeps returning the last click across reruns; only act on a
         # value we haven't processed yet (otherwise the post-drill rerun re-fires it).
         proc_key = f"pe_proc_{kind}"
@@ -214,7 +213,7 @@ def _hierarchy(rows: pd.DataFrame, cube=None, spec=None) -> list:
 
     if hidden.any():
         names = ", ".join(sorted(sub.loc[hidden, "tier1"].unique()))
-        st.caption(f"🙈 Hidden (not charted): {names} ({money(sub.loc[hidden,'spend'].sum())})")
+        st.caption(f"Hidden (not charted): {names} ({money(sub.loc[hidden,'spend'].sum())})")
 
     # One-time warm-up: the component mis-sizes on the very first page paint
     # (renders before layout settles, hiding text). A single rerun fixes it.
@@ -241,7 +240,7 @@ def _clicked_path(clicks, abs_nodes: list) -> list | None:
 
 
 def _breadcrumb(root: list) -> None:
-    crumbs = ["🏠 All"] + [_disp(CATEGORY_LEVELS[i], v) for i, v in enumerate(root)]
+    crumbs = ["All"] + [_disp(CATEGORY_LEVELS[i], v) for i, v in enumerate(root)]
     cols = st.columns(len(crumbs) + 4)
     for i, name in enumerate(crumbs):
         if cols[i].button(name, key=f"crumb_{i}"):
@@ -279,7 +278,10 @@ def _build_hierarchy_fig(vis, levels, root, treemap: bool):
             root_of[key] = rel[0]
 
     ids, labels, parents, values, colors, abs_nodes = [], [], [], [], [], []
-    cmap: dict[str, str] = {}
+    # Colour follows the top-level node, largest first, so the big wedges get the
+    # distinct hues and the long tail shares the neutral.
+    top = sorted((k for k in totals if len(k) == 1), key=totals.get, reverse=True)
+    cmap = theme.series_colors([k[0] for k in top])
     for key, val in totals.items():
         ids.append("/".join(map(str, key)))
         # ids/parents/abs_nodes carry RAW values (so a click resolves to a filterable
@@ -287,17 +289,17 @@ def _build_hierarchy_fig(vis, levels, root, treemap: bool):
         labels.append(_disp(levels[len(key) - 1], key[-1]))
         parents.append("/".join(map(str, parent[key])) if parent[key] else "")
         values.append(val)
-        colors.append(cmap.setdefault(root_of[key], _PALETTE[len(cmap) % len(_PALETTE)]))
+        colors.append(cmap[root_of[key]])
         abs_nodes.append(list(root) + list(key))
 
     trace_cls = go.Treemap if treemap else go.Sunburst
     kwargs = dict(
         ids=ids, labels=labels, parents=parents, values=values, branchvalues="total",
-        marker=dict(colors=colors, line=dict(color="#0e1117", width=1)),
+        marker=dict(colors=colors, line=dict(color=theme.PAPER_0, width=2)),
         # No uniformtext: let each sector auto-scale its label to fill the box,
         # capped at 22px, so the (large) leaf sectors get big, readable text.
-        insidetextfont=dict(size=22, color="#10161f"),
-        textfont=dict(size=15, color="#10161f"),
+        insidetextfont=dict(size=22, color=theme.PAPER_0),
+        textfont=dict(size=15, color=theme.PAPER_0),
         maxdepth=3,
         hovertemplate="<b>%{label}</b><br>%{value:$,.0f}<extra></extra>",
     )
@@ -306,8 +308,6 @@ def _build_hierarchy_fig(vis, levels, root, treemap: bool):
     fig = go.Figure(trace_cls(**kwargs))
     fig.update_layout(
         margin=dict(t=6, l=6, r=6, b=6), height=560,
-        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#e6e6e6"),
     )
     return fig, abs_nodes
 

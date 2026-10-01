@@ -71,11 +71,11 @@ def test_enrich_blank_provenance_for_uncorrected_feed():
 
 
 def test_provenance_why_covers_every_step():
-    assert provenance_why("mechanical", "keyword:spotify") == "🔧 rule · keyword:spotify"
-    assert provenance_why("llm", "looks like music") == "🤖 LLM · looks like music"
-    assert provenance_why("review", "manual re-pick") == "👁 review · manual re-pick"
-    assert provenance_why("manual", "i-abc123") == "✏️ manual · i-abc123"
+    assert provenance_why("mechanical", "keyword:spotify") == "rule · keyword:spotify"
+    assert provenance_why("llm", "looks like music") == "LLM · looks like music"
+    assert provenance_why("review", "manual re-pick") == "review · manual re-pick"
+    assert provenance_why("manual", "i-abc123") == "manual · i-abc123"
     assert provenance_why("", "") == ""                      # Plaid default: no badge
-    assert provenance_why("", "", True) == "⏳ suggestion"   # pending flag only
+    assert provenance_why("", "", True) == "suggestion pending"   # pending flag only
     assert provenance_why("mechanical", "pos:tst", True) == (
-        "🔧 rule · pos:tst  ⏳ suggestion")
+        "rule · pos:tst  suggestion pending")

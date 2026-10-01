@@ -66,7 +66,7 @@ def test_style_table_counts_not_money():
     df = pd.DataFrame({"Actual": [100.0], "Txns": [5]}).set_index(
         pd.Index(["A"], name="cat"))
     html = style_table(df, money_cols=["Actual"], int_cols=["Txns"],
-                       green_cols=["Actual"]).to_html()
+                       heat_cols=["Actual"]).to_html()
     assert "$100" in html        # money formatted
     assert ">5<" in html         # count rendered plain, no $
     assert "$5" not in html

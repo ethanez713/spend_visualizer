@@ -10,6 +10,7 @@ from pathlib import Path
 import streamlit as st
 
 import state
+import theme
 from config_io import CONFIG_DIR, PERSONAL_CONFIG_DIR, load_app_config, load_budget
 from cube import Cube, GroupingSpec
 from data import build_cube
@@ -19,32 +20,7 @@ from views import cashflow, drilldown, merchants
 from views import corrections_view, rules_view
 from views import qc as qc_view
 
-st.set_page_config(page_title="Spend Analyzer", page_icon="📊", layout="wide")
-
-# Layout polish: tables drag-resizable + columns that stack on narrow windows.
-_CSS = """
-<style>
-/* Drag the bottom-right corner of any table to widen / narrow it on demand. */
-div[data-testid="stDataFrame"] {
-    resize: horizontal;
-    overflow: auto;
-    min-width: 280px;
-}
-/* Responsive stacking: side-by-side columns wrap to full width when narrow. */
-@media (max-width: 820px) {
-    div[data-testid="stHorizontalBlock"] { flex-wrap: wrap; }
-    div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
-        min-width: 100% !important;
-        flex: 1 1 100% !important;
-    }
-}
-</style>
-"""
-
-
-def _inject_css() -> None:
-    st.markdown(_CSS, unsafe_allow_html=True)
-
+st.set_page_config(page_title="Spend analyzer", layout="wide")
 
 def _config_signature(app) -> tuple:
     """Cache key: archive + config file stats (mtime/size)."""
@@ -77,8 +53,8 @@ def _load(signature: tuple):
 
 
 def main() -> None:
-    st.title("📊 Spend Analyzer")
-    _inject_css()
+    theme.apply()
+    st.title("Spend analyzer")
     app = load_app_config()
     budget = load_budget()
 
@@ -88,7 +64,7 @@ def main() -> None:
         st.caption("Set the path in `config/app.yaml`. The collector owns the archive.")
         st.stop()
 
-    if st.sidebar.button("🔄 Reload taxonomy / data"):
+    if st.sidebar.button("Reload data"):
         _load.clear()
 
     df, qc = _load(_config_signature(app))
@@ -105,8 +81,8 @@ def main() -> None:
 
     # Drilldown first so it is the default tab on load.
     t_drill, t_budget, t_merch, t_cash, t_over, t_rules, t_qc = st.tabs(
-        ["🧭 Drilldown", "💰 Budget", "🏪 Merchants & recurring",
-         "💵 Cash flow", "✏️ Overrides", "📐 Rules", "✅ QC"]
+        ["Drilldown", "Budget", "Merchants and recurring",
+         "Cash flow", "Overrides", "Rules", "Checks"]
     )
     with t_drill:
         drilldown.render(cube, spec, app.trailing_avg_months)
@@ -126,7 +102,7 @@ def main() -> None:
 
 def _sidebar_filters(cube: Cube, df) -> GroupingSpec:
     sb = st.sidebar
-    sb.header("Filters")
+    theme.eyebrow_in(sb, "Filters")
     dmin, dmax = df["date_resolved"].dropna().min(), df["date_resolved"].dropna().max()
     if dmin and dmax:
         picked = sb.date_input(
@@ -164,14 +140,14 @@ def _sidebar_filters(cube: Cube, df) -> GroupingSpec:
 
 def _hidden_manager(sb) -> None:
     rules = state.hidden_rules()
-    sb.header("👁 Hidden")
+    theme.eyebrow_in(sb, "Hidden")
     if not rules:
-        sb.caption("Nothing hidden. Use the 👁 controls in Drilldown / Merchants.")
+        sb.caption("Nothing hidden. Use Hide in Drilldown or Merchants.")
         return
     for r in list(rules):
         c1, c2 = sb.columns([4, 1])
-        c1.write(f"🙈 {r['label']}")
-        if c2.button("✕", key=f"unhide_{r['dim']}_{r['value']}"):
+        c1.caption(r["label"])
+        if c2.button("×", key=f"unhide_{r['dim']}_{r['value']}"):
             state.unhide(r["dim"], r["value"])
             st.rerun()
     if sb.button("Show all"):

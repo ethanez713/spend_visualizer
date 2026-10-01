@@ -19,6 +19,7 @@ import plotly.express as px
 import streamlit as st
 
 import state
+import theme
 from config_io import Budget
 from cube import Cube, GroupingSpec
 from ledger import load_ledger, monthly_pivot as ledger_monthly_pivot
@@ -156,7 +157,7 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
                      use_container_width=True)
         if table["_hidden"].any():
             hidden_names = table.loc[table["_hidden"], "Category"].tolist()
-            st.caption(f"🙈 Hidden from totals: {', '.join(hidden_names)}")
+            st.caption(f"Hidden from totals: {', '.join(hidden_names)}")
 
     _export_buttons(indexed, pivot)
     _trends(pivot, window)
@@ -171,7 +172,7 @@ def _export_buttons(summary: pd.DataFrame, pivot: pd.DataFrame) -> None:
     """
     c1, c2 = st.columns(2)
     c1.download_button(
-        "⬇ Summary CSV (paste-ready)",
+        "Summary CSV",
         sanitize_for_csv(summary.reset_index()).to_csv(index=False),
         file_name="budget_vs_actual.csv", mime="text/csv", use_container_width=True,
     )
@@ -179,7 +180,7 @@ def _export_buttons(summary: pd.DataFrame, pivot: pd.DataFrame) -> None:
         grid = pivot.round(2).reset_index().rename(columns={"tier1": "Category",
                                                             "category": "Category"})
         c2.download_button(
-            "⬇ Monthly grid CSV (category × month)",
+            "Monthly grid CSV",
             sanitize_for_csv(grid).to_csv(index=False),
             file_name="budget_monthly_grid.csv", mime="text/csv",
             use_container_width=True,
@@ -200,14 +201,15 @@ def _trends(pivot: pd.DataFrame, window: int) -> None:
     if piv.empty:
         st.caption("No spend to chart.")
         return
-    fig = px.bar(piv, x=piv.index, y=list(piv.columns))
+    # Largest categories take the palette; the tail shares the neutral.
+    order = list(piv.sum().sort_values(ascending=False).index)
+    fig = px.bar(piv, x=piv.index, y=order, color_discrete_map=theme.series_colors(order))
+    fig.update_traces(marker_line_color=theme.PAPER_1, marker_line_width=1)
     roll = piv.sum(axis=1).rolling(min(window, len(piv)), min_periods=1).mean()
     fig.add_scatter(x=piv.index, y=roll, mode="lines+markers",
-                    name=f"{window}-mo avg", line=dict(color="#e6e6e6", width=2))
+                    name=f"{window}-month average", line=dict(color=theme.NET, width=2))
     fig.update_layout(barmode="stack", height=430, margin=dict(t=10),
-                      legend_title="Category", yaxis_title="Spend",
-                      paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                      font=dict(color="#e6e6e6"))
+                      yaxis_title="Spend")
     st.plotly_chart(fig, use_container_width=True)
 
 

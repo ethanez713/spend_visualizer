@@ -17,7 +17,7 @@ GRID_ROW_H = 35
 
 def open_app(page: Page, url: str) -> None:
     page.goto(url)
-    expect(page.get_by_text("📊 Spend Analyzer")).to_be_visible(timeout=45000)
+    expect(page.get_by_text("Spend analyzer")).to_be_visible(timeout=45000)
     wait_idle(page)
 
 

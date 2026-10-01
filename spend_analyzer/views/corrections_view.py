@@ -36,7 +36,7 @@ def _render_overrides() -> None:
     st.subheader("My overrides (manual intents)")
     err = manual_edits.status()
     if err:
-        st.caption(f"⚠ Intent log unavailable: {err}")
+        st.caption(f"Intent log unavailable: {err}")
         return
     items = manual_edits.intents()
     st.caption(
@@ -47,8 +47,8 @@ def _render_overrides() -> None:
         "Revoking hands the row back to the pipeline on the next run."
     )
     if not items:
-        st.info("No overrides yet. Tick 🚩 on a transaction in Drilldown or "
-                "Merchants, then use ‘✅ Override category’.")
+        st.info("No overrides yet. Tick Flag on a transaction in Drilldown or "
+                "Merchants, then use ‘Override category’.")
         return
 
     try:
@@ -90,9 +90,9 @@ def _render_overrides() -> None:
 def _render_triage_notes() -> None:
     st.subheader("Triage notes (report only)")
     st.caption(
-        "Notes filed via ‘📝 Note for triage’ — **nothing here changes records**: "
+        "Notes filed via ‘Note for triage’ — **nothing here changes records**: "
         "it's a to-do list for upstream (collector) vs local (taxonomy.yaml) "
-        "work. For an actual category fix, use ‘✅ Override category’ instead."
+        "work. For an actual category fix, use ‘Override category’ instead."
     )
     items = corr.load_corrections()
     if not items:
@@ -110,12 +110,12 @@ def _render_triage_notes() -> None:
 
     md = corr.report_markdown(items)
     e1, e2, e3 = st.columns(3)
-    e1.download_button("⬇ Report (Markdown)", md, file_name="corrections_report.md",
+    e1.download_button("Report (Markdown)", md, file_name="corrections_report.md",
                        mime="text/markdown", use_container_width=True)
-    e2.download_button("⬇ Table (CSV)", sanitize_for_csv(df).to_csv(index=False),
+    e2.download_button("Table (CSV)", sanitize_for_csv(df).to_csv(index=False),
                        file_name="corrections.csv", mime="text/csv",
                        use_container_width=True)
-    if e3.button("🗑 Clear all", use_container_width=True):
+    if e3.button("Clear all", use_container_width=True):
         corr.clear_corrections()
         st.rerun()
 

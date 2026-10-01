@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import pandas as pd
 
+import theme
+
 def money(x: float) -> str:
     try:
         return f"${x:,.0f}" if abs(x) >= 100 else f"${x:,.2f}"
@@ -20,10 +22,10 @@ def humanize_atom(s: str | None) -> str:
 # Categorization-provenance badges: who last set this row's category.
 # Blank step = Plaid's own category, never changed by the pipeline.
 PROVENANCE_BADGES = {
-    "mechanical": "🔧 rule",
-    "llm": "🤖 LLM",
-    "review": "👁 review",
-    "manual": "✏️ manual",
+    "mechanical": "rule",
+    "llm": "LLM",
+    "review": "review",
+    "manual": "manual",
 }
 
 
@@ -35,7 +37,7 @@ def provenance_why(step: str | None, reason: str | None,
     if badge:
         parts.append(f"{badge} · {reason}" if reason else badge)
     if review_pending:
-        parts.append("⏳ suggestion")
+        parts.append("suggestion pending")
     return "  ".join(parts)
 
 
@@ -50,43 +52,23 @@ def blank_if_missing(v):
     return v
 
 
-def _green_scale(series: pd.Series) -> list[str]:
-    """Sequential green with black text — darker green = larger value."""
+def _sequential_scale(series: pd.Series) -> list[str]:
+    """Deeper fill = larger value."""
     vals = pd.to_numeric(series, errors="coerce")
     lo, hi = vals.min(), vals.max()
     span = (hi - lo) or 1.0
-    out = []
-    for v in vals:
-        if pd.isna(v):
-            out.append("")
-            continue
-        t = (v - lo) / span                       # 0..1
-        r = int(232 - t * 140)
-        b = int(232 - t * 140)
-        g = int(245 - t * 40)
-        out.append(f"background-color: rgb({r}, {g}, {b}); color: black")
-    return out
+    return ["" if pd.isna(v)
+            else f"background-color: {theme.sequential((v - lo) / span)}; {theme.CELL_TEXT}"
+            for v in vals]
 
 
 def _diverging_scale(series: pd.Series, midpoint: float) -> list[str]:
-    """Green below the midpoint (good/under), red above (bad/over). Black text."""
+    """Jade below the midpoint (under), hazard above it (over)."""
     vals = pd.to_numeric(series, errors="coerce")
     hi = max(abs(vals.max() - midpoint), abs(vals.min() - midpoint)) or 1.0
-    out = []
-    for v in vals:
-        if pd.isna(v):
-            out.append("")
-            continue
-        t = (v - midpoint) / hi                   # -1..1
-        if t >= 0:                                # over budget -> red
-            inten = min(t, 1.0)
-            g = int(235 - inten * 150)
-            out.append(f"background-color: rgb(235, {g}, {g}); color: black")
-        else:                                     # under budget -> green
-            inten = min(-t, 1.0)
-            r = int(235 - inten * 150)
-            out.append(f"background-color: rgb({r}, 235, {r}); color: black")
-    return out
+    return ["" if pd.isna(v)
+            else f"background-color: {theme.diverging((v - midpoint) / hi)}; {theme.CELL_TEXT}"
+            for v in vals]
 
 
 def style_table(
@@ -95,21 +77,21 @@ def style_table(
     money_cols: list[str] | None = None,
     int_cols: list[str] | None = None,
     pct_cols: list[str] | None = None,
-    green_cols: list[str] | None = None,
+    heat_cols: list[str] | None = None,
     diverging: dict[str, float] | None = None,
     grey_rows: pd.Series | None = None,
 ):
-    """One styler for every table: typed formatting + green / diverging heatmaps.
+    """One styler for every table: typed formatting + sequential / diverging heatmaps.
 
     money_cols  -> $ formatted     int_cols -> plain integers (NOT $)
-    pct_cols    -> 0% formatted     green_cols -> sequential green gradient
-    diverging   -> {col: midpoint}  red(>mid)/green(<mid)
+    pct_cols    -> 0% formatted     heat_cols -> sequential magnitude fill
+    diverging   -> {col: midpoint}  over(>mid)/under(<mid)
     grey_rows   -> boolean Series; True rows rendered greyed (hidden indicator)
     """
     money_cols = money_cols or []
     int_cols = int_cols or []
     pct_cols = pct_cols or []
-    green_cols = green_cols or []
+    heat_cols = heat_cols or []
     diverging = diverging or {}
 
     fmt: dict = {}
@@ -122,16 +104,16 @@ def style_table(
             fmt[c] = lambda v: f"{int(v):,}" if pd.notna(v) else "—"
 
     styler = df.style.format(fmt, na_rep="—")
-    for c in green_cols:
+    for c in heat_cols:
         if c in df.columns:
-            styler = styler.apply(_green_scale, subset=[c])
+            styler = styler.apply(_sequential_scale, subset=[c])
     for c, mid in diverging.items():
         if c in df.columns:
             styler = styler.apply(lambda s, m=mid: _diverging_scale(s, m), subset=[c])
     if grey_rows is not None and grey_rows.any():
         def _grey(row):
             if grey_rows.get(row.name, False):
-                return ["color: #999; font-style: italic; background-color: #f4f4f4"] * len(row)
+                return [theme.HIDDEN_ROW] * len(row)
             return [""] * len(row)
         styler = styler.apply(_grey, axis=1)
     return styler

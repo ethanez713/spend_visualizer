@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from cube import Cube, GroupingSpec
+import theme
 from viz import money
 
 
@@ -31,11 +32,11 @@ def render(cube: Cube, spec: GroupingSpec) -> None:
 
     fig = go.Figure()
     fig.add_bar(x=monthly["month"], y=monthly["income"], name="Income",
-                marker_color="#2e7d32")
+                marker_color=theme.INCOME)
     fig.add_bar(x=monthly["month"], y=-monthly["spend"], name="Spend",
-                marker_color="#c62828")
+                marker_color=theme.SPEND)
     fig.add_scatter(x=monthly["month"], y=monthly["savings"], name="Net",
-                    mode="lines+markers", line=dict(color="#1565c0", width=3))
+                    mode="lines+markers", line=dict(color=theme.NET, width=2))
     fig.update_layout(barmode="relative", height=420, margin=dict(t=10),
                       yaxis_title="$ (spend shown negative)")
     st.plotly_chart(fig, use_container_width=True)
@@ -43,7 +44,7 @@ def render(cube: Cube, spec: GroupingSpec) -> None:
     st.subheader("Cumulative net")
     figc = go.Figure()
     figc.add_scatter(x=monthly["month"], y=monthly["cumulative_net"],
-                     fill="tozeroy", mode="lines+markers", line=dict(color="#1565c0"))
+                     fill="tozeroy", mode="lines+markers", line=dict(color=theme.NET, width=2))
     figc.update_layout(height=320, margin=dict(t=10), yaxis_title="Cumulative net $")
     st.plotly_chart(figc, use_container_width=True)
 

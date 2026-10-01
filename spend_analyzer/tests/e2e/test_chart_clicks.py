@@ -34,7 +34,7 @@ def test_given_sunburst_when_sector_clicked_then_app_drills_to_that_path(app):
     click_sector(app, top)
     crumbs = breadcrumbs(app)
     assert crumbs[-1] == top["label"], crumbs
-    assert crumbs[0] == "🏠 All" and len(crumbs) >= 2, crumbs
+    assert crumbs[0] == "All" and len(crumbs) >= 2, crumbs
     # the transaction-detail table follows the chart ("<path> — N txns")
     expect(app.get_by_text(
         re.compile(rf"{re.escape(top['label'])} — \d+ txns")).first).to_be_visible()
@@ -58,7 +58,7 @@ def test_given_drilled_chart_when_zoomed_out_then_pops_one_level_and_stays(app):
     # would re-fire it and snap the drill back down.
     click_sector(app, sector_labels(app)[0])
     drilled = breadcrumbs(app)
-    app.get_by_role("button", name="⟲ Zoom out").click()
+    app.get_by_role("button", name="Zoom out").click()
     wait_idle(app)
     assert breadcrumbs(app) == drilled[:-1]
     app.get_by_text("3 mo", exact=True).click()   # unrelated rerun
@@ -68,9 +68,9 @@ def test_given_drilled_chart_when_zoomed_out_then_pops_one_level_and_stays(app):
 
 def test_given_drilled_chart_when_home_crumb_clicked_then_back_to_top(app):
     click_sector(app, sector_labels(app)[0])
-    app.get_by_role("button", name="🏠 All").click()
+    app.get_by_role("button", name="All").click()
     wait_idle(app)
-    assert breadcrumbs(app) == ["🏠 All"]
+    assert breadcrumbs(app) == ["All"]
     assert len(sector_labels(app)) >= 5, "top-level chart did not come back"
 
 

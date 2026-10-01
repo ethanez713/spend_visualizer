@@ -44,7 +44,7 @@ def render(cube: Cube, spec: GroupingSpec) -> None:
     grey = pd.Series(table["_hidden"].values, index=indexed.index)
     st.dataframe(
         style_table(indexed, money_cols=["Total", "Avg"], int_cols=["Visits"],
-                    green_cols=["Total"], grey_rows=grey),
+                    heat_cols=["Total"], grey_rows=grey),
         use_container_width=True,
         column_config={"Logo": st.column_config.ImageColumn("", width="small")},
     )
@@ -84,7 +84,7 @@ def render(cube: Cube, spec: GroupingSpec) -> None:
     st.dataframe(
         style_table(rtab.set_index("Merchant"),
                     money_cols=["Total", "Avg charge", "Est. monthly"],
-                    int_cols=["Charges"], green_cols=["Est. monthly"]),
+                    int_cols=["Charges"], heat_cols=["Est. monthly"]),
         use_container_width=True,
     )
     st.metric("Total monthly subscription burden", money(rtab["Est. monthly"].sum()))
