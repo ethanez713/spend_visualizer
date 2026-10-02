@@ -128,3 +128,73 @@ def test_given_a_seeded_edit_when_budget_edit_applied_then_the_category_shows_in
     df = build_cube().df.set_index("transaction_id")
 
     assert df.loc[tid, "budget_cat"] == "Wedding" and df.loc[tid, "budget_edit_id"] == edit["id"]
+
+
+def _model_source(boot_app):
+    at = boot_app("Budget")
+    widget(at.radio, key="budget_source").set_value("Budget model")
+    at.run()
+    assert not at.exception, [str(e.value) for e in at.exception]
+    return at
+
+
+def _budget_table(at):
+    return next(df.value for df in at.dataframe if "% of Goal" in df.value.columns)
+
+
+def _seed_adjustment(**over):
+    import budget_edits
+    base = dict(day="2026-08-10", description="Honeymoon offset", category="Wedding", amount=3000.0)
+    entry = budget_edits.build_adjustment(**{**base, **over})
+    budget_edits.append_edits([entry])
+    return entry
+
+
+def test_given_an_adjustment_when_the_budget_opens_then_it_counts_and_is_listed(
+        boot_app, isolate_writes):
+    entry = _seed_adjustment()
+
+    at = _model_source(boot_app)
+
+    assert "Wedding" in _budget_table(at).index
+    assert any("manual adjustment" in c.value for c in at.caption)
+    assert any(e.label.startswith("Manual adjustments") for e in at.expander)
+    widget(at.button, key=f"revoke_adjust_{entry['id']}")
+
+
+def test_given_the_adjustment_form_when_submitted_then_a_budget_adjust_entry_is_logged(
+        boot_app, isolate_writes):
+    at = _model_source(boot_app)
+
+    widget(at.text_input, key="adjust_description").set_value("Gift toward trip")
+    widget(at.number_input, key="adjust_amount").set_value(-250.0)
+    widget(at.button, key="adjust_submit").click()
+    at.run()
+
+    (entry,) = [json.loads(line) for line in isolate_writes.read_text().splitlines()
+                if json.loads(line).get("action") == "budget_adjust"]
+    assert entry["set"]["description"] == "Gift toward trip" and entry["set"]["amount"] == -250.0
+    assert not at.exception, [str(e.value) for e in at.exception]
+
+
+def test_given_an_empty_description_when_the_form_is_submitted_then_nothing_is_logged(
+        boot_app, isolate_writes):
+    at = _model_source(boot_app)
+
+    widget(at.number_input, key="adjust_amount").set_value(40.0)
+    widget(at.button, key="adjust_submit").click()
+    at.run()
+
+    assert not isolate_writes.exists() or "budget_adjust" not in isolate_writes.read_text()
+    assert any("description" in e.value for e in at.error)
+
+
+def test_given_an_adjustment_when_revoked_then_a_tombstone_is_logged(boot_app, isolate_writes):
+    entry = _seed_adjustment()
+    at = _model_source(boot_app)
+
+    widget(at.button, key=f"revoke_adjust_{entry['id']}").click()
+    at.run()
+
+    assert any(json.loads(line).get("revokes") == entry["id"]
+               for line in isolate_writes.read_text().splitlines())

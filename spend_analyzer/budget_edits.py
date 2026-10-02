@@ -1,4 +1,5 @@
-"""Budget edits: where the household decides a transaction belongs in the budget.
+"""Budget edits: where the household decides a transaction belongs in the budget, and the
+budget rows that are not bank transactions at all (adjustments).
 
 An edit is an intent in the transformer's append-only log (``action: budget_edit``), so it
 syncs between machines like every other correction and never changes a record's Plaid
@@ -10,8 +11,11 @@ annotating a row never undoes the category chosen for it.
 """
 from __future__ import annotations
 
+import math
 import uuid
-from datetime import datetime
+from datetime import date, datetime
+
+import pandas as pd
 
 import manual_edits
 
@@ -84,3 +88,54 @@ def overrides_for(raw_records: list[dict], path: str | None = None) -> dict[str,
             "edit": chose["id"] if chose else "",
             "note": noted["note"] if noted else ""}
     return found
+
+
+ADJUST = "budget_adjust"
+
+
+def build_adjustment(*, day: str, description: str, category: str, amount: float,
+                     person: str = "", note: str = "", source: str = "ui") -> dict:
+    """A budget row that is not a bank transaction: a gift toward a trip, a spending offset.
+    ``amount`` is signed like a ledger's net: positive is money out, negative a credit."""
+    try:
+        date.fromisoformat(day)
+    except ValueError as e:
+        raise ValueError(f"{day!r} is not a date (expected YYYY-MM-DD)") from e
+    if not description.strip() or not category.strip():
+        raise ValueError("an adjustment needs a description and a budget category")
+    if not math.isfinite(amount) or amount == 0:
+        raise ValueError("an adjustment needs a non-zero amount")
+    return {"id": uuid.uuid4().hex[:8], "created_at": datetime.now().isoformat(timespec="seconds"),
+            "action": ADJUST, "source": source, "note": note.strip(),
+            "set": {"date": day, "description": description.strip(),
+                    "budget_category": category.strip(), "amount": round(float(amount), 2),
+                    "person": person.strip()}}
+
+
+def adjustments(path: str | None = None) -> list[dict]:
+    """The applicable adjustments in append order: not revoked, well formed."""
+    manual, _ = manual_edits._import()
+    entries = manual.load_intents(path or manual_edits.edits_path())
+    revoked = {e.get("revokes") for e in entries if e.get("action") == "revoke"}
+    out = []
+    for entry in entries:
+        chosen = entry.get("set") or {}
+        if entry.get("action") != ADJUST or entry.get("id") in revoked:
+            continue
+        try:
+            date.fromisoformat(chosen["date"])
+            usable = (chosen["budget_category"] and chosen["description"]
+                      and math.isfinite(chosen["amount"]) and chosen["amount"] != 0)
+        except (KeyError, TypeError, ValueError):
+            continue
+        if usable:
+            out.append(entry)
+    return out
+
+
+def adjustment_rows(path: str | None = None) -> pd.DataFrame:
+    """Adjustments as ledger rows (person, date, month, category, spend)."""
+    rows = [{"person": a["set"].get("person", ""), "date": a["set"]["date"],
+             "month": a["set"]["date"][:7], "category": a["set"]["budget_category"],
+             "spend": float(a["set"]["amount"])} for a in adjustments(path)]
+    return pd.DataFrame(rows, columns=["person", "date", "month", "category", "spend"])

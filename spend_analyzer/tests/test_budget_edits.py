@@ -145,3 +145,53 @@ def test_given_no_overrides_when_annotated_then_only_model_spend_is_counted():
 
     assert out["budget_cat"].tolist() == ["Dining Out", None, None, None, None]
     assert out["budget_amount"].tolist() == [30.0, 0.0, 0.0, 0.0, 0.0]
+
+
+def _adjustment(**over):
+    base = dict(day="2026-01-01", description="Honeymoon offset", category="Travel",
+                amount=-10000.0, person="Jordan")
+    return budget_edits.build_adjustment(**{**base, **over})
+
+
+def test_given_an_adjustment_when_built_then_a_signed_budget_adjust_entry():
+    entry = _adjustment(note=" gift ")
+
+    assert entry["action"] == "budget_adjust" and entry["note"] == "gift"
+    assert entry["set"] == {"date": "2026-01-01", "description": "Honeymoon offset",
+                            "budget_category": "Travel", "amount": -10000.0, "person": "Jordan"}
+
+
+@pytest.mark.parametrize("over", [
+    {"day": "01/02/2026"}, {"day": ""}, {"description": "  "}, {"category": ""},
+    {"amount": 0.0}, {"amount": float("nan")}, {"amount": float("inf")}])
+def test_given_a_defective_adjustment_when_built_then_value_error(over):
+    with pytest.raises(ValueError):
+        _adjustment(**over)
+
+
+def test_given_adjustments_in_the_log_when_listed_then_revoked_and_malformed_ones_are_dropped(tmp_path):
+    keep, revoked = _adjustment(), _adjustment(description="Undone")
+    revoke = {"id": "r1", "action": "revoke", "revokes": revoked["id"]}
+    malformed = [{"id": "m1", "action": "budget_adjust", "set": {"date": "2026-13-45"}},
+                 {"id": "m2", "action": "budget_adjust"},
+                 {"id": "m3", "action": "budget_adjust", "set": {"date": "2026-01-01",
+                  "budget_category": "A", "description": "d", "amount": "ten"}}]
+    path = _log(tmp_path, keep, revoked, revoke, *malformed, _edit(category="Travel"))
+
+    assert [a["id"] for a in budget_edits.adjustments(path)] == [keep["id"]]
+
+
+def test_given_adjustments_when_turned_into_rows_then_ledger_shaped_with_signed_spend(tmp_path):
+    path = _log(tmp_path, _adjustment(), _adjustment(day="2026-02-03", amount=50.0, person="",
+                                                      category="House"))
+
+    rows = budget_edits.adjustment_rows(path)
+
+    assert rows.columns.tolist() == ["person", "date", "month", "category", "spend"]
+    assert rows["month"].tolist() == ["2026-01", "2026-02"] and rows["spend"].tolist() == [-10000.0, 50.0]
+
+
+def test_given_no_adjustments_when_turned_into_rows_then_an_empty_frame_with_the_columns(tmp_path):
+    rows = budget_edits.adjustment_rows(str(tmp_path / "absent.jsonl"))
+
+    assert rows.empty and rows.columns.tolist() == ["person", "date", "month", "category", "spend"]
