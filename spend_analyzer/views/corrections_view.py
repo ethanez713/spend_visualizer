@@ -14,13 +14,17 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+import budget_edits
 import corrections as corr
 import manual_edits
 from viz import sanitize_for_csv, table_height
+from views._widgets import all_raw_records
 
 
 def render() -> None:
     _render_overrides()
+    st.divider()
+    _render_budget_edits()
     st.divider()
     _render_triage_notes()
 
@@ -78,6 +82,45 @@ def _render_overrides() -> None:
     with st.expander(f"Revoke an override · {len(items)}"):
         st.caption("The row reverts and is re-audited on the next categorize run.")
         _revoke_list(items, rows)
+
+
+def _outcome(edit: dict) -> str:
+    chosen = edit["set"]
+    if chosen.get("budget_category"):
+        return chosen["budget_category"]
+    return "Not budget spending" if chosen.get("exclude") else "(note only)"
+
+
+def _render_budget_edits() -> None:
+    """Where the household counts each transaction in the Budget tab."""
+    st.subheader("Budget edits")
+    if manual_edits.status():
+        st.caption("Intent log unavailable.")
+        return
+    items = budget_edits.current()
+    st.caption("A budget edit sets the category the Budget tab counts a transaction under, "
+               "leaves it out, or only adds a note. It never changes the Plaid category, and "
+               "revoking one hands the row back to the budget model at once.")
+    if not items:
+        st.info("No budget edits yet. Use ‘Set the budget category…’ under the Transactions table.")
+        return
+    records = all_raw_records()
+    covers = {**manual_edits.affected_counts([e for e in items if e["set"]], records),
+              **manual_edits.affected_counts([e for e in items if not e["set"]], records)}
+    rows = [{"id": e["id"], "when": e["created_at"], "scope": e["scope"], "target": _target(e),
+             "counts as": _outcome(e), "rows covered": covers.get(e["id"], 0),
+             "note": e.get("note", "")} for e in items]
+    st.dataframe(pd.DataFrame(rows).iloc[::-1], width="stretch", hide_index=True,
+                 height=table_height(len(rows), 12))
+    with st.expander(f"Revoke a budget edit · {len(items)}"):
+        for e, row in zip(reversed(items), reversed(rows)):
+            c1, c2 = st.columns([5, 1])
+            c1.write(f"`{e['id']}` · {e['scope']} · **{row['target']}** → {row['counts as']} · "
+                     f"covers {row['rows covered']} row(s)"
+                     + (f" — {e['note']}" if e.get("note") else ""))
+            if c2.button("Revoke", key=f"revoke_budget_{e['id']}"):
+                manual_edits.revoke(e["id"])
+                st.rerun()
 
 
 def _target(it: dict) -> str:

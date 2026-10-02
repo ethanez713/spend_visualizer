@@ -4,8 +4,11 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from budget_table import known_categories
+from config_io import Budget
 from cube import Cube, GroupingSpec
 from viz import money, sanitize_for_csv
+from views._budget_edit import bulk_panel
 from views._widgets import transaction_detail
 
 _SORTS = {"Newest": ("date_resolved", False), "Oldest": ("date_resolved", True),
@@ -23,9 +26,23 @@ def search(rows: pd.DataFrame, text: str) -> pd.DataFrame:
     return rows[mask]
 
 
-def render(cube: Cube, spec: GroupingSpec) -> None:
-    rows = cube.filtered(GroupingSpec(filters=spec.filters, date_from=spec.date_from,
+def unclassified_transfers(rows: pd.DataFrame) -> pd.DataFrame:
+    """Transfers the budget ignores and nobody has decided about yet: a Venmo paid back,
+    a group booking split, money moved between accounts."""
+    return rows[(rows["flow"] == "excluded") & rows["atom"].str.startswith("TRANSFER_")
+                & (rows["budget_edit_id"] == "")]
+
+
+def render(cube: Cube, spec: GroupingSpec, budget: Budget) -> None:
+    transfers_only = st.toggle(
+        "Only transfers nobody has classified (ignores the Flow filter)", key="txn_transfers",
+        help="Transfers are left out of the budget until you say what they were: spending, "
+             "money back, or not budget spending at all.")
+    filters = {k: v for k, v in spec.filters.items() if not (transfers_only and k == "flow")}
+    rows = cube.filtered(GroupingSpec(filters=filters, date_from=spec.date_from,
                                       date_to=spec.date_to, include_hidden=True))
+    if transfers_only:
+        rows = unclassified_transfers(rows)
     c = st.columns([4, 3, 2, 2])
     text = c[0].text_input("Search", key="txn_search",
                            placeholder="Description or merchant")
@@ -52,6 +69,8 @@ def render(cube: Cube, spec: GroupingSpec) -> None:
     col, ascending = _SORTS[sort]
     transaction_detail(out, title="Matching", key="txn_tab", sort=col, ascending=ascending,
                        max_rows=25)
+    bulk_panel(out, search=text, key="txn_budget",
+               categories=known_categories(budget, cube.df["budget_cat"].dropna().unique()))
     export = out[[c for c in _EXPORT_COLS if c in out.columns]]
     st.download_button(f"Download {len(out)} rows as CSV · {money(out['display_amount'].sum())}",
                        sanitize_for_csv(export).to_csv(index=False),

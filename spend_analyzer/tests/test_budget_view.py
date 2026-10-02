@@ -126,3 +126,14 @@ def test_given_no_imported_rows_when_added_then_pivot_unchanged():
     pivot = pd.DataFrame({"2026-04": [10.0]}, index=["House"])
 
     assert _add_legacy(pivot, pd.DataFrame(), _spec()) is pivot
+
+
+def test_given_transfer_rows_when_filtered_then_only_unclassified_excluded_transfers_remain():
+    from views.transactions import unclassified_transfers
+    rows = pd.DataFrame({
+        "flow": ["excluded", "excluded", "excluded", "spend", "excluded"],
+        "atom": ["TRANSFER_OUT_FROM_APPS", "TRANSFER_IN_FROM_APPS", "TRANSFER_OUT_FROM_APPS",
+                 "TRANSFER_OUT_FROM_APPS", "LOAN_PAYMENTS_CREDIT_CARD_PAYMENT"],
+        "budget_edit_id": ["", "", "e1", "", ""]})
+
+    assert unclassified_transfers(rows).index.tolist() == [0, 1]

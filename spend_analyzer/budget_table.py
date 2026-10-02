@@ -94,3 +94,13 @@ def historic_detail(yearly: pd.DataFrame, goals: dict[str, dict[str, float]]) ->
         columns[f"{year} actual"] = [float(yearly.loc[c, year]) if c in yearly.index else 0.0 for c in cats]
         columns[f"{year} goal"] = [goals.get(year, {}).get(c, float("nan")) for c in cats]
     return pd.DataFrame(columns, index=pd.Index(cats, name="Category"))
+
+
+def known_categories(budget, present) -> list[str]:
+    """The budget categories a row can be given: those the data already uses plus the ones
+    the config names (goals, projects, offset sources and what they offset, pinned rules)."""
+    names = set(present) | set(budget.goal_categories())
+    names |= {p.name for p in budget.projects}
+    for offset in budget.offsets:
+        names |= {offset.source, *offset.spread}
+    return sorted(n for n in names if n)
