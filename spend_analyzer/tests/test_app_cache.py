@@ -56,14 +56,29 @@ def test_personal_config_files_are_stat_in_the_data_root(monkeypatch, tmp_path):
     (project / "app.yaml").write_text("archive_paths: []\n")
     (personal / "accounts.yaml").write_text("acc_1: {person: A}\n")
     (personal / "budget.yaml").write_text("goals: {}\n")
+    mirror = tmp_path / "mirror.csv"
     monkeypatch.setattr(app, "CONFIG_DIR", project)
     monkeypatch.setattr(app, "PERSONAL_CONFIG_DIR", personal)
+    monkeypatch.setattr(app, "MIRROR_CSV", mirror)
     cfg = SimpleNamespace(resolved_archive_paths=[])
 
     before = app._config_signature(cfg)
     assert _sig_names(before) == {"app.yaml", "accounts.yaml", "budget.yaml",
-                                  "manual_edits.jsonl"}
+                                  "manual_edits.jsonl", str(mirror)}
 
     (personal / "accounts.yaml").write_text("acc_1: {person: A, include: false}\n")
     assert app._config_signature(cfg) != before, \
         "editing the personal accounts.yaml must bust the cube cache"
+
+
+def test_given_the_collector_mirror_changes_when_signed_then_the_cube_cache_busts(
+        monkeypatch, tmp_path):
+    mirror = tmp_path / "mirror.csv"
+    mirror.write_text("transaction_id\na\n")
+    monkeypatch.setattr(app, "MIRROR_CSV", mirror)
+    cfg = SimpleNamespace(resolved_archive_paths=[])
+
+    before = app._config_signature(cfg)
+    mirror.write_text("transaction_id\na\nb\n")
+
+    assert app._config_signature(cfg) != before

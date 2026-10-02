@@ -10,7 +10,7 @@ from typing import Callable, Iterable
 
 from models import CanonicalTransaction
 from .load import load_sources, stat_source, SourceStat
-from .dedupe import dedupe_by_id, drop_settled_pending
+from .dedupe import dedupe_by_id, drop_removed_pending, drop_settled_pending
 from .normalize import normalize
 
 
@@ -26,7 +26,8 @@ class IngestResult:
 
 
 def ingest(paths: Iterable[str],
-           overlay: Callable[[list[dict]], None] | None = None) -> IngestResult:
+           overlay: Callable[[list[dict]], None] | None = None,
+           live_ids: set[str] | None = None) -> IngestResult:
     """`overlay`, when given, mutates the surviving raw records before they are
     normalized — the hook the analyzer uses to replay manual-edit intents the
     categorized store has not caught up with yet."""
@@ -37,6 +38,7 @@ def ingest(paths: Iterable[str],
 
     deduped, n_dupes = dedupe_by_id(raw)
     kept, n_settled = drop_settled_pending(deduped)
+    kept, n_removed = drop_removed_pending(kept, live_ids)
     if overlay is not None:
         overlay(kept)
     txns = normalize(kept)
@@ -46,6 +48,7 @@ def ingest(paths: Iterable[str],
         "n_loaded": n_loaded,
         "n_duplicate_ids_dropped": n_dupes,
         "n_settled_pending_dropped": n_settled,
+        "n_removed_pending_dropped": n_removed,
         "n_transactions": len(txns),
         "n_pending_remaining": n_pending,
     }

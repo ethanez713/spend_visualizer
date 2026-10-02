@@ -40,3 +40,17 @@ def drop_settled_pending(raw_rows: list[dict]) -> tuple[list[dict], int]:
         if not (r.get("pending") and r.get("transaction_id") in superseded)
     ]
     return kept, len(raw_rows) - len(kept)
+
+
+def drop_removed_pending(raw_rows: list[dict], live_ids: set[str] | None) -> tuple[list[dict], int]:
+    """Drop pending rows Plaid no longer reports.
+
+    The durable and categorized stores never delete, so a pending row Plaid removed
+    (cancelled, or replaced under a new id) stays behind as a charge that never
+    happened. ``live_ids`` are the ids the collector's CSV mirror still carries; posted
+    rows are never dropped, and ``None`` (no mirror to check against) drops nothing.
+    """
+    if live_ids is None:
+        return raw_rows, 0
+    kept = [r for r in raw_rows if not r.get("pending") or r.get("transaction_id") in live_ids]
+    return kept, len(raw_rows) - len(kept)
