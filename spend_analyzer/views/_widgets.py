@@ -13,7 +13,8 @@ from viz import (PROVENANCE_BADGES, blank_if_missing, humanize_atom, md_text, mo
 
 # Columns shown in a raw transaction-detail table.
 _TXN_COLS = ["date_resolved", "display_amount", "merchant", "name", "tier1", "tier2",
-             "atom_display", "person", "account_name", "confidence", "why"]
+             "atom_display", "budget_cat", "budget_note", "person", "account_name",
+             "confidence", "why"]
 
 
 def transaction_detail(rows: pd.DataFrame, title: str = "Transactions",
@@ -55,6 +56,10 @@ def transaction_detail(rows: pd.DataFrame, title: str = "Transactions",
             "tier1": "Category",
             "tier2": "Subcategory",
             "atom_display": "Atom",
+            "budget_cat": st.column_config.TextColumn(
+                "Budget", help="The category the Budget tab counts this under; blank means "
+                               "it is not budget spending."),
+            "budget_note": st.column_config.TextColumn("Note"),
             "display_amount": st.column_config.NumberColumn(
                 "Amount", help="A negative amount is a refund."),
             "person": "Person",
@@ -100,6 +105,10 @@ def _rule_details(sig: tuple) -> dict[str, dict]:
         return rules_bridge.rule_details()
     except Exception:  # noqa: BLE001 — no transformer repo ⇒ no rule lookups
         return {}
+
+
+def all_raw_records() -> list[dict]:
+    return list(_raw_index(manual_edits.archive_sig()).values())
 
 
 def raw_record(transaction_id: str) -> dict | None:
