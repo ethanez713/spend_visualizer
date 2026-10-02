@@ -153,14 +153,66 @@ class MerchantMemory:
             raise
 
 
-def apply_rules(record: dict, memory: MerchantMemory | None = None) -> RuleHit | None:
+_NOT_A_PURCHASE = {"INCOME", "TRANSFER_IN", "TRANSFER_OUT"}
+
+
+def _merchant_keys(record: dict) -> list[str]:
+    keys = []
+    if record.get("merchant_entity_id"):
+        keys.append(f"ent:{record['merchant_entity_id']}")
+    for field in ("merchant_name", "name"):
+        norm = normalize_merchant(record.get(field) or "")
+        if norm and f"name:{norm}" not in keys:
+            keys.append(f"name:{norm}")
+    return keys
+
+
+class RefundIndex:
+    """Plaid files some card refunds under INCOME (a merchant it reads as a payer). A
+    refund can never exceed the charge it reverses, which is what separates one from real
+    income: payroll never reverses an earlier charge on the same account."""
+
+    def __init__(self, store: dict[str, dict]):
+        self._charges: dict[tuple, list[tuple[str, float, str, str]]] = {}
+        for rec in store.values():
+            pfc = rec.get("personal_finance_category") or {}
+            amount = rec.get("amount")
+            if (not isinstance(amount, (int, float)) or amount <= 0
+                    or not pfc.get("primary") or pfc["primary"] in _NOT_A_PURCHASE):
+                continue
+            for key in _merchant_keys(rec):
+                self._charges.setdefault((rec.get("account_id"), key), []).append(
+                    (rec.get("date") or "", amount, pfc["primary"], pfc["detailed"]))
+
+    def lookup(self, record: dict) -> RuleHit | None:
+        pfc = record.get("personal_finance_category") or {}
+        amount = record.get("amount")
+        if pfc.get("primary") != "INCOME" or not isinstance(amount, (int, float)) or amount >= 0:
+            return None
+        date = record.get("date") or ""
+        for key in _merchant_keys(record):
+            reversible = [c for c in self._charges.get((record.get("account_id"), key), [])
+                          if c[0] <= date and c[1] >= -amount]
+            if reversible:
+                _, _, primary, detailed = max(reversible, key=lambda c: c[0])
+                return RuleHit(primary, detailed, "refund:same-merchant", "MEDIUM", "auto")
+        return None
+
+
+def apply_rules(record: dict, memory: MerchantMemory | None = None,
+                refunds: RefundIndex | None = None) -> RuleHit | None:
     """Return the first mechanical suggestion for ``record``, or None.
 
-    Order (first hit wins): merchant memory → POS prefix → website → keywords. Any hit
-    whose ``(primary, detailed)`` is not valid in the vendored taxonomy is skipped (so a
-    typo'd rule table can never emit an out-of-taxonomy category).
+    Order (first hit wins): refund of an earlier charge → merchant memory → POS prefix →
+    website → keywords. Any hit whose ``(primary, detailed)`` is not valid in the vendored
+    taxonomy is skipped (so a typo'd rule table can never emit an out-of-taxonomy category).
     """
     candidates: list[RuleHit] = []
+
+    if refunds is not None:
+        hit = refunds.lookup(record)
+        if hit:
+            candidates.append(hit)
 
     if memory is not None:
         hit = memory.lookup(record)
