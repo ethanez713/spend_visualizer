@@ -16,7 +16,7 @@ from tools.sheet_ledger import Row, budget_tab, ledger_rows, parse_date, parse_m
 D = date
 
 
-def row(day, desc, net, category="Dining Out", source="Ethan", ref=1):
+def row(day, desc, net, category="Dining Out", source="Bob", ref=1):
     return Row(source, day, desc, category, net, "", ref)
 
 
@@ -87,10 +87,10 @@ def given_categories_that_differ_when_grouped_then_counted_by_direction():
 
 
 def given_card_attributed_to_different_people_when_compared_then_person_diff_counted():
-    sheet = [row(D(2026, 6, 2), "A", 5.0, source="Ethan")]
-    ledger = [row(D(2026, 6, 2), "A", 5.0, source="Jordan")]
+    sheet = [row(D(2026, 6, 2), "A", 5.0, source="Bob")]
+    ledger = [row(D(2026, 6, 2), "A", 5.0, source="Alice")]
 
-    assert sc.source_diffs(_compare(sheet, ledger)) == {("Jordan", "Ethan"): 1}
+    assert sc.source_diffs(_compare(sheet, ledger)) == {("Alice", "Bob"): 1}
 
 
 def given_pending_charge_exported_again_when_settled_then_flagged_as_duplicate():
@@ -113,7 +113,7 @@ def given_refund_booked_with_opposite_sign_when_compared_then_flagged_as_sign_fl
     assert (s.net, l.net) == (-333.6, 333.6)
 
 
-def _moved(n, merchant="Corner Bistro", frm="Dining Out", to="Entertainment"):
+def _moved(n, merchant="Sing Along Bar", frm="Dining Out", to="Entertainment"):
     sheet = [row(D(2026, 5, i + 1), merchant, 50.0 + i, to, ref=i) for i in range(n)]
     ledger = [row(D(2026, 5, i + 1), merchant, 50.0 + i, frm, ref=i) for i in range(n)]
     return sheet, ledger
@@ -122,7 +122,7 @@ def _moved(n, merchant="Corner Bistro", frm="Dining Out", to="Entertainment"):
 def given_merchant_always_moved_the_same_way_when_three_rows_then_rule_candidate():
     candidates, contested = sc.rule_suggestions(_compare(*_moved(3)))
 
-    assert [(e["merchant"], e["rows"]) for e in candidates] == [("corner bistro", 3)] and contested == []
+    assert [(e["merchant"], e["rows"]) for e in candidates] == [("sing along bar", 3)] and contested == []
 
 
 def given_merchant_moved_in_only_two_rows_when_suggesting_then_nothing_yet():
@@ -131,8 +131,8 @@ def given_merchant_moved_in_only_two_rows_when_suggesting_then_nothing_yet():
 
 def given_merchant_with_an_agreeing_row_when_suggesting_then_contested_not_candidate():
     sheet, ledger = _moved(3)
-    sheet.append(row(D(2026, 5, 20), "Corner Bistro", 12.0, "Dining Out", ref=9))
-    ledger.append(row(D(2026, 5, 20), "Corner Bistro", 12.0, "Dining Out", ref=9))
+    sheet.append(row(D(2026, 5, 20), "Sing Along Bar", 12.0, "Dining Out", ref=9))
+    ledger.append(row(D(2026, 5, 20), "Sing Along Bar", 12.0, "Dining Out", ref=9))
 
     candidates, contested = sc.rule_suggestions(_compare(sheet, ledger))
 
@@ -175,10 +175,10 @@ def _year_book(path):
                    ["", "Mortgage", 4500.0, 4500.0], ["", "Dining Out", 1162.0, 1167.0],
                    ["", "Total", 5662.0, 5667.0]],
         "2026": [["Source", "Date", "Description", "Category", "Debit", "Credit", "Net", "Note"],
-                 ["Ethan", D(2026, 4, 2), "Trader Joe's", "Groceries", None, None, 40.0, "Europe"],
+                 ["Bob", D(2026, 4, 2), "Trader Joe's", "Groceries", None, None, 40.0, "Europe"],
                  ["DUMMY", D(2026, 1, 1), None, "Mortgage", 0.0, None, 0.0],
-                 ["Jordan", "4/14/2026", "Café 'Chez Jordan'", "Dining Out", None, None, "-12.50"],
-                 ["Jordan", None, "no date", "Dining Out", None, None, 9.0]],
+                 ["Alice", "4/14/2026", "Café 'Chez Alice'", "Dining Out", None, None, "-12.50"],
+                 ["Alice", None, "no date", "Dining Out", None, None, 9.0]],
     })
 
 
@@ -189,8 +189,8 @@ def given_year_tab_when_read_then_dated_nonzero_rows_with_their_fields(tmp_path)
     rows = year_tab_rows(book, 2026)
 
     assert [(r.source, r.date, r.desc, r.net, r.note) for r in rows] == [
-        ("Ethan", D(2026, 4, 2), "Trader Joe's", 40.0, "Europe"),
-        ("Jordan", D(2026, 4, 14), "Café 'Chez Jordan'", -12.5, "")]
+        ("Bob", D(2026, 4, 2), "Trader Joe's", 40.0, "Europe"),
+        ("Alice", D(2026, 4, 14), "Café 'Chez Alice'", -12.5, "")]
 
 
 def given_budget_tab_when_read_then_categories_with_average_and_goal(tmp_path):
@@ -210,10 +210,10 @@ def _ledger_csv(path, *lines):
 def given_ledger_csv_when_read_then_rows_parsed_and_warning_rows_counted(tmp_path):
     csv_path = tmp_path / "l.csv"
     _ledger_csv(csv_path,
-                "Ethan,04/02/2026,Trader Joe's,Groceries,$40.00,,$40.00,Visa (1111),",
-                "Jordan,04/03/2026,'=SUM(A1),Other,$5.00,,$5.00,,PENDING",
+                "Bob,04/02/2026,Trader Joe's,Groceries,$40.00,,$40.00,Visa (1111),",
+                "Alice,04/03/2026,'=SUM(A1),Other,$5.00,,$5.00,,PENDING",
                 ",04/04/2026,Old row,Other,,,,,⚠ REMOVED SINCE LAST EXECUTION",
-                "Ethan,not-a-date,Bad,Other,$1.00,,$1.00,,")
+                "Bob,not-a-date,Bad,Other,$1.00,,$1.00,,")
 
     rows, warnings = ledger_rows(csv_path)
 
@@ -226,8 +226,8 @@ def given_workbook_and_ledger_when_cli_runs_then_report_printed_and_findings_wri
     book, data_root = tmp_path / "f.xlsx", tmp_path / "data"
     _year_book(book)
     ledger = tmp_path / "l.csv"
-    _ledger_csv(ledger, "Ethan,04/02/2026,Trader Joe's,Groceries,$40.00,,$40.00,Visa (1111),",
-                "Jordan,04/14/2026,Cafe Chez Jordan,Entertainment,,$12.50,-$12.50,Visa (1111),")
+    _ledger_csv(ledger, "Bob,04/02/2026,Trader Joe's,Groceries,$40.00,,$40.00,Visa (1111),",
+                "Alice,04/14/2026,Cafe Chez Alice,Entertainment,,$12.50,-$12.50,Visa (1111),")
 
     assert sc.main(["--xlsx", str(book), "--year", "2026", "--ledger", str(ledger),
                     "--data-root", str(data_root)]) == 0
@@ -245,7 +245,7 @@ def given_no_write_flag_when_cli_runs_then_nothing_is_written(tmp_path, capsys):
     book, data_root = tmp_path / "f.xlsx", tmp_path / "data"
     _year_book(book)
     ledger = tmp_path / "l.csv"
-    _ledger_csv(ledger, "Ethan,04/02/2026,Trader Joe's,Groceries,$40.00,,$40.00,,")
+    _ledger_csv(ledger, "Bob,04/02/2026,Trader Joe's,Groceries,$40.00,,$40.00,,")
 
     sc.main(["--xlsx", str(book), "--year", "2026", "--ledger", str(ledger),
              "--data-root", str(data_root), "--no-write"])

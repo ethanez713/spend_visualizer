@@ -9,9 +9,9 @@ from tools.xlsx_read import excel_date, read_sheet, sheet_names
 
 def given_text_and_numbers_when_read_then_values_keyed_by_row_and_column(tmp_path):
     book = tmp_path / "b.xlsx"
-    make_xlsx(book, {"S": [["Source", "Amount"], ["Ethan", 12.5]]})
+    make_xlsx(book, {"S": [["Source", "Amount"], ["Bob", 12.5]]})
 
-    assert read_sheet(book, "S") == {1: {"A": "Source", "B": "Amount"}, 2: {"A": "Ethan", "B": 12.5}}
+    assert read_sheet(book, "S") == {1: {"A": "Source", "B": "Amount"}, 2: {"A": "Bob", "B": 12.5}}
 
 
 def given_empty_cells_when_read_then_absent_from_row(tmp_path):

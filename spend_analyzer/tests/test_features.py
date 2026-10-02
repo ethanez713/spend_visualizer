@@ -134,19 +134,19 @@ def _stamped(tid, account, owner):
 def test_given_account_spender_when_enriched_then_it_beats_the_link_owner_stamp():
     from enrich import enrich
 
-    accounts = {"shared": {"person": "Ethan", "spender": "Jordan"}, "mine": {"person": "Ethan"}}
-    df = enrich([_stamped("t1", "shared", "Ethan"), _stamped("t2", "mine", "Ethan")],
+    accounts = {"shared": {"person": "Bob", "spender": "Alice"}, "mine": {"person": "Bob"}}
+    df = enrich([_stamped("t1", "shared", "Bob"), _stamped("t2", "mine", "Bob")],
                 load_taxonomy(), accounts)
 
-    assert dict(zip(df["transaction_id"], df["person"])) == {"t1": "Jordan", "t2": "Ethan"}
+    assert dict(zip(df["transaction_id"], df["person"])) == {"t1": "Alice", "t2": "Bob"}
 
 
 def test_given_no_spender_when_enriched_then_the_owner_stamp_still_wins_over_person():
     from enrich import enrich
 
-    df = enrich([_stamped("t1", "acct", "Ethan")], load_taxonomy(), {"acct": {"person": "Other"}})
+    df = enrich([_stamped("t1", "acct", "Bob")], load_taxonomy(), {"acct": {"person": "Other"}})
 
-    assert list(df["person"]) == ["Ethan"]
+    assert list(df["person"]) == ["Bob"]
 
 
 def test_iso_week_stays_out_of_the_hierarchical_time_path():
