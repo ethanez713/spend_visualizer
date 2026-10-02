@@ -123,7 +123,10 @@ def test_given_no_config_files_when_loaded_then_an_empty_model(tmp_path):
 
 
 def _frame(rows):
-    return pd.DataFrame(rows, columns=["flow", "tier1", "atom", "description"])
+    df = pd.DataFrame(rows, columns=["flow", "tier1", "atom", "description"])
+    df["transaction_id"] = [f"t{i}" for i in range(len(df))]
+    df["amount"] = 10.0
+    return df
 
 
 def test_given_spend_income_and_excluded_rows_when_annotated_then_only_spend_is_categorised():

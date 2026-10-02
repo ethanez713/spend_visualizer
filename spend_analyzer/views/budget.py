@@ -38,17 +38,19 @@ AVERAGING_LABELS = {COMPLETE_MONTHS: "Complete months", MONTHS_WITH_DATA: "Month
 
 
 def _model_pivot(cube: Cube, spec: GroupingSpec) -> pd.DataFrame:
+    """Budget spend by category and month. The sidebar's flow filter does not apply: what
+    counts is decided by the budget model and the household's budget edits."""
     monthly = cube.rollup(
         GroupingSpec(
             group_by=["budget_cat", "month"],
-            filters={**spec.filters, "flow": "spend"},
+            filters={k: v for k, v in spec.filters.items() if k != "flow"},
             date_from=spec.date_from, date_to=spec.date_to,
-            measures=["spend"], order_by=None, include_hidden=True,
+            measures=["budget_amount"], order_by=None, include_hidden=True,
         )
     ).dropna(subset=["budget_cat"])
     if monthly.empty:
         return pd.DataFrame()
-    return monthly.pivot_table(index="budget_cat", columns="month", values="spend",
+    return monthly.pivot_table(index="budget_cat", columns="month", values="budget_amount",
                                aggfunc="sum").fillna(0.0)
 
 

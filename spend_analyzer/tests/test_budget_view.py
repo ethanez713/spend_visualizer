@@ -8,6 +8,7 @@ from views.budget import LEDGER_SOURCE, MODEL_SOURCE, _model_pivot, compare_aver
 def _cube(rows):
     df = pd.DataFrame(rows, columns=["date_resolved", "flow", "budget_cat", "person", "spend"])
     df["month"] = df["date_resolved"].str[:7]
+    df["budget_amount"] = df["spend"].where(df["budget_cat"].notna(), 0.0)
     df["count"] = 1
     df["hidden"] = False
     return Cube(df)
@@ -29,11 +30,11 @@ def test_given_spend_rows_when_pivoted_then_category_by_month_sums():
     assert pivot.loc["Groceries", "2026-04"] == 5.0
 
 
-def test_given_refund_and_dropped_rows_when_pivoted_then_refund_nets_and_dropped_is_absent():
+def test_given_refund_and_uncategorised_rows_when_pivoted_then_refund_nets_and_they_are_absent():
     cube = _cube([("2026-04-02", "spend", "House", "A", 100.0),
                   ("2026-04-09", "spend", "House", "A", -40.0),
                   ("2026-04-10", "spend", None, "A", 999.0),
-                  ("2026-04-11", "income", "Other", "A", 5000.0)])
+                  ("2026-04-11", "income", None, "A", 5000.0)])
 
     pivot = _model_pivot(cube, _spec())
 
@@ -50,8 +51,14 @@ def test_given_person_and_date_filters_when_pivoted_then_both_apply():
     assert pivot.loc["Travel"].to_dict() == {"2026-04": 10.0}
 
 
-def test_given_no_spend_when_pivoted_then_empty_frame():
-    assert _model_pivot(_cube([("2026-04-02", "income", "Other", "A", 5.0)]), _spec()).empty
+def test_given_nothing_categorised_when_pivoted_then_empty_frame():
+    assert _model_pivot(_cube([("2026-04-02", "income", None, "A", 5.0)]), _spec()).empty
+
+
+def test_given_an_edit_counted_a_non_spend_row_when_pivoted_then_it_is_included_whatever_the_flow():
+    cube = _cube([("2026-04-02", "excluded", "Travel", "A", 40.0)])
+
+    assert _model_pivot(cube, _spec(filters={"flow": "spend"})).loc["Travel", "2026-04"] == 40.0
 
 
 def _pivot(**by_category):

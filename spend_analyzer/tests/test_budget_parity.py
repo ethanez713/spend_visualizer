@@ -86,7 +86,8 @@ def _analyzer_categories(model):
     df = annotate(enrich(txns, load_taxonomy(), {}), model)
     spent = df[df["budget_cat"].notna()]
     return {tid: (cat, round(float(s), 2))
-            for tid, cat, s in zip(spent["transaction_id"], spent["budget_cat"], spent["spend"])}
+            for tid, cat, s in zip(spent["transaction_id"], spent["budget_cat"],
+                                   spent["budget_amount"])}
 
 
 def _converter_categories(bridge):

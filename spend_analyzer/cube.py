@@ -37,6 +37,7 @@ MEASURES_SQL = {
     "count": "SUM(count)",
     "net": "SUM(income) - SUM(spend)",
     "abs_amount": "SUM(abs_amount)",
+    "budget_amount": "SUM(budget_amount)",
 }
 
 
