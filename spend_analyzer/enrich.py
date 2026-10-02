@@ -193,8 +193,10 @@ def enrich(
                 "dow": tm["dow"],
                 "time_path": tm["path"],
                 # facets — the record's own owner stamp (collector-written) wins;
-                # accounts.yaml `person` is the fallback for un-stamped history.
-                "person": t.owner or acct.get("person", "Unknown"),
+                # accounts.yaml `person` is the fallback for un-stamped history. A shared
+                # card's link owner is not who spends on it, so an account's `spender`
+                # beats both.
+                "person": acct.get("spender") or t.owner or acct.get("person", "Unknown"),
                 "channel": t.payment_channel or "unknown",
                 "account_type": acct.get("type", "unknown"),
                 "account_name": acct.get("name", (t.account_id or "?")[:8]),
