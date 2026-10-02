@@ -137,3 +137,27 @@ def given_memory_saved_when_reloaded_then_round_trips_and_is_owner_only(tmp_path
     reloaded = MerchantMemory(path=str(path))
     hit = reloaded.lookup(rec)
     assert (hit.primary, hit.detailed) == ("FOOD_AND_DRINK", "FOOD_AND_DRINK_COFFEE")
+
+
+def given_name_memory_flag_and_an_auto_prefix_when_applied_then_the_auto_rule_wins(make_record):
+    mem = MerchantMemory(path=None)
+    seed = make_record(merchant_entity_id=None, merchant_name="COT")
+    mem.remember(seed, "GENERAL_MERCHANDISE", "GENERAL_MERCHANDISE_OTHER_GENERAL_MERCHANDISE")
+    rec = make_record(merchant_entity_id=None, merchant_name="COT", website=None,
+                      name="COT*FLT", original_description="COT*FLT")
+
+    hit = apply_rules(rec, mem)
+
+    assert (hit.detailed, hit.trust, hit.rule_name) == ("TRAVEL_FLIGHTS", "auto", "pos:cot*flt")
+
+
+def given_only_flag_hits_when_applied_then_the_first_still_wins(make_record):
+    mem = MerchantMemory(path=None)
+    seed = make_record(merchant_entity_id=None, merchant_name="Joe's Diner")
+    mem.remember(seed, "FOOD_AND_DRINK", "FOOD_AND_DRINK_RESTAURANT")
+    rec = make_record(merchant_entity_id=None, merchant_name="JOE'S DINER", website=None,
+                      name="TST* JOES", original_description="TST* JOES")
+
+    hit = apply_rules(rec, mem)
+
+    assert (hit.rule_name, hit.trust) == ("memory:name", "flag")

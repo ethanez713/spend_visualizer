@@ -203,8 +203,8 @@ def apply_rules(record: dict, memory: MerchantMemory | None = None,
                 refunds: RefundIndex | None = None) -> RuleHit | None:
     """Return the first mechanical suggestion for ``record``, or None.
 
-    Order (first hit wins): refund of an earlier charge → merchant memory → POS prefix →
-    website → keywords. Any hit whose ``(primary, detailed)`` is not valid in the vendored
+    Order (first hit wins, except that an ``auto`` hit beats a ``flag`` one): refund of an
+    earlier charge → merchant memory → POS prefix → website → keywords. Any hit whose ``(primary, detailed)`` is not valid in the vendored
     taxonomy is skipped (so a typo'd rule table can never emit an out-of-taxonomy category).
     """
     candidates: list[RuleHit] = []
@@ -241,7 +241,7 @@ def apply_rules(record: dict, memory: MerchantMemory | None = None,
             candidates.append(RuleHit(p, d, f"keyword:{kw}", "MEDIUM", trust))
             break
 
-    for hit in candidates:
-        if is_valid(hit.primary, hit.detailed):
-            return hit
-    return None
+    valid = [hit for hit in candidates if is_valid(hit.primary, hit.detailed)]
+    # A hit the pipeline may apply outranks one it may only suggest, wherever the cascade
+    # found it: a name-keyed memory entry (flag) must not hide the COT*FLT prefix (auto).
+    return next((hit for hit in valid if hit.trust == "auto"), valid[0] if valid else None)
