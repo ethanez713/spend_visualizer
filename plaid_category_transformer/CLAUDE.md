@@ -22,6 +22,10 @@ explicit in-session go-ahead, no data in-repo).
   what replay uses; the analyzer's Review view writes `edit`/`dismiss` and is the
   in-app equivalent of `--review` (which still works, and teaches merchant memory
   where the in-app path writes a merchant-scope intent instead).
+  The log is shared with the spend analyzer's budget layer, which appends `budget_edit`
+  and `budget_adjust` entries (a budget category, note or manual row; never a PFC
+  category). Replay and `resolve_intents` ignore `src.manual.ANALYZER_ACTIONS` silently;
+  a transformer older than that skips them with a warning per entry, nothing worse.
 - **Flag-policy guards** (2026-06 LLM audit, `LLM_ASSESSMENT.md`), applied in
   `_decide`, suppress only review FLAGS (auto-applies are exempt): (1) **sign guard**
   `transformer._sign_violation` drops an LLM suggestion that puts a `config.INFLOW_PRIMARIES`

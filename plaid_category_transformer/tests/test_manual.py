@@ -436,3 +436,45 @@ def given_a_description_intent_when_replayed_then_future_rows_are_covered_and_re
     apply_manual_edits(store, ManualIndex(resolve_intents([it, build_revoke(it["id"])])))
     assert future["category_update_step"] == "" and future[SOURCE_HASH_FIELD] == \
         HASH_PENDING_REVOKED
+
+
+def given_budget_actions_in_the_log_when_resolved_then_skipped_without_a_warning(
+        make_record, capsys):
+    budget = {"id": "b1", "action": "budget_edit", "scope": "transaction",
+              "match": {"transaction_id": "txn_1"}, "set": {"budget_category": "House"}}
+    adjust = {"id": "b2", "action": "budget_adjust", "set": {"amount": -10.0}}
+    edit = _intent(make_record())
+
+    assert resolve_intents([budget, adjust, edit]) == [edit]
+    assert capsys.readouterr().err == ""
+
+
+def given_a_budget_intent_that_is_revoked_when_resolved_then_the_edit_still_resolves(make_record):
+    budget = {"id": "b1", "action": "budget_edit", "scope": "transaction",
+              "match": {"transaction_id": "txn_1"}, "set": {"budget_category": "House"}}
+    edit = _intent(make_record())
+
+    assert resolve_intents([budget, build_revoke("b1"), edit]) == [edit]
+
+
+def given_unknown_action_other_than_budget_ones_when_resolved_then_still_warned(capsys):
+    assert resolve_intents([{"id": "x", "action": "mystery"}]) == []
+    assert "unknown action" in capsys.readouterr().err
+
+
+def given_each_scope_when_match_built_then_it_equals_the_intents_match(make_record):
+    from src.manual import build_match
+    rec = make_record(name="Blue Bottle Coffee Roasters", original_description="")
+
+    for scope, phrase in (("transaction", None), ("merchant", None), ("description", "blue bottle")):
+        assert build_match(scope, rec, phrase) == _intent(rec, scope=scope, phrase=phrase)["match"]
+
+
+def given_bad_match_input_when_built_then_value_error(make_record):
+    from src.manual import build_match
+    with pytest.raises(ValueError):
+        build_match("transaction", make_record(transaction_id=None))
+    with pytest.raises(ValueError):
+        build_match("description", make_record(), "ab")
+    with pytest.raises(ValueError):
+        build_match("galaxy", make_record())
