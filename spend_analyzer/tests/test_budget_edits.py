@@ -149,7 +149,7 @@ def test_given_no_overrides_when_annotated_then_only_model_spend_is_counted():
 
 def _adjustment(**over):
     base = dict(day="2026-01-01", description="Honeymoon offset", category="Travel",
-                amount=-10000.0, person="Jordan")
+                amount=-10000.0, person="Alice")
     return budget_edits.build_adjustment(**{**base, **over})
 
 
@@ -158,7 +158,7 @@ def test_given_an_adjustment_when_built_then_a_signed_budget_adjust_entry():
 
     assert entry["action"] == "budget_adjust" and entry["note"] == "gift"
     assert entry["set"] == {"date": "2026-01-01", "description": "Honeymoon offset",
-                            "budget_category": "Travel", "amount": -10000.0, "person": "Jordan"}
+                            "budget_category": "Travel", "amount": -10000.0, "person": "Alice"}
 
 
 @pytest.mark.parametrize("over", [

@@ -66,9 +66,9 @@ def _imported_history(monkeypatch, tmp_path):
     ledger, goals = tmp_path / "legacy_ledger.csv", tmp_path / "legacy_goals.json"
     ledger.write_text(
         "Source,Date,Description,Category,Debit,Credit,Debit Less Credit,Account,Note\n"
-        "Ethan,01/05/2026,Dress,Wedding,$3000.00,,$3000.00,,\n"
-        "Ethan,02/05/2026,Venue,Wedding,$3000.00,,$3000.00,,\n"
-        "Ethan,11/05/2025,Deposit,Wedding,$2800.00,,$2800.00,,\n", encoding="utf-8")
+        "Bob,01/05/2026,Dress,Wedding,$3000.00,,$3000.00,,\n"
+        "Bob,02/05/2026,Venue,Wedding,$3000.00,,$3000.00,,\n"
+        "Bob,11/05/2025,Deposit,Wedding,$2800.00,,$2800.00,,\n", encoding="utf-8")
     goals.write_text(json.dumps({"2025": {"Wedding": 2900}}))
     monkeypatch.setattr(legacy, "LEDGER", ledger)
     monkeypatch.setattr(legacy, "GOALS", goals)

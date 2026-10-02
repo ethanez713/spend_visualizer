@@ -42,11 +42,11 @@ def test_given_refund_and_uncategorised_rows_when_pivoted_then_refund_nets_and_t
 
 
 def test_given_person_and_date_filters_when_pivoted_then_both_apply():
-    cube = _cube([("2026-04-02", "spend", "Travel", "Jordan", 10.0),
-                  ("2026-04-03", "spend", "Travel", "Ethan", 20.0),
-                  ("2026-05-03", "spend", "Travel", "Jordan", 40.0)])
+    cube = _cube([("2026-04-02", "spend", "Travel", "Alice", 10.0),
+                  ("2026-04-03", "spend", "Travel", "Bob", 20.0),
+                  ("2026-05-03", "spend", "Travel", "Alice", 40.0)])
 
-    pivot = _model_pivot(cube, _spec(filters={"person": ["Jordan"]}, date_to="2026-04-30"))
+    pivot = _model_pivot(cube, _spec(filters={"person": ["Alice"]}, date_to="2026-04-30"))
 
     assert pivot.loc["Travel"].to_dict() == {"2026-04": 10.0}
 
@@ -113,10 +113,10 @@ def test_given_imported_rows_when_added_then_their_months_join_the_pivot_and_ove
 
 def test_given_person_and_date_filters_when_imported_rows_added_then_both_apply():
     from views.budget import _add_legacy
-    rows = _imported(("Jordan", "2026-02-10", "Rent", 7.0), ("Ethan", "2026-02-11", "Rent", 3.0),
-                     ("Jordan", "2025-12-01", "Rent", 9.0))
+    rows = _imported(("Alice", "2026-02-10", "Rent", 7.0), ("Bob", "2026-02-11", "Rent", 3.0),
+                     ("Alice", "2025-12-01", "Rent", 9.0))
 
-    out = _add_legacy(pd.DataFrame(), rows, _spec(filters={"person": ["Jordan"]}, date_from="2026-01-01"))
+    out = _add_legacy(pd.DataFrame(), rows, _spec(filters={"person": ["Alice"]}, date_from="2026-01-01"))
 
     assert out.loc["Rent"].to_dict() == {"2026-02": 7.0}
 

@@ -28,9 +28,9 @@ def _book(path):
             [None, "TOTAL", 5402.0, 5065.0],
             [None, "Later row", 1.0, 2.0],
         ],
-        "2024": [HEADER, ["Ethan", date(2024, 8, 1), "Rent", "Rent", None, None, 3802.0, None],
-                 ["Jordan", date(2024, 8, 2), "=SUM(1,1)", "Other", None, None, -12.5, "see note"]],
-        "2025": [HEADER, ["Jordan", date(2025, 1, 2), "Coffee", "Dining Out", None, None, 4.5, None],
+        "2024": [HEADER, ["Bob", date(2024, 8, 1), "Rent", "Rent", None, None, 3802.0, None],
+                 ["Alice", date(2024, 8, 2), "=SUM(1,1)", "Other", None, None, -12.5, "see note"]],
+        "2025": [HEADER, ["Alice", date(2025, 1, 2), "Coffee", "Dining Out", None, None, 4.5, None],
                  ["DUMMY", date(2025, 1, 3), None, "Mortgage", None, None, 0.0, None]],
         "Earmarked Spending": [["Item"]],
     })
