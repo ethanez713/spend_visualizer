@@ -93,19 +93,50 @@ def load_accounts(path: str | Path = PERSONAL_CONFIG_DIR / "accounts.yaml") -> d
     return data.get("accounts") or {}
 
 
+@dataclass(frozen=True)
+class Offset:
+    """Money in under ``source`` that nets against spending: each ``spread`` category takes
+    its weight of the source's total (what is left stays under ``source``)."""
+    source: str
+    spread: dict[str, float]
+
+
+@dataclass(frozen=True)
+class Project:
+    """A one-off spending bucket tracked against an earmark, outside the monthly budget."""
+    name: str
+    earmark: float | None = None
+
+
+COMPLETE_MONTHS, MONTHS_WITH_DATA = "complete_months", "months_with_data"
+
+
 @dataclass
 class Budget:
     period: str = "monthly"
     goals: dict[str, float] = field(default_factory=dict)
     # Optional: path to an EXTERNAL pre-categorized ledger CSV whose `Category`
     # column already matches these goal keys (the converter project's output).
-    # When set, the Budget tab renders actuals from this ledger instead of the
-    # built-in tier1 cube, so its categories line up with the established budget.
-    # Relative paths resolve from the data root; None ⇒ use the tier1 logic.
+    # When set, the Budget tab offers it next to the built-in budget model.
+    # Relative paths resolve from the data root; None ⇒ the budget model only.
     ledger_csv: str | None = None
+    # A goal given as `{base: N}` grows by `goal_inflation` a year from `goal_base_year`.
+    indexed_goals: dict[str, float] = field(default_factory=dict)
+    goal_base_year: int | None = None
+    goal_inflation: float = 0.0
+    offsets: list[Offset] = field(default_factory=list)
+    projects: list[Project] = field(default_factory=list)
+    averaging: str = COMPLETE_MONTHS
 
-    def goal(self, tier1: str) -> float | None:
-        return self.goals.get(tier1)
+    def goal(self, category: str, year: int | None = None) -> float | None:
+        if category in self.indexed_goals:
+            if year is None or self.goal_base_year is None:
+                return self.indexed_goals[category]
+            return self.indexed_goals[category] * (1 + self.goal_inflation) ** (year - self.goal_base_year)
+        return self.goals.get(category)
+
+    def goal_categories(self) -> list[str]:
+        return list(self.goals) + [c for c in self.indexed_goals if c not in self.goals]
 
     @property
     def resolved_ledger_csv(self) -> str | None:
@@ -117,18 +148,40 @@ class Budget:
         return str(p)
 
 
-def load_budget(path: str | Path = PERSONAL_CONFIG_DIR / "budget.yaml") -> Budget:
-    """Return monthly tier-1 goals (PLAN.md §14). Empty if the file is absent.
+def _number(value) -> float | None:
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
 
-    An optional ``ledger.csv`` key points the Budget tab at an externally
-    categorized ledger (see ``Budget.ledger_csv``); its mere presence is the
-    switch — drop the key to fall back to the built-in tier1 categorization.
+
+def load_budget(path: str | Path = PERSONAL_CONFIG_DIR / "budget.yaml") -> Budget:
+    """Return monthly goals and the Budget tab's settings (PLAN.md §14). Empty if the
+    file is absent.
+
+    A goal is a number, or ``{base: N}`` to index it by ``goal_index``. An optional
+    ``ledger.csv`` key offers an externally categorized ledger next to the budget model
+    (see ``Budget.ledger_csv``). Malformed entries are skipped, never fatal.
     """
     p = Path(path)
     if not p.exists():
         return Budget()
     data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
-    goals = {k: float(v) for k, v in (data.get("goals") or {}).items()}
-    ledger_csv = (data.get("ledger") or {}).get("csv")
+    goals, indexed = {}, {}
+    for category, goal in (data.get("goals") or {}).items():
+        if isinstance(goal, dict) and _number(goal.get("base")) is not None:
+            indexed[category] = float(goal["base"])
+        elif _number(goal) is not None:
+            goals[category] = float(goal)
+    index = data.get("goal_index") or {}
+    offsets = [Offset(str(o["source"]), {str(k): float(v) for k, v in (o.get("spread") or {}).items()
+                                         if _number(v) is not None})
+               for o in data.get("offsets") or [] if isinstance(o, dict) and o.get("source")]
+    projects = [Project(str(j["name"]), _number(j.get("earmark")))
+                for j in data.get("projects") or [] if isinstance(j, dict) and j.get("name")]
+    averaging = data.get("averaging")
     return Budget(period=data.get("period", "monthly"), goals=goals,
-                  ledger_csv=ledger_csv)
+                  ledger_csv=(data.get("ledger") or {}).get("csv"),
+                  indexed_goals=indexed,
+                  goal_base_year=int(index["base_year"]) if _number(index.get("base_year")) is not None else None,
+                  goal_inflation=_number(index.get("inflation")) or 0.0,
+                  offsets=[o for o in offsets if o.spread], projects=projects,
+                  averaging=averaging if averaging in (COMPLETE_MONTHS, MONTHS_WITH_DATA)
+                  else COMPLETE_MONTHS)

@@ -21,7 +21,8 @@ import streamlit as st
 
 import state
 import theme
-from config_io import Budget
+from budget_table import apply_offsets, monthly_grid, split_projects
+from config_io import COMPLETE_MONTHS, MONTHS_WITH_DATA, Budget
 from cube import Cube, GroupingSpec
 from periods import averaging_months
 from ledger import load_ledger, monthly_pivot as ledger_monthly_pivot
@@ -29,6 +30,7 @@ from viz import sanitize_for_csv, style_table, table_height
 
 
 LEDGER_SOURCE, MODEL_SOURCE = "Converter ledger", "Budget model"
+AVERAGING_LABELS = {COMPLETE_MONTHS: "Complete months", MONTHS_WITH_DATA: "Months with data"}
 
 
 def _model_pivot(cube: Cube, spec: GroupingSpec) -> pd.DataFrame:
@@ -100,7 +102,7 @@ def _ytd_avg(pivot: pd.DataFrame) -> pd.Series:
 
 def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
     st.subheader("Budget vs actual")
-    if not budget.goals:
+    if not budget.goal_categories():
         st.info("No `config/budget.yaml` found — add monthly goals to enable this view.")
         return
 
@@ -112,6 +114,10 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
     use_ledger = ledger_present and st.radio(
         "Actuals from", [LEDGER_SOURCE, MODEL_SOURCE], horizontal=True,
         key="budget_source") == LEDGER_SOURCE
+    averaging = st.radio(
+        "Average over", list(AVERAGING_LABELS), horizontal=True,
+        index=list(AVERAGING_LABELS).index(budget.averaging),
+        format_func=AVERAGING_LABELS.get, key="budget_averaging")
     if use_ledger:
         pivot = _ledger_pivot(ledger_csv, spec)
         st.caption(f"YTD average and trailing {window}-month running average vs monthly "
@@ -121,20 +127,32 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
         pivot = _model_pivot(cube, spec)
         st.caption(f"YTD average and trailing {window}-month running average vs monthly goal.")
 
-    months = averaging_months(spec.date_from, spec.date_to, list(pivot.columns))
+    pivot, missing_offsets = apply_offsets(pivot, budget.offsets)
+    for source in missing_offsets:
+        st.info(f"No “{source}” rows in this period, so it is not netted against "
+                "the categories it offsets.")
+    pivot, projects = split_projects(pivot, budget.projects)
+
+    if averaging == COMPLETE_MONTHS:
+        months = averaging_months(spec.date_from, spec.date_to, list(pivot.columns))
+        st.caption(f"Averages are over the {len(months)} complete months in the period; a "
+                   "month the period only clips is left out.")
+    else:
+        months = sorted(pivot.columns)
+        st.caption(f"Averages are over the {len(months)} months that have spending, "
+                   "partial months included.")
     averaged = pivot.reindex(columns=months, fill_value=0.0) if not pivot.empty else pivot
     avg = _running_avg(averaged, window)
     ytd = _ytd_avg(averaged)
-    st.caption(f"Averages are over the {len(months)} complete months in the period; a "
-               "month the period only clips is left out.")
+    year = int(spec.date_to[:4])
     avg_col = f"{window}mo Avg"
-    cats = sorted(set(avg.index) | set(budget.goals.keys()))
+    cats = sorted(set(avg.index) | set(budget.goal_categories()))
 
     rows = []
     for cat in cats:
         a = float(avg.get(cat, 0.0))
         y = float(ytd.get(cat, 0.0))
-        g = budget.goal(cat)
+        g = budget.goal(cat, year)
         rows.append({
             "Category": cat,
             "YTD Avg": y,
@@ -186,6 +204,18 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
             hidden_names = table.loc[table["_hidden"], "Category"].tolist()
             st.caption(f"Hidden from totals: {', '.join(hidden_names)}")
 
+    if not projects.empty:
+        st.subheader("Projects")
+        st.caption("Tracked against their earmark and left out of the monthly totals above.")
+        st.dataframe(style_table(projects.set_index("Project"), money_cols=["Spent", "Earmark", "Left"],
+                                 pct_cols=["% used"]), width="stretch")
+    with st.expander("Monthly grid"):
+        grid = monthly_grid(pivot, months)
+        if grid.empty:
+            st.caption("No spend in this period.")
+        else:
+            st.dataframe(style_table(grid, money_cols=list(grid.columns)), width="stretch",
+                         height=table_height(len(grid)))
     if ledger_present:
         _compare_sources(cube, spec, ledger_csv, window)
     _export_buttons(indexed, pivot)

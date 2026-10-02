@@ -2,10 +2,27 @@
 # All values here are made up.
 period: monthly
 
+# A goal is a number, or {base: N} to grow it each year by goal_index.inflation from
+# goal_index.base_year (a {base: 400} goal is 400 in the base year, 412 a year later).
+goal_index: {base_year: 2024, inflation: 0.03}
 goals:
   Housing: 2000
-  Dining Out: 400
+  Dining Out: {base: 400}
   Groceries: 500
+
+# Money in under `source` that nets against spending: each category in `spread` takes its
+# weight of it (weights short of 1 leave the rest under the source).
+offsets:
+  - source: Reimbursements
+    spread: {Dining Out: 0.5, Travel: 0.5}
+
+# One-off buckets tracked against an earmark and left out of the monthly totals.
+projects:
+  - {name: Kitchen remodel, earmark: 15000}
+
+# Divide monthly averages by complete_months (default) or months_with_data, which
+# counts a partial month the way a spreadsheet's per-year tab does.
+averaging: complete_months
 
 # Household rules that beat the generic mapping in budget_model.yaml: the first entry
 # whose phrase appears as whole words in the merchant text decides the category.
