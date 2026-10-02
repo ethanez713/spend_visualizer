@@ -19,7 +19,7 @@ from data import build_cube
 from ingest.load import stat_source
 from views import budget as budget_view
 from periods import CUSTOM, DEFAULT_PRESET, PRESETS, preset_range
-from views import cashflow, drilldown, merchants, overview, transactions
+from views import cashflow, drilldown, merchants, overview, review, transactions
 from views import corrections_view, rules_view
 from views import qc as qc_view
 
@@ -86,25 +86,28 @@ def main() -> None:
         "Budget": lambda: budget_view.render(cube, spec, budget, app.trailing_avg_months),
         "Merchants and recurring": lambda: merchants.render(cube, spec, anchor),
         "Cash flow": lambda: cashflow.render(cube, spec),
+        "Review": lambda: review.render(df),
         "Overrides": corrections_view.render,
         "Rules": lambda: rules_view.render(df),
         "Checks": lambda: qc_view.render(cube, qc, spec),
     }
-    views[_current_view(list(views))]()
+    views[_current_view(list(views), {"Review": len(review.pending(df))})]()
 
 
 VIEW_KEY = "view"
 
 
-def _current_view(names: list[str]) -> str:
+def _current_view(names: list[str], counts: dict[str, int]) -> str:
     """The view switcher. Only the chosen view runs: a chart mounted inside a
     hidden st.tabs panel measures a zero-width container and drops its labels.
+    `counts` adds a pending-work count to a view's label.
     The choice is mirrored into the URL so a reload or bookmark returns to it."""
     if VIEW_KEY not in st.session_state:
         asked = st.query_params.get(VIEW_KEY)
         st.session_state[VIEW_KEY] = asked if asked in names else names[0]
     view = st.radio("View", names, horizontal=True, key=VIEW_KEY,
-                    label_visibility="collapsed")
+                    label_visibility="collapsed",
+                    format_func=lambda n: f"{n} · {counts[n]}" if counts.get(n) else n)
     st.query_params[VIEW_KEY] = view
     return view
 

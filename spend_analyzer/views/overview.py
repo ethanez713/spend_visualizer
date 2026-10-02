@@ -149,5 +149,4 @@ def _pending(rows) -> None:
         return
     n = int(rows["review_pending"].fillna(False).astype(bool).sum())
     if n:
-        st.caption(f"{n} category suggestions await review. Filter to them in the "
-                   "Transactions tab, or adjudicate with `categorize.py --review`.")
+        st.caption(f"{n} category suggestions await a decision in Review.")

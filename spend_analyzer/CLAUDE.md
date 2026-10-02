@@ -20,6 +20,10 @@ it never edits records — category fixes append INTENTS to the transformer's lo
 - The transformer's CODE is imported via `transformer_root` (taxonomy + intent
   validation in `manual_edits.py`; rule tables + match cascade in
   `rules_bridge.py`); its DATA paths come from the data root — don't conflate.
+- The UI shows intents at once: `manual_edits.overlay` replays the live intent log
+  over the loaded records with the transformer's own replay, so the app never waits
+  for a categorize run. Anything new that a human decides in the UI is an intent in
+  that log (overrides, review decisions, dismissals), never a second store.
 - Rule surfaces are READ-ONLY by decision (docs/categorization-ux-ideation.md):
   the Rules tab and provenance explainers render the transformer's tables, its
   merchant memory, and the optional converter's Sheet mapping (loaded fail-soft

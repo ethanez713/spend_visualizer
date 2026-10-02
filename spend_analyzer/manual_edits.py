@@ -62,12 +62,20 @@ def taxonomy() -> tuple[list[str], dict[str, list[str]]]:
 
 
 def add_edit(raw_record: dict, *, scope: str, primary: str, detailed: str,
-             note: str = "", path: str | None = None) -> dict:
-    """Validate + append one intent (source='ui'). Raises ValueError on bad input."""
+             note: str = "", path: str | None = None, source: str = "ui") -> dict:
+    """Validate + append one intent. Raises ValueError on bad input."""
     manual, _ = _import()
     intent = manual.build_intent(scope=scope, primary=primary, detailed=detailed,
-                                 record=raw_record, note=note, source="ui")
+                                 record=raw_record, note=note, source=source)
     return manual.append_intent(path or edits_path(), intent)
+
+
+def dismiss(raw_record: dict, *, note: str = "", path: str | None = None,
+            source: str = "ui") -> dict:
+    """Append an intent rejecting the row's pending suggestion; its category stays."""
+    manual, _ = _import()
+    return manual.append_intent(
+        path or edits_path(), manual.build_dismissal(raw_record, note=note, source=source))
 
 
 def intents(path: str | None = None) -> list[dict]:
@@ -94,9 +102,8 @@ def overlay(records: list[dict], path: str | None = None) -> None:
     if status() is not None:
         return
     manual, _ = _import()
-    live = manual.resolve_intents(manual.load_intents(path or edits_path()))
     store = {r["transaction_id"]: r for r in records if r.get("transaction_id")}
-    manual.apply_manual_edits(store, manual.ManualIndex(live))
+    manual.apply_manual_edits(store, manual.load_index(path or edits_path()))
 
 
 def affected_counts(items: list[dict], records: list[dict] | None = None) -> dict[str, int]:

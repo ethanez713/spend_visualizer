@@ -17,7 +17,7 @@ APP = str(ROOT / "app.py")
 
 
 VIEWS = ["Overview", "Drilldown", "Transactions", "Budget", "Merchants and recurring",
-         "Cash flow", "Overrides", "Rules", "Checks"]
+         "Cash flow", "Review", "Overrides", "Rules", "Checks"]
 
 
 def go(at: AppTest, view: str) -> AppTest:

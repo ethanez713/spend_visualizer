@@ -335,3 +335,52 @@ def given_a_scripted_session_when_revoke_issued_then_intent_retired(
                          out=lambda *a: None)
     assert n == 1
     assert resolve_intents(load_intents(edits)) == []
+
+
+# ── dismissals: reject a suggestion without changing the category ─────────────
+
+def _flagged(make_record, tid="t_dis"):
+    rec = make_record(transaction_id=tid)
+    set_review_flag(rec, COFFEE[0], COFFEE[1], "looks like coffee", "MEDIUM", "llm")
+    return rec
+
+
+def given_a_dismissed_suggestion_when_replayed_then_flag_cleared_and_category_untouched(
+        make_record):
+    from src.manual import build_dismissal, resolve_dismissals
+    rec = _flagged(make_record)
+    before = dict(rec["personal_finance_category"])
+    entries = [build_dismissal(rec)]
+    index = ManualIndex(resolve_intents(entries), resolve_dismissals(entries))
+
+    summary = apply_manual_edits({rec["transaction_id"]: rec}, index)
+
+    assert summary["dismissed"] == [rec["transaction_id"]]
+    assert not rec["category_review_flag"] and rec["personal_finance_category"] == before
+    assert rec.get("category_update_step", "") != "manual"
+
+
+def given_a_dismissal_when_a_different_suggestion_is_raised_then_it_still_shows(make_record):
+    from src.manual import build_dismissal, resolve_dismissals
+    rec = _flagged(make_record)
+    entries = [build_dismissal(rec)]
+    other = DETAILED["TRAVEL"][0]
+    set_review_flag(rec, "TRAVEL", other, "actually travel", "MEDIUM", "claude")
+
+    apply_manual_edits({rec["transaction_id"]: rec},
+                       ManualIndex([], resolve_dismissals(entries)))
+
+    assert rec["category_review_flag"] and rec["category_review_detailed"] == other
+
+
+def given_a_revoked_dismissal_when_resolved_then_it_no_longer_applies(make_record):
+    from src.manual import build_dismissal, resolve_dismissals
+    d = build_dismissal(_flagged(make_record))
+    assert resolve_dismissals([d, build_revoke(d["id"])]) == {}
+    assert resolve_intents([d]) == []       # a dismissal is never read as an edit
+
+
+def given_a_row_without_a_suggestion_when_dismissal_built_then_raises(make_record):
+    from src.manual import build_dismissal
+    with pytest.raises(ValueError):
+        build_dismissal(make_record(transaction_id="t_plain"))

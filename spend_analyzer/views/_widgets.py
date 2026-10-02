@@ -102,6 +102,11 @@ def _rule_details(sig: tuple) -> dict[str, dict]:
         return {}
 
 
+def raw_record(transaction_id: str) -> dict | None:
+    """The full archive record behind a cube row (what an intent is built from)."""
+    return _raw_index(manual_edits.archive_sig()).get(str(transaction_id))
+
+
 def _txt(v) -> str:
     """A row field as display text ('' for None/NaN)."""
     v = blank_if_missing(v)
@@ -142,7 +147,7 @@ def provenance_explain(row) -> None:
         src = _txt(row.get("review_source"))
         why = _txt(row.get("review_reason"))
         st.markdown(f"**Pending suggestion** ({src}): `{sugg}` — {why}. "
-                    "Adjudicate with `categorize.py --review`.")
+                    "Decide it in Review.")
         _rule_hint(details.get(why))
 
 
@@ -194,7 +199,7 @@ def recategorize_form(*, row, key: str, default_scope: str = "transaction") -> N
     if err:
         st.caption(f"Recategorize unavailable: {err}")
         return
-    raw = _raw_index(manual_edits.archive_sig()).get(str(row.get("transaction_id")))
+    raw = raw_record(row.get("transaction_id"))
     if raw is None:
         st.caption("Raw record not found in the archive — reload data and retry.")
         return

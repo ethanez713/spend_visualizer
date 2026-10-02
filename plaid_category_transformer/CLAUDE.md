@@ -10,6 +10,13 @@ explicit in-session go-ahead, no data in-repo).
 - Authority order: mechanical `trust="auto"` rules overwrite → LLM flags (or
   auto-applies only per LLM_AUTHORITY on untrusted rows) → manual edit intents trump
   everything and are REPLAYED every run from the append-only intent log.
+- The intent log carries three actions: `edit` (set a category, transaction or merchant
+  scope), `dismiss` (reject one named suggestion for one row, category untouched —
+  cleared again at every replay if a re-audit re-raises the same suggestion) and
+  `revoke` (retire either). `manual.load_index` is the one way to turn the log into
+  what replay uses; the analyzer's Review view writes `edit`/`dismiss` and is the
+  in-app equivalent of `--review` (which still works, and teaches merchant memory
+  where the in-app path writes a merchant-scope intent instead).
 - **Flag-policy guards** (2026-06 LLM audit, `LLM_ASSESSMENT.md`), applied in
   `_decide`, suppress only review FLAGS (auto-applies are exempt): (1) **sign guard**
   `transformer._sign_violation` drops an LLM suggestion that puts a `config.INFLOW_PRIMARIES`

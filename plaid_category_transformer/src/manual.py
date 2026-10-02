@@ -133,6 +133,30 @@ def build_intent(*, scope: str, primary: str, detailed: str, record: dict,
     }
 
 
+def build_dismissal(record: dict, *, note: str = "", source: str = "cli") -> dict:
+    """An intent rejecting the row's pending suggestion without changing its category.
+
+    It names the suggestion it rejects, so a DIFFERENT suggestion raised later for the
+    same row is still shown; the same one, re-raised by a re-audit, is cleared again
+    at every replay. Raises ValueError when the row has no pending suggestion.
+    """
+    tid = record.get("transaction_id")
+    primary = record.get("category_review_primary")
+    detailed = record.get("category_review_detailed")
+    if not tid or not (primary and detailed):
+        raise ValueError("a dismissal needs a transaction_id and a pending suggestion")
+    return {
+        "id": uuid.uuid4().hex[:8],
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "action": "dismiss",
+        "source": source,
+        "match": {"transaction_id": tid},
+        "dismissed": {"primary": primary, "detailed": detailed},
+        "note": note,
+        "snapshot": snapshot_of(record),
+    }
+
+
 def build_revoke(revokes_id: str, *, note: str = "", source: str = "cli") -> dict:
     """A tombstone retiring an earlier intent: the row reverts and re-audits next run."""
     return {
@@ -185,6 +209,8 @@ def resolve_intents(entries: list[dict]) -> list[dict]:
         if e.get("action") == "revoke":
             continue
         eid = e.get("id", "?")
+        if e.get("action") == "dismiss":
+            continue                      # not an edit: see resolve_dismissals
         if e.get("action", "edit") != "edit":
             _warn(f"intent {eid}: unknown action {e.get('action')!r} — skipped")
             continue
@@ -217,6 +243,29 @@ def resolve_intents(entries: list[dict]) -> list[dict]:
     return out
 
 
+def resolve_dismissals(entries: list[dict]) -> dict[str, set[tuple[str, str]]]:
+    """{transaction_id: the (primary, detailed) suggestions rejected for it}, from the
+    ``dismiss`` entries no ``revoke`` has retired. Malformed entries are skipped."""
+    revoked = {e.get("revokes") for e in entries if e.get("action") == "revoke"}
+    out: dict[str, set[tuple[str, str]]] = {}
+    for e in entries:
+        if e.get("action") != "dismiss" or e.get("id") in revoked:
+            continue
+        tid = (e.get("match") or {}).get("transaction_id")
+        d = e.get("dismissed") or {}
+        if not tid or not (d.get("primary") and d.get("detailed")):
+            _warn(f"intent {e.get('id', '?')}: malformed dismissal — skipped")
+            continue
+        out.setdefault(tid, set()).add((d["primary"], d["detailed"]))
+    return out
+
+
+def load_index(path: str) -> "ManualIndex":
+    """The log at ``path`` resolved into the index every replay uses."""
+    entries = load_intents(path)
+    return ManualIndex(resolve_intents(entries), resolve_dismissals(entries))
+
+
 class ManualIndex:
     """Resolved intents indexed for O(1) per-row matching.
 
@@ -226,8 +275,10 @@ class ManualIndex:
     carry entity ids that differ (same normalized name, demonstrably different merchant).
     """
 
-    def __init__(self, intents: list[dict]):
+    def __init__(self, intents: list[dict],
+                 dismissed: dict[str, set[tuple[str, str]]] | None = None):
         self.intents = intents
+        self.dismissed = dismissed or {}
         self.by_txn: dict[str, dict] = {}
         self._by_ent: dict[str, tuple[int, dict]] = {}
         self._by_name: dict[str, tuple[int, dict]] = {}
@@ -243,6 +294,11 @@ class ManualIndex:
 
     def __len__(self) -> int:
         return len(self.intents)
+
+    def dismisses(self, record: dict) -> bool:
+        """Whether the row's pending suggestion is one the human already rejected."""
+        pair = (record.get("category_review_primary"), record.get("category_review_detailed"))
+        return pair in self.dismissed.get(record.get("transaction_id"), ())
 
     def match(self, record: dict) -> dict | None:
         it = self.by_txn.get(record.get("transaction_id"))
@@ -272,14 +328,21 @@ def apply_manual_edits(store: dict[str, dict], index: ManualIndex) -> dict:
     manual override lost its covering intent (revoked, or the log was rewound) is
     REVERTED to its pre-manual category and stamped for a full re-audit next run.
 
+    A pending suggestion the human dismissed is cleared, category untouched.
+
     Returns a summary: ``applied`` (category-log entries), ``already`` (covered, value
-    already right), ``reverted`` (transaction ids), ``orphans`` (transaction-scope intent
-    ids whose row is gone — kept in the log for analysis, inert at replay).
+    already right), ``reverted`` (transaction ids), ``dismissed`` (transaction ids whose
+    flag was cleared), ``orphans`` (transaction-scope intent ids whose row is gone — kept
+    in the log for analysis, inert at replay).
     """
     applied: list[dict] = []
     reverted: list[str] = []
+    dismissed: list[str] = []
     n_already = 0
     for tid, rec in store.items():
+        if rec.get("category_review_flag") and index.dismisses(rec):
+            clear_review_flag(rec)
+            dismissed.append(tid)
         it = index.match(rec)
         if it is None:
             if rec.get("category_update_step") == "manual":
@@ -303,8 +366,8 @@ def apply_manual_edits(store: dict[str, dict], index: ManualIndex) -> dict:
         if rec.get("category_review_flag"):
             clear_review_flag(rec)
     orphans = [it["id"] for txn_id, it in index.by_txn.items() if txn_id not in store]
-    return {"applied": applied, "already": n_already,
-            "reverted": reverted, "orphans": orphans}
+    return {"applied": applied, "already": n_already, "reverted": reverted,
+            "dismissed": dismissed, "orphans": orphans}
 
 
 def search_rows(store: dict[str, dict], query: str,

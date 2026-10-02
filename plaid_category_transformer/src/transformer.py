@@ -50,8 +50,8 @@ from .config import (
 )
 from .incremental import HASH_PENDING_LLM, SOURCE_HASH_FIELD, classify, source_hash
 from .llm import CategoryLLM
-from .manual import DEFAULT_EDITS, ManualIndex, apply_manual_edits, load_intents, \
-    resolve_intents
+from .manual import DEFAULT_EDITS, ManualIndex, apply_manual_edits, load_index, \
+    load_intents
 from .paths import DATA_DIR as _DATA_DIR, DATA_ROOT as _DATA_ROOT
 from .rules import DEFAULT_MEMORY, MerchantMemory, RuleHit, apply_rules
 from .schema import (
@@ -548,8 +548,7 @@ def run(*, input_path: str, out_jsonl: str, out_csv: str, flags_csv: str, log_pa
 
     # Manual edit intents (Stage 3): resolved up front so covered rows can skip the audit;
     # replayed over the FULL store after assembly. ``None`` edits_path disables the stage.
-    manual_index = (ManualIndex(resolve_intents(load_intents(edits_path)))
-                    if edits_path is not None else None)
+    manual_index = load_index(edits_path) if edits_path is not None else None
 
     # Capture the source hash of each row to audit BEFORE transform mutates it (a correction
     # overwrites the category in place); stamp it back on afterwards for next run's diff.
@@ -726,10 +725,9 @@ def edit_run(*, out_jsonl: str, out_csv: str, flags_csv: str, log_path: str,
                                  conflict_log=_conflict_log_path(out_jsonl))
 
     n_new = run_edit_session(store, edits_path)
-    index = ManualIndex(resolve_intents(load_intents(edits_path)))
-    summary = apply_manual_edits(store, index)
+    summary = apply_manual_edits(store, load_index(edits_path))
 
-    if not (n_new or summary["applied"] or summary["reverted"]):
+    if not (n_new or summary["applied"] or summary["reverted"] or summary["dismissed"]):
         print("No changes — store left untouched.")
         return
     persister.save_jsonl(out_jsonl, store)
