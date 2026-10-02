@@ -235,6 +235,24 @@ def load_intents(path: str) -> list[dict]:
     return out
 
 
+def match_problem(scope, match: dict) -> str | None:
+    """Why an intent of ``scope`` with this ``match`` block cannot be applied, else None."""
+    known = _KNOWN_MATCH_KEYS.get(scope)
+    if known is None:
+        return f"unknown scope {scope!r}"
+    unknown = set(match) - known
+    if unknown:
+        return f"unrecognized match field(s) {sorted(unknown)} (written by a newer version?)"
+    if scope == "transaction" and not match.get("transaction_id"):
+        return "transaction scope without a transaction_id"
+    if scope == "merchant" and not (match.get("merchant_entity_id")
+                                    or match.get("merchant_name_normalized")):
+        return "merchant scope without an entity id or name"
+    if scope == "description" and len(match.get("description_contains") or "") < MIN_PHRASE_CHARS:
+        return "description scope without a usable phrase"
+    return None
+
+
 def resolve_intents(entries: list[dict]) -> list[dict]:
     """Validate raw log entries into the applicable intents, in append order.
 
@@ -258,27 +276,9 @@ def resolve_intents(entries: list[dict]) -> list[dict]:
             continue
         if eid in revoked:
             continue
-        scope = e.get("scope")
-        known = _KNOWN_MATCH_KEYS.get(scope)
-        match = e.get("match") or {}
-        if known is None:
-            _warn(f"intent {eid}: unknown scope {scope!r} — skipped")
-            continue
-        unknown = set(match) - known
-        if unknown:
-            _warn(f"intent {eid}: unrecognized match field(s) {sorted(unknown)} "
-                  "(written by a newer version?) — skipped")
-            continue
-        if scope == "transaction" and not match.get("transaction_id"):
-            _warn(f"intent {eid}: transaction scope without a transaction_id — skipped")
-            continue
-        if scope == "merchant" and not (match.get("merchant_entity_id")
-                                        or match.get("merchant_name_normalized")):
-            _warn(f"intent {eid}: merchant scope without an entity id or name — skipped")
-            continue
-        if scope == "description" and len(match.get("description_contains") or "") \
-                < MIN_PHRASE_CHARS:
-            _warn(f"intent {eid}: description scope without a usable phrase — skipped")
+        problem = match_problem(e.get("scope"), e.get("match") or {})
+        if problem:
+            _warn(f"intent {eid}: {problem} — skipped")
             continue
         tgt = e.get("set") or {}
         if not is_valid(tgt.get("primary"), tgt.get("detailed")):

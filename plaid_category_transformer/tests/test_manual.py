@@ -478,3 +478,15 @@ def given_bad_match_input_when_built_then_value_error(make_record):
         build_match("description", make_record(), "ab")
     with pytest.raises(ValueError):
         build_match("galaxy", make_record())
+
+
+def given_valid_and_defective_matches_when_checked_then_the_problem_is_named():
+    from src.manual import match_problem
+    assert match_problem("transaction", {"transaction_id": "t1"}) is None
+    assert match_problem("merchant", {"merchant_name_normalized": "costco"}) is None
+    assert match_problem("description", {"description_contains": "blue bottle"}) is None
+    assert "without a transaction_id" in match_problem("transaction", {})
+    assert "entity id or name" in match_problem("merchant", {})
+    assert "usable phrase" in match_problem("description", {"description_contains": "ab"})
+    assert "unrecognized match field" in match_problem("transaction", {"transaction_id": "t", "x": 1})
+    assert "unknown scope" in match_problem("galaxy", {})
