@@ -123,6 +123,32 @@ def test_accounts_include_false_drops_the_account_from_the_cube():
     assert list(df["person"]) == ["A"], "accounts.yaml person is the un-stamped fallback"
 
 
+def _stamped(tid, account, owner):
+    from ingest.normalize import normalize_one
+    return normalize_one({"transaction_id": tid, "account_id": account, "amount": 10.0,
+                          "date": "2026-03-04", "name": "COFFEE", "txn_owner": owner,
+                          "personal_finance_category": {"primary": "FOOD_AND_DRINK",
+                                                        "detailed": "FOOD_AND_DRINK_COFFEE"}})
+
+
+def test_given_account_spender_when_enriched_then_it_beats_the_link_owner_stamp():
+    from enrich import enrich
+
+    accounts = {"shared": {"person": "Ethan", "spender": "Jordan"}, "mine": {"person": "Ethan"}}
+    df = enrich([_stamped("t1", "shared", "Ethan"), _stamped("t2", "mine", "Ethan")],
+                load_taxonomy(), accounts)
+
+    assert dict(zip(df["transaction_id"], df["person"])) == {"t1": "Jordan", "t2": "Ethan"}
+
+
+def test_given_no_spender_when_enriched_then_the_owner_stamp_still_wins_over_person():
+    from enrich import enrich
+
+    df = enrich([_stamped("t1", "acct", "Ethan")], load_taxonomy(), {"acct": {"person": "Other"}})
+
+    assert list(df["person"]) == ["Ethan"]
+
+
 def test_iso_week_stays_out_of_the_hierarchical_time_path():
     """A named bucket in the path must not be split across parents.
 
