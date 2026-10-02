@@ -1,14 +1,15 @@
 """Budget vs Actual view — the 2026 budget sheet (PLAN.md §14).
 
-Compares each tier-1 category's trailing monthly running-average spend against
+Compares each budget category's trailing monthly running-average spend against
 its monthly goal, with %-of-goal and $ diff heatmaps and the derived cuts
 (Total, Annualized, Less Mortgage, Less Mortgage & Home).
 
 Actuals come from one of two sources, both reduced to the same category × month
 pivot before rendering:
-  - the built-in tier1 cube (default), or
+  - the budget model (``budget_model.py``): every filter applies, and an override
+    made in the app shows at once; or
   - an external pre-categorized ledger CSV, when ``budget.ledger_csv`` is set —
-    so the categories line up with the established (converter-defined) budget.
+    the converter's output, offered alongside the model while the two are compared.
 """
 from __future__ import annotations
 
@@ -27,19 +28,37 @@ from ledger import load_ledger, monthly_pivot as ledger_monthly_pivot
 from viz import sanitize_for_csv, style_table, table_height
 
 
-def _monthly_pivot(cube: Cube, spec: GroupingSpec) -> pd.DataFrame:
+LEDGER_SOURCE, MODEL_SOURCE = "Converter ledger", "Budget model"
+
+
+def _model_pivot(cube: Cube, spec: GroupingSpec) -> pd.DataFrame:
     monthly = cube.rollup(
         GroupingSpec(
-            group_by=["tier1", "month"],
+            group_by=["budget_cat", "month"],
             filters={**spec.filters, "flow": "spend"},
             date_from=spec.date_from, date_to=spec.date_to,
             measures=["spend"], order_by=None, include_hidden=True,
         )
-    )
+    ).dropna(subset=["budget_cat"])
     if monthly.empty:
         return pd.DataFrame()
-    return monthly.pivot_table(index="tier1", columns="month", values="spend",
+    return monthly.pivot_table(index="budget_cat", columns="month", values="spend",
                                aggfunc="sum").fillna(0.0)
+
+
+def compare_averages(model: pd.DataFrame, ledger: pd.DataFrame, months: list[str],
+                     window: int) -> pd.DataFrame:
+    """Per-category trailing average from each source, for the categories where they
+    differ by at least a dollar."""
+    def avg(pivot):
+        return _running_avg(pivot.reindex(columns=months, fill_value=0.0), window)
+    a, b = avg(model), avg(ledger)
+    rows = [{"Category": cat, MODEL_SOURCE: float(a.get(cat, 0.0)),
+             LEDGER_SOURCE: float(b.get(cat, 0.0)),
+             "Difference": float(a.get(cat, 0.0)) - float(b.get(cat, 0.0))}
+            for cat in sorted(set(a.index) | set(b.index))]
+    table = pd.DataFrame(rows, columns=["Category", MODEL_SOURCE, LEDGER_SOURCE, "Difference"])
+    return table[table["Difference"].abs() >= 1].reset_index(drop=True)
 
 
 @st.cache_data(show_spinner=False)
@@ -86,17 +105,20 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
         return
 
     ledger_csv = budget.resolved_ledger_csv
-    if ledger_csv and Path(ledger_csv).exists():
+    ledger_present = bool(ledger_csv and Path(ledger_csv).exists())
+    if ledger_csv and not ledger_present:
+        st.warning(f"Configured budget ledger not found: `{ledger_csv}` — "
+                   "using the budget model. Run the pipeline to (re)generate it.")
+    use_ledger = ledger_present and st.radio(
+        "Actuals from", [LEDGER_SOURCE, MODEL_SOURCE], horizontal=True,
+        key="budget_source") == LEDGER_SOURCE
+    if use_ledger:
         pivot = _ledger_pivot(ledger_csv, spec)
         st.caption(f"YTD average and trailing {window}-month running average vs monthly "
                    "goal. Actuals from the external categorized ledger — only the date "
                    "and person filters apply here.")
     else:
-        if ledger_csv:
-            st.warning(f"Configured budget ledger not found: `{ledger_csv}` — "
-                       "falling back to the built-in categorization. Run the pipeline "
-                       "to (re)generate it.")
-        pivot = _monthly_pivot(cube, spec)
+        pivot = _model_pivot(cube, spec)
         st.caption(f"YTD average and trailing {window}-month running average vs monthly goal.")
 
     months = averaging_months(spec.date_from, spec.date_to, list(pivot.columns))
@@ -164,8 +186,27 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
             hidden_names = table.loc[table["_hidden"], "Category"].tolist()
             st.caption(f"Hidden from totals: {', '.join(hidden_names)}")
 
+    if ledger_present:
+        _compare_sources(cube, spec, ledger_csv, window)
     _export_buttons(indexed, pivot)
     _trends(pivot, window)
+
+
+def _compare_sources(cube: Cube, spec: GroupingSpec, ledger_csv: str, window: int) -> None:
+    model, ledger = _model_pivot(cube, spec), _ledger_pivot(ledger_csv, spec)
+    months = averaging_months(spec.date_from, spec.date_to,
+                              sorted(set(model.columns) | set(ledger.columns)))
+    with st.expander("Compare the budget model with the converter ledger"):
+        diff = compare_averages(model, ledger, months, window)
+        if diff.empty:
+            st.caption("The two sources agree to the dollar in every category.")
+            return
+        st.caption(f"Trailing {window}-month average per category where they differ. "
+                   "The ledger honors only the date and person filters, so clear the other "
+                   "filters before reading a difference as a disagreement.")
+        st.dataframe(style_table(diff.set_index("Category"),
+                                 money_cols=[MODEL_SOURCE, LEDGER_SOURCE, "Difference"]),
+                     width="stretch")
 
 
 def _export_buttons(summary: pd.DataFrame, pivot: pd.DataFrame) -> None:
@@ -182,7 +223,7 @@ def _export_buttons(summary: pd.DataFrame, pivot: pd.DataFrame) -> None:
         file_name="budget_vs_actual.csv", mime="text/csv", width="stretch",
     )
     if not pivot.empty:
-        grid = pivot.round(2).reset_index().rename(columns={"tier1": "Category",
+        grid = pivot.round(2).reset_index().rename(columns={"budget_cat": "Category",
                                                             "category": "Category"})
         c2.download_button(
             "Monthly grid CSV",
