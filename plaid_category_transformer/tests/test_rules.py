@@ -72,7 +72,7 @@ def given_uppercase_bill_pay_text_when_applied_then_still_a_card_payment(make_re
     assert hit.detailed == "LOAN_PAYMENTS_CREDIT_CARD_PAYMENT"
 
 
-def given_rewards_redemption_deposit_when_applied_then_transfer_in_auto(make_record):
+def given_card_cashback_deposit_when_applied_then_other_income_auto(make_record):
     rec = make_record(merchant_name=None, website=None, merchant_entity_id=None, amount=-12.34,
                       name="Bank of America DES:CASHREWARD ID:SMITH INDN:XXXXX0",
                       original_description="",
@@ -80,7 +80,7 @@ def given_rewards_redemption_deposit_when_applied_then_transfer_in_auto(make_rec
                           "primary": "OTHER", "detailed": "OTHER_OTHER",
                           "confidence_level": "LOW"})
     hit = apply_rules(rec, None)
-    assert (hit.primary, hit.detailed) == ("TRANSFER_IN", "TRANSFER_IN_OTHER_TRANSFER_IN")
+    assert (hit.primary, hit.detailed) == ("INCOME", "INCOME_OTHER_INCOME")
     assert hit.trust == "auto"
 
 
