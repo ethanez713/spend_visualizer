@@ -443,9 +443,10 @@ def given_budget_actions_in_the_log_when_resolved_then_skipped_without_a_warning
     budget = {"id": "b1", "action": "budget_edit", "scope": "transaction",
               "match": {"transaction_id": "txn_1"}, "set": {"budget_category": "House"}}
     adjust = {"id": "b2", "action": "budget_adjust", "set": {"amount": -10.0}}
+    review = {"id": "b3", "action": "budget_review", "set": {"reviewed": {"txn_1": "House"}}}
     edit = _intent(make_record())
 
-    assert resolve_intents([budget, adjust, edit]) == [edit]
+    assert resolve_intents([budget, adjust, review, edit]) == [edit]
     assert capsys.readouterr().err == ""
 
 
