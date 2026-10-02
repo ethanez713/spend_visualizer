@@ -26,6 +26,11 @@ two machines legitimately write it — see the transformer's CLAUDE.md).
 - `tools/migrate_multiuser.py`: one-off owner back-fill for pre-multi-user data
   (scan-then-apply, idempotent, aborts on foreign owners). Operates on tokens.json
   (repo .secrets) + the stores under the data root (`--data-root` to override).
+- `tools/sheet_compare.py`: offline instrument for the side-by-side period — compares
+  the Financials workbook's year tab (a downloaded .xlsx) with a converter-schema
+  ledger CSV. Stdlib only; reads no network and no secrets; its output holds personal
+  data and goes under `<data_root>/sheet_compare/`, never this repo. The matcher's
+  tiers and detectors are the contract, tested in `tests/test_sheet_compare.py`.
 - The incremental Sheet (`--sheet`, default-on when a converter is configured) is EXTRA
   egress on top of the live run: a second converter invocation with upload ON (a
   new Google Sheet) — same user-authorization rule as the rest of `./run.py`. An
