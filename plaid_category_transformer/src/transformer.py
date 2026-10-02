@@ -53,7 +53,7 @@ from .llm import CategoryLLM
 from .manual import DEFAULT_EDITS, ManualIndex, apply_manual_edits, load_index, \
     load_intents
 from .paths import DATA_DIR as _DATA_DIR, DATA_ROOT as _DATA_ROOT
-from .rules import DEFAULT_MEMORY, MerchantMemory, RuleHit, apply_rules
+from .rules import DEFAULT_MEMORY, MerchantMemory, RefundIndex, RuleHit, apply_rules
 from .schema import (
     COLUMNS,
     FLAG_COLUMNS,
@@ -232,7 +232,7 @@ def _build_item(idx: int, record: dict, mech: RuleHit | None) -> dict:
 
 def transform(store: dict[str, dict], *, levels=PROCESS_CONFIDENCE,
               memory: MerchantMemory | None = None, llm=None, authority=LLM_AUTHORITY,
-              manual: ManualIndex | None = None):
+              manual: ManualIndex | None = None, refunds: RefundIndex | None = None):
     """Audit ``store`` in place. Returns ``(store, changes, flags)``.
 
     ``changes`` — rows whose category was APPLIED (mechanical 'auto' rule, or an LLM
@@ -252,7 +252,7 @@ def transform(store: dict[str, dict], *, levels=PROCESS_CONFIDENCE,
     items: list[dict] = []
     mech_by_index: dict[int, RuleHit] = {}
     for idx, (_tid, rec) in enumerate(selected):
-        mech = apply_rules(rec, memory)
+        mech = apply_rules(rec, memory, refunds)
         if mech is not None:
             mech_by_index[idx] = mech
         items.append(_build_item(idx, rec, mech))
@@ -564,8 +564,11 @@ def run(*, input_path: str, out_jsonl: str, out_csv: str, flags_csv: str, log_pa
                      if should_process(r, levels)
                      and (manual_index is None or manual_index.match(r) is None))
 
+    # Charges come from the whole input, not just this run's delta, and prefer the prior
+    # store's copy so a charge corrected earlier passes its corrected category on.
+    refunds = RefundIndex({tid: prior.get(tid, rec) for tid, rec in input_store.items()})
     _, changes, flags = transform(delta.to_process, levels=levels, memory=memory, llm=llm,
-                                  manual=manual_index)
+                                  manual=manual_index, refunds=refunds)
 
     # Stamp each processed row's source hash — UNLESS the LLM stage was requested but
     # didn't actually run (Ollama down / crashed): stamping then would mark the rows as
