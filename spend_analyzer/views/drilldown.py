@@ -24,7 +24,7 @@ from streamlit_plotly_events import plotly_events
 import state
 from cube import Cube, GroupingSpec, CATEGORY_LEVELS, CATEGORY_LEVEL_BY_NAME
 import theme
-from periods import month_start, previous_period
+from periods import averaging_months, month_start, previous_period
 from viz import humanize_atom, money, style_table, table_height
 from views._widgets import correction_form, hide_button, transaction_detail
 
@@ -69,12 +69,14 @@ def render(cube: Cube, spec: GroupingSpec, earliest: date) -> None:
     _spend_table(cube, spec, level_col, level_name, table, raw_vals, hidden_flags, earliest)
 
     visible_total = float(table.loc[[not h for h in hidden_flags], "spend"].sum())
-    n_months = max(1, _num_months(cube, spec))
+    months = _averaging_months(cube, spec)
+    monthly = _monthly_visible_spend(cube, spec).reindex(months, fill_value=0.0)
     mortgage = _tier1_spend(cube, spec, "Mortgage")
     house = _tier1_spend(cube, spec, "House")
     d = st.columns(4)
     d[0].metric("Total", money(visible_total))
-    d[1].metric("Annualized", money(visible_total / n_months * 12))
+    d[1].metric("Annualized", money(float(monthly.mean()) * 12),
+                help=f"Average of the {len(months)} complete months in the period, times 12.")
     d[2].metric("Less Mortgage", money(visible_total - mortgage))
     d[3].metric("Less Mortgage & Home", money(visible_total - mortgage - house))
 
@@ -89,9 +91,10 @@ def _spend_table(cube, spec, level_col, level_name, table, raw_vals, hidden_flag
                  earliest) -> None:
     """Spend table (actual, monthly averages, change on the previous period, txns)
     with tickbox row selection → bulk Hide / Flag buttons."""
-    n_months = _num_months(cube, spec)
-    avg_all = _trailing_avg(cube, spec, level_col, n_months)
-    avg3 = _trailing_avg(cube, spec, level_col, 3)
+    months = _averaging_months(cube, spec)
+    n_months = len(months)
+    avg_all = _trailing_avg(cube, spec, level_col, months)
+    avg3 = _trailing_avg(cube, spec, level_col, months[-3:])
     label = _LEVEL_LABELS[level_name]
     names = [_disp(level_col, v) for v in raw_vals]
     avg_col = f"Avg/mo ({n_months}m)"
@@ -336,7 +339,8 @@ def _detail_section(rows: pd.DataFrame, root: list) -> None:
     transaction_detail(sub, title=crumb, key=f"drill_{len(root)}_{'_'.join(map(str, root))}")
 
 
-def _trailing_avg(cube, spec, level_col, window) -> pd.Series:
+def _trailing_avg(cube, spec, level_col, months: list[str]) -> pd.Series:
+    """Mean monthly spend per value over `months`; a month without spend counts as 0."""
     monthly = cube.rollup(GroupingSpec(group_by=[level_col, "month"], filters=spec.filters,
                                        date_from=spec.date_from, date_to=spec.date_to,
                                        measures=["spend"], order_by=None, include_hidden=True))
@@ -344,17 +348,24 @@ def _trailing_avg(cube, spec, level_col, window) -> pd.Series:
         return pd.Series(dtype=float)
     pivot = monthly.pivot_table(index=level_col, columns="month", values="spend",
                                 aggfunc="sum").fillna(0.0)
-    last = sorted(pivot.columns)[-window:]
-    out = pivot[last].mean(axis=1)
+    out = pivot.reindex(columns=months, fill_value=0.0).mean(axis=1)
     out.index = [humanize_atom(i) if level_col == "atom" else i for i in out.index]
     return out
 
 
-def _num_months(cube, spec) -> int:
+def _monthly_visible_spend(cube, spec) -> pd.Series:
     m = cube.rollup(GroupingSpec(group_by=["month"], filters=spec.filters,
                                  date_from=spec.date_from, date_to=spec.date_to,
-                                 measures=["spend"], order_by=None, include_hidden=True))
-    return int(m["month"].nunique()) if not m.empty else 1
+                                 measures=["spend"], order_by=None))
+    return m.set_index("month")["spend"] if not m.empty else pd.Series(dtype=float)
+
+
+def _averaging_months(cube, spec) -> list[str]:
+    present = cube.rollup(GroupingSpec(group_by=["month"], filters=spec.filters,
+                                       date_from=spec.date_from, date_to=spec.date_to,
+                                       measures=["spend"], order_by=None, include_hidden=True))
+    return averaging_months(spec.date_from, spec.date_to,
+                            present["month"].tolist() if not present.empty else [])
 
 
 def _tier1_spend(cube, spec, tier1) -> float:

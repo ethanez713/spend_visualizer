@@ -22,6 +22,7 @@ import state
 import theme
 from config_io import Budget
 from cube import Cube, GroupingSpec
+from periods import averaging_months
 from ledger import load_ledger, monthly_pivot as ledger_monthly_pivot
 from viz import sanitize_for_csv, style_table, table_height
 
@@ -98,8 +99,12 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
         pivot = _monthly_pivot(cube, spec)
         st.caption(f"YTD average and trailing {window}-month running average vs monthly goal.")
 
-    avg = _running_avg(pivot, window)
-    ytd = _ytd_avg(pivot)
+    months = averaging_months(spec.date_from, spec.date_to, list(pivot.columns))
+    averaged = pivot.reindex(columns=months, fill_value=0.0) if not pivot.empty else pivot
+    avg = _running_avg(averaged, window)
+    ytd = _ytd_avg(averaged)
+    st.caption(f"Averages are over the {len(months)} complete months in the period; a "
+               "month the period only clips is left out.")
     avg_col = f"{window}mo Avg"
     cats = sorted(set(avg.index) | set(budget.goals.keys()))
 

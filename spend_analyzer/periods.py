@@ -68,3 +68,29 @@ def previous_period(date_from: date, date_to: date) -> tuple[date, date]:
         return add_months(date_from, -n), add_months(date_to, -n)
     span = (date_to - date_from).days + 1
     return date_from - timedelta(days=span), date_from - timedelta(days=1)
+
+
+# A month still counts as complete when the range misses this many days at either
+# end: the archive's latest date trails the calendar by a few days of pending rows.
+EDGE_TOLERANCE_DAYS = 3
+
+
+def complete_months(date_from: date, date_to: date) -> list[str]:
+    """`YYYY-MM` keys of the months a range covers end to end. A month the range
+    only clips (the archive's first month, the month in progress) would pull a
+    monthly average down, so averages are taken over these alone."""
+    tol = timedelta(days=EDGE_TOLERANCE_DAYS)
+    out, m = [], month_start(date_from)
+    while m <= date_to:
+        if date_from <= m + tol and date_to >= month_end(m) - tol:
+            out.append(f"{m.year}-{m.month:02d}")
+        m = add_months(m, 1)
+    return out
+
+
+def averaging_months(date_from: str, date_to: str, present: list[str]) -> list[str]:
+    """The months a monthly average divides by: the complete ones, or every month
+    present when the range holds no complete month (so a short range still shows
+    its own figure)."""
+    complete = complete_months(date.fromisoformat(date_from), date.fromisoformat(date_to))
+    return complete or sorted(present)

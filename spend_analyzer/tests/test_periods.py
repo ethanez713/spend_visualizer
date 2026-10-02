@@ -44,3 +44,13 @@ def test_month_to_date_range_is_compared_with_the_same_days_a_period_earlier():
 def test_arbitrary_range_is_compared_with_the_equal_span_immediately_before():
     assert previous_period(date(2026, 9, 10), date(2026, 9, 19)) == (
         date(2026, 8, 31), date(2026, 9, 9))
+
+
+def test_complete_months_leave_out_a_clipped_first_month_but_keep_a_nearly_done_last_one():
+    from periods import averaging_months, complete_months
+    # starts on the 6th (clipped), ends two days short of month end (within tolerance)
+    assert complete_months(date(2026, 3, 6), date(2026, 9, 28)) == [
+        "2026-04", "2026-05", "2026-06", "2026-07", "2026-08", "2026-09"]
+    assert complete_months(date(2026, 9, 1), date(2026, 9, 12)) == []
+    # no complete month in range: fall back to the months present
+    assert averaging_months("2026-09-01", "2026-09-12", ["2026-09"]) == ["2026-09"]
