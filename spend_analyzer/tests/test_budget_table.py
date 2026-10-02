@@ -132,3 +132,53 @@ def test_given_flat_goals_only_when_loaded_then_behaviour_is_unchanged(tmp_path)
     budget = _budget(tmp_path, "goals: {Mortgage: 4403, Other: 530}\n")
 
     assert budget.goal("Mortgage") == 4403.0 and budget.goal("Missing") is None
+
+
+def _years():
+    pivot = pd.DataFrame({"2024-11": [100.0, 40.0], "2024-12": [300.0, 0.0], "2025-01": [50.0, 10.0]},
+                         index=["Rent", "Wedding"])
+    return pivot
+
+
+def test_given_months_across_years_when_averaged_then_each_year_divides_by_its_own_months():
+    from budget_table import yearly_averages
+
+    yearly = yearly_averages(_years())
+
+    assert yearly.loc["Rent"].to_dict() == {"2024": 200.0, "2025": 50.0}
+    assert yearly.loc["Wedding"].to_dict() == {"2024": 20.0, "2025": 10.0}
+
+
+def test_given_empty_pivot_when_averaged_by_year_then_empty():
+    from budget_table import yearly_averages
+
+    assert yearly_averages(pd.DataFrame()).empty
+
+
+def test_given_goals_per_year_when_summarised_then_only_budgeted_categories_count():
+    from budget_table import historic_summary, yearly_averages
+
+    summary = historic_summary(yearly_averages(_years()),
+                               {"2024": {"Rent": 250.0}, "2025": {"Rent": 40.0}})
+
+    first, second = summary.to_dict("records")
+    assert (first["Actual"], first["Goal"], first["% of goal"]) == (200.0, 250.0, 80.0)
+    assert (second["Actual (annualized)"], second["Goal (annualized)"]) == (600.0, 480.0)
+
+
+def test_given_year_without_goals_when_summarised_then_goal_zero_and_no_percentage():
+    from budget_table import historic_summary, yearly_averages
+
+    row = historic_summary(yearly_averages(_years()), {}).iloc[0]
+
+    assert row["Goal"] == 0.0 and pd.isna(row["% of goal"]) and row["Actual"] == 0.0
+
+
+def test_given_yearly_actuals_and_goals_when_detailed_then_a_column_pair_per_year():
+    from budget_table import historic_detail, yearly_averages
+
+    detail = historic_detail(yearly_averages(_years()), {"2024": {"Rent": 250.0, "Travel": 90.0}})
+
+    assert list(detail.columns) == ["2024 actual", "2024 goal", "2025 actual", "2025 goal"]
+    assert detail.loc["Rent", "2024 goal"] == 250.0 and detail.loc["Travel", "2024 actual"] == 0.0
+    assert pd.isna(detail.loc["Wedding", "2024 goal"])

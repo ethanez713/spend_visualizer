@@ -46,3 +46,58 @@ def test_given_default_config_when_budget_opens_then_complete_months_is_selected
     at = boot_app("Budget")
 
     assert widget(at.radio, key="budget_averaging").value == COMPLETE_MONTHS
+
+
+def _imported_history(monkeypatch, tmp_path):
+    import json
+
+    import legacy
+    ledger, goals = tmp_path / "legacy_ledger.csv", tmp_path / "legacy_goals.json"
+    ledger.write_text(
+        "Source,Date,Description,Category,Debit,Credit,Debit Less Credit,Account,Note\n"
+        "Ethan,01/05/2026,Dress,Wedding,$3000.00,,$3000.00,,\n"
+        "Ethan,02/05/2026,Venue,Wedding,$3000.00,,$3000.00,,\n"
+        "Ethan,11/05/2025,Deposit,Wedding,$2800.00,,$2800.00,,\n", encoding="utf-8")
+    goals.write_text(json.dumps({"2025": {"Wedding": 2900}}))
+    monkeypatch.setattr(legacy, "LEDGER", ledger)
+    monkeypatch.setattr(legacy, "GOALS", goals)
+
+
+def _budget_table(at):
+    return next(df.value for df in at.dataframe if "% of Goal" in df.value.columns)
+
+
+def _model_source(boot_app):
+    at = boot_app("Budget")
+    widget(at.radio, key="budget_source").set_value("Budget model")
+    at.run()
+    assert not at.exception, [str(e.value) for e in at.exception]
+    return at
+
+
+def test_given_imported_history_when_budget_opens_then_the_note_and_history_panel_appear(
+        monkeypatch, tmp_path, boot_app):
+    _imported_history(monkeypatch, tmp_path)
+
+    at = _model_source(boot_app)
+
+    assert any("imported sheet history" in c.value for c in at.caption)
+    assert "History by year" in [e.label for e in at.expander]
+
+
+def test_given_imported_months_when_default_period_reaches_back_then_they_count_in_the_table(
+        monkeypatch, tmp_path, boot_app):
+    _imported_history(monkeypatch, tmp_path)
+
+    at = _model_source(boot_app)
+
+    assert "Wedding" in _budget_table(at).index
+
+
+def test_given_the_converter_ledger_selected_when_history_is_imported_then_it_is_not_mixed_in(
+        monkeypatch, tmp_path, boot_app):
+    _imported_history(monkeypatch, tmp_path)
+
+    at = boot_app("Budget")
+
+    assert "Wedding" not in _budget_table(at).index
