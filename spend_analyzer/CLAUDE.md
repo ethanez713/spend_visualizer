@@ -10,8 +10,8 @@ it never edits records — category fixes append INTENTS to the transformer's lo
   and `tests/_liveguard.py` digests live files before/after every test. Any new
   test that presses a save/revoke button must go through those fixtures. Missing
   archive ⇒ skip, never error (fresh clones have no data).
-- Config split: `config/app.yaml` + `config/taxonomy.yaml` are project config
-  (repo); `accounts.yaml` + `budget.yaml` are personal (data root,
+- Config split: `config/app.yaml` + `config/taxonomy.yaml` + `config/budget_model.yaml`
+  are project config (repo); `accounts.yaml` + `budget.yaml` are personal (data root,
   `config_io.PERSONAL_CONFIG_DIR`). `SPEND_ANALYZER_CONFIG_DIR` redirects BOTH for
   tests. Relative `archive_paths` resolve from the data root.
 - Pipeline: ingest (load → dedupe → normalize to CanonicalTransaction) → enrich

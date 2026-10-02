@@ -1,0 +1,21 @@
+# Example personal budget.yaml (copy to <data root>/spend_analyzer/config/budget.yaml).
+# All values here are made up.
+period: monthly
+
+goals:
+  Housing: 2000
+  Dining Out: 400
+  Groceries: 500
+
+# Household rules that beat the generic mapping in budget_model.yaml: the first entry
+# whose phrase appears as whole words in the merchant text decides the category.
+pinned:
+  - category: Dining Out
+    match: [doordash, "uber eats"]
+  - category: Transportation
+    match: [uber, lyft]
+
+# Optional: read actuals from an externally categorized ledger CSV instead of the
+# built-in budget model (relative paths resolve from the data root).
+# ledger:
+#   csv: spend_analyzer/data/budget_ledger.csv

@@ -12,6 +12,7 @@ import pandas as pd
 
 from config_io import (AppConfig, load_accounts, load_app_config,
                        CONFIG_DIR, PERSONAL_CONFIG_DIR)
+from budget_model import BudgetModel, annotate, load_budget_model
 from cube import Cube
 import manual_edits
 from enrich import enrich
@@ -58,12 +59,14 @@ def build_cube(
     app: AppConfig | None = None,
     taxonomy_path: str | Path = CONFIG_DIR / "taxonomy.yaml",
     accounts_path: str | Path = PERSONAL_CONFIG_DIR / "accounts.yaml",
+    budget_model: BudgetModel | None = None,
 ) -> BuildResult:
     app = app or load_app_config()
     taxonomy = load_taxonomy(taxonomy_path)
     accounts = load_accounts(accounts_path)
 
     res = ingest(app.resolved_archive_paths, overlay=manual_edits.overlay)
-    df = enrich(res.transactions, taxonomy, accounts)
+    df = annotate(enrich(res.transactions, taxonomy, accounts),
+                  budget_model or load_budget_model())
     qc = _qc(df, taxonomy, res.qc)
     return BuildResult(cube=Cube(df), df=df, qc=qc)

@@ -37,6 +37,7 @@ def _config_signature(app) -> tuple:
     # pair sits under the data root, so statting them under CONFIG_DIR would
     # silently never invalidate the cube when the user edits them.
     for directory, name in ((CONFIG_DIR, "taxonomy.yaml"),
+                            (CONFIG_DIR, "budget_model.yaml"),
                             (CONFIG_DIR, "app.yaml"),
                             (PERSONAL_CONFIG_DIR, "accounts.yaml"),
                             (PERSONAL_CONFIG_DIR, "budget.yaml")):

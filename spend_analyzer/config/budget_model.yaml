@@ -1,0 +1,20 @@
+# How tier-1 categories (taxonomy.yaml) become the budget's categories. A tier-1 name
+# not listed in `fold` is its own budget category. `atoms` beats `fold` for one PFC
+# detailed code; `drop` names tier-1 categories that are never budget spending.
+# Household rules (pinned merchants, goals) live in the personal budget.yaml.
+fold:
+  Services: Other
+  Fees: Other
+  Loans: Other
+  Personal Care: Other
+  Government: Other
+
+atoms:
+  PERSONAL_CARE_GYMS_AND_FITNESS_CENTERS: Healthcare
+  GENERAL_SERVICES_AUTOMOTIVE: Transportation
+
+drop:
+  - Taxes
+  - Income
+  - Transfer In
+  - Transfer Out
