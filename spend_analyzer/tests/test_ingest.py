@@ -74,3 +74,18 @@ def test_enrich_person_prefers_record_owner_over_accounts_yaml():
     assert person["stamped"] == "Alice"      # record stamp wins
     assert person["unstamped"] == "FromYaml"  # accounts.yaml fallback
     assert person["nowhere"] == "Unknown"     # last resort
+
+
+def test_accounts_generator_reads_identity_from_the_collector_csv(tmp_path):
+    from tools.gen_accounts import collector_identity
+    csv_path = tmp_path / "transactions.csv"
+    csv_path.write_text(
+        "institution,account_id,account_name,account_mask,account_type,account_subtype\n"
+        "Big Bank,acc1,Everyday Checking,1234,depository,checking\n"
+        "Big Bank,acc1,Everyday Checking,1234,depository,checking\n"
+        "Card Co,acc2,'=Rewards,,credit,credit card\n", encoding="utf-8")
+    ident = collector_identity(csv_path)
+    assert ident["acc1"] == {"name": "Everyday Checking ··1234", "type": "depository",
+                             "subtype": "checking", "institution": "Big Bank"}
+    assert ident["acc2"]["name"] == "=Rewards" and ident["acc2"]["type"] == "credit"
+    assert collector_identity(tmp_path / "absent.csv") == {}
