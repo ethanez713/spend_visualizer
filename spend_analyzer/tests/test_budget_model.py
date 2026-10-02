@@ -18,7 +18,7 @@ BUDGET_CATEGORIES = {
 def _model(**over):
     base = dict(fold={"Services": "Other", "Personal Care": "Other"},
                 atoms={"PERSONAL_CARE_GYMS_AND_FITNESS_CENTERS": "Healthcare"},
-                drop=frozenset({"Taxes"}), pinned=())
+                drop_atoms=("GOVERNMENT_AND_NON_PROFIT_TAX_PAYMENT", "INCOME_*"), pinned=())
     return BudgetModel(**{**base, **over})
 
 
@@ -35,9 +35,10 @@ def test_given_atom_exception_when_assigned_then_it_beats_the_fold():
     assert got == "Healthcare"
 
 
-def test_given_dropped_tier1_when_assigned_then_none_even_if_a_phrase_matches():
-    model = _model(pinned=(("Other", ("irs",)),))
+def test_given_dropped_atom_when_assigned_then_none_even_if_a_phrase_or_tier1_would_revive_it():
+    model = _model(pinned=(("Dining Out", ("doordash",)),))
     assert model.assign("Taxes", "GOVERNMENT_AND_NON_PROFIT_TAX_PAYMENT", "IRS") is None
+    assert model.assign("Dining Out", "INCOME_WAGES", "DoorDash") is None
 
 
 def test_given_pinned_phrase_when_assigned_then_it_beats_atom_and_fold():
@@ -77,10 +78,10 @@ def _write(path, text):
 
 
 def test_given_personal_file_when_loaded_then_it_layers_over_the_generic_mapping(tmp_path):
-    generic = _write(tmp_path / "g.yaml", "fold: {Services: Other}\natoms: {A: House}\ndrop: [Taxes]\n")
+    generic = _write(tmp_path / "g.yaml", "fold: {Services: Other}\natoms: {A: House}\ndrop_atoms: [TAX_*]\n")
     personal = _write(tmp_path / "p.yaml", """
 fold: {Services: Merchandise}
-drop: [Fees]
+drop_atoms: [FEE_*]
 pinned:
   - {category: Dining Out, match: [DoorDash, "Uber Eats"]}
   - {category: Transportation, match: [uber]}
@@ -91,7 +92,7 @@ goals: {Dining Out: 100}
 
     assert model.fold == {"Services": "Merchandise"}
     assert model.atoms == {"A": "House"}
-    assert model.drop == {"Taxes", "Fees"}
+    assert model.drop_atoms == ("TAX_*", "FEE_*")
     assert model.pinned == (("Dining Out", ("doordash", "uber eats")), ("Transportation", ("uber",)))
 
 
@@ -129,7 +130,7 @@ def test_given_spend_income_and_excluded_rows_when_annotated_then_only_spend_is_
     df = _frame([("spend", "Services", "S", "Plumber"),
                  ("income", "Income", "I", "Payroll"),
                  ("excluded", "Transfer Out", "T", "Savings"),
-                 ("spend", "Taxes", "X", "IRS")])
+                 ("spend", "Taxes", "GOVERNMENT_AND_NON_PROFIT_TAX_PAYMENT", "IRS")])
 
     got = annotate(df, _model())
 

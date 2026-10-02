@@ -2,7 +2,7 @@
 categories a household budgets by.
 
 Each spend row gets one ``budget_cat`` (``None`` when the row is not budget spending), by
-the first rule that applies: a tier-1 category in ``drop``; a pinned merchant phrase; an
+the first rule that applies: an atom matching ``drop_atoms``; a pinned merchant phrase; an
 atom exception; the tier-1 name after ``fold``. Pure functions over the enriched frame,
 so the Budget view and the tests share one definition.
 """
@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from fnmatch import fnmatchcase
 from pathlib import Path
 
 import pandas as pd
@@ -22,11 +23,11 @@ from config_io import CONFIG_DIR, PERSONAL_CONFIG_DIR
 class BudgetModel:
     fold: dict[str, str] = field(default_factory=dict)
     atoms: dict[str, str] = field(default_factory=dict)
-    drop: frozenset[str] = frozenset()
+    drop_atoms: tuple[str, ...] = ()
     pinned: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
     def assign(self, tier1: str, atom: str, text: str) -> str | None:
-        if tier1 in self.drop:
+        if any(fnmatchcase(atom, pattern) for pattern in self.drop_atoms):
             return None
         lowered = (text or "").lower()
         for category, phrases in self.pinned:
@@ -70,7 +71,7 @@ def load_budget_model(generic: Path = CONFIG_DIR / "budget_model.yaml",
     return BudgetModel(
         fold={**(base.get("fold") or {}), **(mine.get("fold") or {})},
         atoms={**(base.get("atoms") or {}), **(mine.get("atoms") or {})},
-        drop=frozenset(base.get("drop") or []) | frozenset(mine.get("drop") or []),
+        drop_atoms=tuple(base.get("drop_atoms") or []) + tuple(mine.get("drop_atoms") or []),
         pinned=_pinned(mine.get("pinned")))
 
 
