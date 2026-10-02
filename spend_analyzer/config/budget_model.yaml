@@ -20,3 +20,10 @@ drop_atoms:
   - TRANSFER_OUT_*
   - LOAN_PAYMENTS_CREDIT_CARD_PAYMENT
   - GOVERNMENT_AND_NON_PROFIT_TAX_PAYMENT
+
+# Rows outside the budget that review still asks about: money moved through a payment app
+# may have been a shared dinner or a trip. Card payments and transfers between the
+# household's own accounts never are (they would double count), so they are not listed.
+decide_atoms:
+  - TRANSFER_IN_TRANSFER_IN_FROM_APPS
+  - TRANSFER_OUT_TRANSFER_OUT_FROM_APPS

@@ -16,7 +16,8 @@ def _configured(monkeypatch, tmp_path):
     _no_history(monkeypatch, tmp_path)
     budget = Budget(goals={"Mortgage": 4500.0}, indexed_goals={"Dining Out": 1100.0},
                     goal_base_year=2024, goal_inflation=0.03,
-                    offsets=[Offset("Venmo - Income", {"Dining Out": 0.5, "Travel": 0.5})],
+                    offsets=[Offset("Venmo - Income", {"Dining Out": 0.5, "Travel": 0.5}),
+                             Offset("No Such Source", {"Travel": 1.0})],
                     projects=[Project("Remodel", 18000.0)], averaging=MONTHS_WITH_DATA)
     monkeypatch.setattr(config_io, "load_budget", lambda *a, **k: budget)
 
@@ -27,7 +28,7 @@ def test_given_offset_without_rows_when_budget_opens_then_a_note_names_it(
 
     at = boot_app("Budget")
 
-    assert any("Venmo - Income" in info.value for info in at.info)
+    assert any("No Such Source" in info.value for info in at.info)
 
 
 def test_given_projects_configured_when_budget_opens_then_the_panel_and_grid_render(
