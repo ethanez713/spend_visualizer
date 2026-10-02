@@ -151,3 +151,34 @@ def test_given_empty_frame_when_annotated_then_returned_unchanged():
     empty = pd.DataFrame()
 
     assert annotate(empty, _model()) is empty
+
+
+def test_given_each_rule_when_annotated_then_budget_source_names_it():
+    model = _model(pinned=(("Utilities", ("t-mobile",)),),
+                   transfer_categories={"TRANSFER_IN_TRANSFER_IN_FROM_APPS": "Venmo - Income"})
+    df = _frame([("spend", "Services", "S", "T-Mobile bill"),
+                 ("spend", "Personal Care", "PERSONAL_CARE_GYMS_AND_FITNESS_CENTERS", "Gym"),
+                 ("spend", "Services", "S", "Plumber"),
+                 ("excluded", "Transfer In", "TRANSFER_IN_TRANSFER_IN_FROM_APPS", "Venmo"),
+                 ("excluded", "Transfer Out", "TRANSFER_OUT_ACCOUNT_TRANSFER", "Savings")])
+
+    got = annotate(df, model, {"t2": {"category": "House", "edit": "e1", "note": ""}})
+
+    assert got["budget_cat"].tolist() == ["Utilities", "Healthcare", "House", "Venmo - Income", None]
+    assert got["budget_source"].tolist() == ["pinned:t-mobile", "atom", "edit", "transfer", ""]
+
+
+def test_given_decide_atom_patterns_when_asked_then_only_matching_atoms_need_a_decision():
+    model = _model(decide_atoms=("TRANSFER_*_FROM_APPS",))
+
+    assert model.needs_decision("TRANSFER_OUT_TRANSFER_OUT_FROM_APPS")
+    assert not model.needs_decision("LOAN_PAYMENTS_CREDIT_CARD_PAYMENT")
+
+
+def test_given_shipped_decide_atoms_when_loaded_then_card_payments_and_own_transfers_excluded():
+    model = load_budget_model(GENERIC, Path("/nonexistent/budget.yaml"))
+
+    assert model.needs_decision("TRANSFER_IN_TRANSFER_IN_FROM_APPS")
+    for atom in ("LOAN_PAYMENTS_CREDIT_CARD_PAYMENT", "TRANSFER_OUT_ACCOUNT_TRANSFER",
+                 "TRANSFER_IN_DEPOSIT", "TRANSFER_OUT_INVESTMENT_AND_RETIREMENT_FUNDS"):
+        assert not model.needs_decision(atom)
