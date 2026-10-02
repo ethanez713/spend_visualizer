@@ -11,13 +11,17 @@ from pathlib import Path
 import pandas as pd
 
 from config_io import (AppConfig, load_accounts, load_app_config,
-                       CONFIG_DIR, PERSONAL_CONFIG_DIR)
+                       CONFIG_DIR, DATA_ROOT, PERSONAL_CONFIG_DIR)
 from budget_model import BudgetModel, annotate, load_budget_model
 from cube import Cube
 import manual_edits
 from enrich import enrich
 from ingest import ingest
+from ingest.live import load_live_ids
 from taxonomy import load_taxonomy, Taxonomy
+
+
+MIRROR_CSV = DATA_ROOT / "transactions" / "transactions.csv"
 
 
 @dataclass
@@ -60,12 +64,14 @@ def build_cube(
     taxonomy_path: str | Path = CONFIG_DIR / "taxonomy.yaml",
     accounts_path: str | Path = PERSONAL_CONFIG_DIR / "accounts.yaml",
     budget_model: BudgetModel | None = None,
+    mirror_csv: str | Path = MIRROR_CSV,
 ) -> BuildResult:
     app = app or load_app_config()
     taxonomy = load_taxonomy(taxonomy_path)
     accounts = load_accounts(accounts_path)
 
-    res = ingest(app.resolved_archive_paths, overlay=manual_edits.overlay)
+    res = ingest(app.resolved_archive_paths, overlay=manual_edits.overlay,
+                 live_ids=load_live_ids(mirror_csv))
     df = annotate(enrich(res.transactions, taxonomy, accounts),
                   budget_model or load_budget_model())
     qc = _qc(df, taxonomy, res.qc)

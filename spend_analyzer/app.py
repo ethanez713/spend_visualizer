@@ -15,7 +15,7 @@ import state
 import theme
 from config_io import CONFIG_DIR, PERSONAL_CONFIG_DIR, load_app_config, load_budget
 from cube import Cube, GroupingSpec
-from data import build_cube
+from data import MIRROR_CSV, build_cube
 from ingest.load import stat_source
 from views import budget as budget_view
 from periods import CUSTOM, DEFAULT_PRESET, PRESETS, preset_range
@@ -28,11 +28,11 @@ st.set_page_config(page_title="Spend analyzer", layout="wide")
 def _config_signature(app) -> tuple:
     """Cache key: archive, intent log and config file stats (mtime/size)."""
     sig = [manual_edits.edits_sig()]
-    for p in app.resolved_archive_paths:
+    for p in [*app.resolved_archive_paths, MIRROR_CSV]:
         try:
             sig.append(stat_source(p).cache_key)
         except FileNotFoundError:
-            sig.append((p, 0.0, 0))
+            sig.append((str(p), 0.0, 0))
     # Each file must be stat'd in the dir it actually lives in: the personal
     # pair sits under the data root, so statting them under CONFIG_DIR would
     # silently never invalidate the cube when the user edits them.

@@ -1,6 +1,7 @@
 """Unit tests for the INGEST pipeline ops (PLAN.md §4)."""
 from enrich import enrich
-from ingest.dedupe import dedupe_by_id, drop_settled_pending
+from ingest.dedupe import dedupe_by_id, drop_removed_pending, drop_settled_pending
+from ingest.live import load_live_ids
 from ingest.normalize import normalize_one
 from taxonomy import load_taxonomy
 
@@ -89,3 +90,38 @@ def test_accounts_generator_reads_identity_from_the_collector_csv(tmp_path):
                              "subtype": "checking", "institution": "Big Bank"}
     assert ident["acc2"]["name"] == "=Rewards" and ident["acc2"]["type"] == "credit"
     assert collector_identity(tmp_path / "absent.csv") == {}
+
+
+def test_given_pending_row_plaid_no_longer_reports_when_filtered_then_dropped():
+    rows = [_raw("gone", pending=True), _raw("alive", pending=True), _raw("posted")]
+
+    out, dropped = drop_removed_pending(rows, {"alive", "posted"})
+
+    assert {r["transaction_id"] for r in out} == {"alive", "posted"} and dropped == 1
+
+
+def test_given_posted_row_absent_from_the_mirror_when_filtered_then_kept():
+    rows = [_raw("posted", pending=False)]
+
+    assert drop_removed_pending(rows, set()) == (rows, 0)
+
+
+def test_given_no_mirror_when_filtered_then_nothing_is_dropped():
+    rows = [_raw("p", pending=True)]
+
+    assert drop_removed_pending(rows, None) == (rows, 0)
+
+
+def test_given_mirror_csv_when_loaded_then_its_transaction_ids(tmp_path):
+    mirror = tmp_path / "t.csv"
+    mirror.write_text("institution,transaction_id,amount\nBank,a1,5\nBank,,6\nBank,b2,7\n")
+
+    assert load_live_ids(mirror) == {"a1", "b2"}
+
+
+def test_given_missing_or_columnless_mirror_when_loaded_then_none(tmp_path):
+    columnless = tmp_path / "c.csv"
+    columnless.write_text("a,b\n1,2\n")
+
+    assert load_live_ids(tmp_path / "absent.csv") is None
+    assert load_live_ids(columnless) is None
