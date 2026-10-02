@@ -11,7 +11,7 @@ import recurring
 import state
 import theme
 from cube import Cube, GroupingSpec
-from viz import blank_if_missing, money, style_table, table_height
+from viz import blank_if_missing, md_text, money, style_table, table_height
 from views._widgets import fix_categorization, hide_button, transaction_detail
 
 _TOP_MERCHANTS = 40
@@ -54,7 +54,7 @@ def render(cube: Cube, spec: GroupingSpec, anchor: date) -> None:
     event = st.dataframe(
         style_table(indexed, money_cols=["Total", "Avg"], int_cols=["Visits"],
                     heat_cols=["Total"], grey_rows=grey),
-        use_container_width=True, height=table_height(len(indexed), 12),
+        width="stretch", height=table_height(len(indexed), 12),
         on_select="rerun", selection_mode="single-row", key="merchant_pick",
         column_config={"Logo": st.column_config.ImageColumn("", width="small")},
     )
@@ -81,14 +81,14 @@ def render(cube: Cube, spec: GroupingSpec, anchor: date) -> None:
 def _merchant_detail(rows: pd.DataFrame, pick: str) -> None:
     sub = rows[rows["merchant"] == pick]
     mid = sub["merchant_id"].iloc[0]
-    st.subheader(pick)
+    st.subheader(md_text(pick))
     monthly = sub.groupby("month")["spend"].sum().sort_index()
     fig = go.Figure(go.Bar(x=pd.to_datetime(monthly.index).strftime("%b %Y"), y=monthly.values,
                            marker_color=theme.SPEND,
                            hovertemplate="%{y:$,.0f}<extra>%{x}</extra>"))
     fig.update_layout(height=180, xaxis=dict(type="category"),
                       yaxis=dict(tickprefix="$", tickformat=",.0f"))
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
     transaction_detail(sub, title=pick, key=f"merch_{mid}", sort="date_resolved")
     c1, c2 = st.columns([2, 3])
     with c1:
@@ -123,4 +123,4 @@ def _recurring(rows: pd.DataFrame, anchor: date) -> None:
     st.dataframe(
         style_table(show, money_cols=["Typical charge", "Monthly"], int_cols=["Charges"],
                     heat_cols=["Monthly"]),
-        use_container_width=True, height=table_height(len(show)))
+        width="stretch", height=table_height(len(show)))

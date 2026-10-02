@@ -48,7 +48,7 @@ def render(cube: Cube, qc: dict, spec: GroupingSpec) -> None:
         checks.append({"grouping": col, "sum": s,
                        "ties_out": abs(s - grand) < 0.01})
     tie = pd.DataFrame(checks)
-    st.dataframe(tie, use_container_width=True, hide_index=True,
+    st.dataframe(tie, width="stretch", hide_index=True,
                  column_config={"sum": st.column_config.NumberColumn(format="$%.2f")})
     if tie["ties_out"].all():
         st.success(f"Every grouping sums to {money(grand)} — no double counting.")

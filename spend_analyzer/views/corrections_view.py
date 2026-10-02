@@ -70,7 +70,7 @@ def _render_overrides() -> None:
         "source": it.get("source", ""),
         "note": it.get("note", ""),
     } for it in items]
-    st.dataframe(pd.DataFrame(rows).iloc[::-1], use_container_width=True, hide_index=True,
+    st.dataframe(pd.DataFrame(rows).iloc[::-1], width="stretch", hide_index=True,
                  height=table_height(len(rows), 12),
                  column_config={"rows covered": st.column_config.NumberColumn(
                      "rows covered",
@@ -112,16 +112,16 @@ def _render_triage_notes() -> None:
     c2.metric("Local fixes (taxonomy)", len(local))
 
     df = corr.to_dataframe(items)
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(df, width="stretch", hide_index=True)
 
     md = corr.report_markdown(items)
     e1, e2, e3 = st.columns(3)
     e1.download_button("Report (Markdown)", md, file_name="corrections_report.md",
-                       mime="text/markdown", use_container_width=True)
+                       mime="text/markdown", width="stretch")
     e2.download_button("Table (CSV)", sanitize_for_csv(df).to_csv(index=False),
                        file_name="corrections.csv", mime="text/csv",
-                       use_container_width=True)
-    with e3.popover("Clear all", use_container_width=True):
+                       width="stretch")
+    with e3.popover("Clear all", width="stretch"):
         st.caption(f"Deletes all {len(items)} triage notes. This cannot be undone.")
         if st.button(f"Delete {len(items)} notes", key="clear_notes_confirm"):
             corr.clear_corrections()

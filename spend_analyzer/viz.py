@@ -19,6 +19,15 @@ def money_md(x: float) -> str:
     return money(x).replace("$", "\\$")
 
 
+_MD_SPECIAL = str.maketrans({c: "\\" + c for c in "\\`*_[]$~"})
+
+
+def md_text(s: str) -> str:
+    """Data shown inside a Markdown surface, with its markup characters neutralised:
+    a merchant called ``**1234`` is a name, not a bold run."""
+    return str(s).translate(_MD_SPECIAL)
+
+
 _ROW_PX = 35
 
 

@@ -101,7 +101,7 @@ def _pace(rows: pd.DataFrame, anchor: date) -> None:
     fig.update_layout(height=300, hovermode="x unified",
                       xaxis=dict(title="Day of month", dtick=5, range=[1, 31]),
                       yaxis=dict(tickprefix="$", tickformat=",.0f", rangemode="tozero"))
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
     so_far = float(this.iloc[-1])
     if ref is None:
@@ -130,7 +130,7 @@ def _changes(rows, current, previous, earliest, anchor) -> None:
     st.dataframe(
         style_table(table, money_cols=["Current", "Previous", "Change"],
                     diverging={"Change": 0.0}),
-        use_container_width=True, height=table_height(len(table)))
+        width="stretch", height=table_height(len(table)))
     st.caption(f"By category: {current[0]:%-d %b} – {current[1]:%-d %b} against "
                f"{previous[0]:%-d %b} – {previous[1]:%-d %b %Y}.")
 

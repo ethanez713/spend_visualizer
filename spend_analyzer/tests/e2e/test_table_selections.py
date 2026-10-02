@@ -13,7 +13,7 @@ from tests.e2e._browser import (assert_no_exception, click_grid_cell, go,
 pytestmark = pytest.mark.e2e
 
 CHECKBOX_X = 16     # row-selection column center in the spend table
-FLAG_COL_X = 30     # column center in the transaction-detail editor
+FLAG_COL_X = 38     # column center in the transaction-detail editor
 
 
 def test_given_two_rows_ticked_then_bulk_buttons_show_count(app):
@@ -62,8 +62,8 @@ def test_given_transaction_flag_ticked_then_fix_expander_opens(app):
 
 def test_given_merchant_picked_in_dropdown_then_detail_follows(app):
     go(app, "Merchants and recurring")
-    app.locator('[data-testid="stMain"] [data-testid="stSelectbox"]:visible').first.click()
-    second = app.locator('li[role="option"]').nth(1)
+    app.locator('[data-testid="stMain"]').get_by_role("combobox").first.click()
+    second = app.get_by_role("option").nth(1)
     picked = second.inner_text().strip()
     second.click()
     wait_idle(app)

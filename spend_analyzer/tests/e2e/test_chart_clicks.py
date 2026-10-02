@@ -86,7 +86,7 @@ def test_given_treemap_when_tile_clicked_then_drills(app):
 
 
 def test_given_period_narrowed_then_chart_rerenders_without_error(app):
-    app.locator('section[data-testid="stSidebar"] [data-baseweb="select"]').first.click()
+    app.get_by_role("combobox", name="Period").click()
     app.get_by_role("option", name="Last 3 months", exact=True).click()
     wait_idle(app)
     assert_no_exception(app)

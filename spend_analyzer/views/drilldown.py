@@ -116,7 +116,7 @@ def _spend_table(cube, spec, level_col, level_name, table, raw_vals, hidden_flag
     event = st.dataframe(
         style_table(disp, money_cols=money_cols, int_cols=["Txns"], heat_cols=heat_cols,
                     diverging=diverging, grey_rows=grey),
-        use_container_width=True, on_select="rerun", selection_mode="multi-row",
+        width="stretch", on_select="rerun", selection_mode="multi-row",
         key=f"spend_sel_{level_col}", height=table_height(len(disp)),
     )
 
@@ -131,12 +131,12 @@ def _spend_table(cube, spec, level_col, level_name, table, raw_vals, hidden_flag
         all_hidden = all(state.is_hidden(level_col, v) for v in picked)
         c1, c2, _ = st.columns([2, 2, 6])
         if c1.button(f"{'Show' if all_hidden else 'Hide'} {len(picked)}",
-                     key=f"hidebtn_{level_col}", use_container_width=True):
+                     key=f"hidebtn_{level_col}", width="stretch"):
             for v in picked:
                 state.unhide(level_col, v) if all_hidden else state.hide(level_col, v, _disp(level_col, v))
             st.rerun()
         if c2.button(f"Flag {len(picked)}", key=f"flagbtn_{level_col}",
-                     use_container_width=True):
+                     width="stretch"):
             st.session_state[f"flagged_{level_col}"] = set(picked)
             st.rerun()
 

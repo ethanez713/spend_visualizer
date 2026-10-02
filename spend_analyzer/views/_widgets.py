@@ -8,7 +8,7 @@ import corrections as corr
 import manual_edits
 import rules_bridge
 import state
-from viz import (PROVENANCE_BADGES, blank_if_missing, humanize_atom, money, money_md,
+from viz import (PROVENANCE_BADGES, blank_if_missing, humanize_atom, md_text, money, money_md,
                  provenance_why, table_height)
 
 # Columns shown in a raw transaction-detail table.
@@ -40,10 +40,10 @@ def transaction_detail(rows: pd.DataFrame, title: str = "Transactions",
     disp = view[cols].copy()
     disp.insert(0, "Flag", False)
 
-    st.caption(f"{title} — {len(disp)} txns · {money_md(rows['abs_amount'].sum())}  "
+    st.caption(f"{md_text(title)} — {len(disp)} txns · {money_md(rows['abs_amount'].sum())}  "
                "·  tick Flag on a row to fix its category")
     edited = st.data_editor(
-        disp.style.format({"abs_amount": "${:,.2f}"}), use_container_width=True, hide_index=True, key=f"txned_{key}",
+        disp.style.format({"abs_amount": "${:,.2f}"}), width="stretch", hide_index=True, key=f"txned_{key}",
         height=table_height(len(disp), max_rows),
         disabled=[c for c in disp.columns if c != "Flag"],
         column_config={
@@ -75,7 +75,7 @@ def hide_button(dim: str, value, label: str, *, key: str) -> None:
     """An 'eye' toggle that hides/shows a category across all views."""
     hidden = state.is_hidden(dim, value)
     icon = "Show" if hidden else "Hide"
-    if st.button(f"{icon} {label}", key=key, use_container_width=True):
+    if st.button(f"{icon} {label}", key=key, width="stretch"):
         state.toggle_hidden(dim, value, label)
         st.rerun()
 

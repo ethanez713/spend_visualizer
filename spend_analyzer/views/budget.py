@@ -151,10 +151,10 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
     # Each table fills its column and is drag-resizable (global CSS).
     left, right = st.columns([3, 2])
     with left:
-        st.dataframe(styler, use_container_width=True, height=table_height(len(indexed)))
+        st.dataframe(styler, width="stretch", height=table_height(len(indexed)))
     with right:
         st.dataframe(style_table(derived.set_index(""), money_cols=["Actual", "Goal"]),
-                     use_container_width=True)
+                     width="stretch")
         if table["_hidden"].any():
             hidden_names = table.loc[table["_hidden"], "Category"].tolist()
             st.caption(f"Hidden from totals: {', '.join(hidden_names)}")
@@ -174,7 +174,7 @@ def _export_buttons(summary: pd.DataFrame, pivot: pd.DataFrame) -> None:
     c1.download_button(
         "Summary CSV",
         sanitize_for_csv(summary.reset_index()).to_csv(index=False),
-        file_name="budget_vs_actual.csv", mime="text/csv", use_container_width=True,
+        file_name="budget_vs_actual.csv", mime="text/csv", width="stretch",
     )
     if not pivot.empty:
         grid = pivot.round(2).reset_index().rename(columns={"tier1": "Category",
@@ -183,7 +183,7 @@ def _export_buttons(summary: pd.DataFrame, pivot: pd.DataFrame) -> None:
             "Monthly grid CSV",
             sanitize_for_csv(grid).to_csv(index=False),
             file_name="budget_monthly_grid.csv", mime="text/csv",
-            use_container_width=True,
+            width="stretch",
         )
 
 
@@ -211,7 +211,7 @@ def _trends(pivot: pd.DataFrame, window: int) -> None:
     fig.update_layout(barmode="stack", height=430, margin=dict(t=10),
                       xaxis_title=None, legend_title_text="",
                       yaxis=dict(title=None, tickprefix="$", tickformat=",.0f"))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 
 def _cat(table: pd.DataFrame, name: str, avg_col: str) -> tuple[float, float]:

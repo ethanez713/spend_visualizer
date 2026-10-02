@@ -70,7 +70,7 @@ def _over_time(p: pd.DataFrame, timeframe: str) -> None:
     fig.update_layout(barmode="relative", height=380, hovermode="x unified",
                       xaxis=dict(type="category"),
                       yaxis=dict(tickprefix="$", tickformat=",.0f"))
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
     table = p[["period", "income", "spend", "net", "rate", "cumulative"]].rename(columns={
         "period": timeframe, "income": "Income", "spend": "Spending", "net": "Net",
@@ -78,7 +78,7 @@ def _over_time(p: pd.DataFrame, timeframe: str) -> None:
     st.dataframe(
         style_table(table, money_cols=["Income", "Spending", "Net", "Cumulative net"],
                     pct_cols=["Saved"], diverging={"Net": 0.0}, higher_is_better=["Net"]),
-        use_container_width=True, height=table_height(len(table)))
+        width="stretch", height=table_height(len(table)))
 
 
 def _sankey(cube: Cube, base: dict, income: float, spend: float) -> None:
@@ -120,11 +120,11 @@ def _sankey(cube: Cube, base: dict, income: float, spend: float) -> None:
         arrangement="snap",
         node=dict(label=[f"{n} · {money(v)}" for n, v in zip(labels, _node_values(labels, src, dst, val, total))],
                   color=colors, pad=18, thickness=14, line=dict(color=theme.PAPER_0, width=1)),
-        link=dict(source=src, target=dst, value=val, color="rgba(112,104,91,.22)",
+        link=dict(source=src, target=dst, value=val, color=theme.LINK_WASH,
                   hovertemplate="%{source.label} → %{target.label}<extra></extra>"),
     ))
     fig.update_layout(height=520, font=dict(size=13, color=theme.INK_900))
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
 
 def _node_values(labels, src, dst, val, total) -> list[float]:

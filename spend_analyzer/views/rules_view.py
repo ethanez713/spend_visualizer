@@ -96,7 +96,7 @@ def _render_pattern_rules(rules: list[dict], scan: dict, df: pd.DataFrame) -> No
         "flags pending": int(flagged.get(r["rule_id"], 0)),
     } for r in rules])
     st.dataframe(
-        table, use_container_width=True, hide_index=True,
+        table, width="stretch", hide_index=True,
         column_config={
             "matches now": st.column_config.NumberColumn(
                 "matches now", help="Archive rows the mechanical cascade would hit "
@@ -126,7 +126,7 @@ def _render_rule_inspector(rules: list[dict], scan: dict) -> None:
     total = rows["amount"].sum() if "amount" in rows.columns else 0.0
     st.caption(f"`{pick}` — {len(rows)} rows · net {money(total)}")
     st.dataframe(rows.drop(columns=["transaction_id"], errors="ignore"),
-                 use_container_width=True, hide_index=True)
+                 width="stretch", hide_index=True)
 
 
 def _render_memory(entries: list[dict], scan: dict) -> None:
@@ -146,7 +146,7 @@ def _render_memory(entries: list[dict], scan: dict) -> None:
             "→ category": f"{e['primary']} / {e['detailed']}",
             "matches now": by_key.get(e["key"], 0),
         } for e in entries])
-        st.dataframe(table, use_container_width=True, hide_index=True)
+        st.dataframe(table, width="stretch", hide_index=True)
 
 
 def _render_converter(conv: dict | None, df: pd.DataFrame) -> None:
@@ -173,24 +173,24 @@ def _render_converter(conv: dict | None, df: pd.DataFrame) -> None:
         st.dataframe(pd.DataFrame([
             {"→ budget category": cat, "description tokens": ", ".join(tokens)}
             for cat, tokens in conv["pinned"]],
-        ), use_container_width=True, hide_index=True)
+        ), width="stretch", hide_index=True)
         st.markdown("**Dropped rows** (never reach the Sheet)")
         st.dataframe(pd.DataFrame(
             [{"level": "primary", "PFC": p, "rows now": int(prim_counts.get(p, 0))}
              for p in conv["drop_primary"]] +
             [{"level": "detailed", "PFC": d, "rows now": int(det_counts.get(d, 0))}
              for d in conv["drop_detailed"]],
-        ), use_container_width=True, hide_index=True)
+        ), width="stretch", hide_index=True)
     with c2:
         st.markdown("**PFC detailed → budget category** (checked before primary)")
         st.dataframe(pd.DataFrame([
             {"PFC detailed": k, "→ budget category": v,
              "rows now": int(det_counts.get(k, 0))}
             for k, v in conv["detailed_map"].items()],
-        ), use_container_width=True, hide_index=True)
+        ), width="stretch", hide_index=True)
         st.markdown("**PFC primary → budget category** (the fallback)")
         st.dataframe(pd.DataFrame([
             {"PFC primary": k, "→ budget category": v,
              "rows now": int(prim_counts.get(k, 0))}
             for k, v in conv["primary_map"].items()],
-        ), use_container_width=True, hide_index=True)
+        ), width="stretch", hide_index=True)

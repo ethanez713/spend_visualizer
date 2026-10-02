@@ -21,16 +21,17 @@ def open_app(page: Page, url: str) -> None:
     wait_idle(page)
 
 
+_RUNNING = '.stApp[data-test-script-state="running"]'
+
+
 def wait_idle(page: Page, runs: int = 4) -> None:
     """Wait until Streamlit stops (re)running — reruns can chain (warm-up)."""
     for _ in range(runs):
         try:
-            page.wait_for_selector('[data-testid="stStatusWidget"]',
-                                   state="attached", timeout=700)
+            page.wait_for_selector(_RUNNING, state="attached", timeout=700)
         except Exception:
             return  # no (further) run started
-        page.wait_for_selector('[data-testid="stStatusWidget"]',
-                               state="detached", timeout=60000)
+        page.wait_for_selector(_RUNNING, state="detached", timeout=60000)
 
 
 def go(page: Page, view: str) -> None:

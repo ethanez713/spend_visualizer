@@ -7,7 +7,7 @@ import pandas as pd
 import corrections as corr
 from config_io import load_budget
 from taxonomy import load_taxonomy
-from viz import blank_if_missing, humanize_atom, sanitize_for_csv, style_table
+from viz import blank_if_missing, humanize_atom, md_text, sanitize_for_csv, style_table
 
 
 def test_necessity_slicing_non_1to1():
@@ -145,3 +145,8 @@ def test_iso_week_stays_out_of_the_hierarchical_time_path():
         assert dims["week"] not in dims["path"], d
         assert dims["path"] == [str(d.year), dims["quarter"], dims["month"], dims["dow"]]
         d += timedelta(days=1)
+
+
+def test_md_text_neutralises_markup_in_data():
+    assert md_text("**1234 $5_a") == r"\*\*1234 \$5\_a"
+    assert md_text("Plain Name") == "Plain Name"
