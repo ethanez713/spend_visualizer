@@ -52,6 +52,44 @@ def given_tst_prefix_when_applied_then_restaurant(make_record):
     assert hit.rule_name == "pos:tst"
 
 
+def given_bank_bill_pay_to_a_card_when_applied_then_credit_card_payment_auto(make_record):
+    rec = make_record(merchant_name=None, website=None, merchant_entity_id=None,
+                      name="Online Scheduled Payment to ACCT# 1111 Confirmation# 123",
+                      original_description="Online Scheduled Payment to ACCT# 1111",
+                      personal_finance_category={
+                          "primary": "LOAN_PAYMENTS",
+                          "detailed": "LOAN_PAYMENTS_OTHER_PAYMENT",
+                          "confidence_level": "LOW"})
+    hit = apply_rules(rec, None)
+    assert (hit.primary, hit.detailed) == ("LOAN_PAYMENTS", "LOAN_PAYMENTS_CREDIT_CARD_PAYMENT")
+    assert hit.trust == "auto"
+
+
+def given_uppercase_bill_pay_text_when_applied_then_still_a_card_payment(make_record):
+    rec = make_record(merchant_name=None, website=None, merchant_entity_id=None,
+                      name="ONLINE SCHEDULED PAYMENT TO ACCT# 2222", original_description="")
+    hit = apply_rules(rec, None)
+    assert hit.detailed == "LOAN_PAYMENTS_CREDIT_CARD_PAYMENT"
+
+
+def given_rewards_redemption_deposit_when_applied_then_transfer_in_auto(make_record):
+    rec = make_record(merchant_name=None, website=None, merchant_entity_id=None, amount=-12.34,
+                      name="Bank of America DES:CASHREWARD ID:SMITH INDN:XXXXX0",
+                      original_description="",
+                      personal_finance_category={
+                          "primary": "OTHER", "detailed": "OTHER_OTHER",
+                          "confidence_level": "LOW"})
+    hit = apply_rules(rec, None)
+    assert (hit.primary, hit.detailed) == ("TRANSFER_IN", "TRANSFER_IN_OTHER_TRANSFER_IN")
+    assert hit.trust == "auto"
+
+
+def given_other_online_payment_text_when_applied_then_no_card_payment_hit(make_record):
+    rec = make_record(merchant_name=None, website=None, merchant_entity_id=None,
+                      name="Online Payment to Pepco", original_description="Online Payment to Pepco")
+    assert apply_rules(rec, None) is None
+
+
 def given_website_when_applied_then_domain_hint(make_record):
     rec = make_record(merchant_name=None, name="charge", original_description="charge",
                       website="www.netflix.com")

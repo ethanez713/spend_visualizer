@@ -92,8 +92,16 @@ FLAG_INTRA_PRIMARY_LATERALS = False
 #   'COT*FLT' = Capital One Travel flight booking → flights   (specific → auto).
 #   'COT*HTL' = Capital One Travel hotel booking  → lodging   (specific → auto).
 #   'TST*'    = Toast POS (any Toast merchant)    → restaurant (over-reaches → flag).
+#   'Online Scheduled Payment to ACCT' = bank bill-pay to a credit card. Plaid files it
+#   under LOAN_PAYMENTS_OTHER_PAYMENT, which no consumer drops, so it double-counts the
+#   card's own charges; CREDIT_CARD_PAYMENT is the label both consumers exclude.
+#   'DES:CASHREWARD' = rewards redemption deposited to checking. Plaid labels the same
+#   deposit TRANSFER_IN on some days and OTHER_OTHER on others; the latter leaks into spend.
 POS_PREFIX_RULES: list[tuple[str, tuple[str, str], str]] = [
     ("COT*FLT", ("TRAVEL", "TRAVEL_FLIGHTS"),               "auto"),
+    ("Online Scheduled Payment to ACCT",
+     ("LOAN_PAYMENTS", "LOAN_PAYMENTS_CREDIT_CARD_PAYMENT"), "auto"),
+    ("DES:CASHREWARD", ("TRANSFER_IN", "TRANSFER_IN_OTHER_TRANSFER_IN"), "auto"),
     ("COT*HTL", ("TRAVEL", "TRAVEL_LODGING"),               "auto"),
     ("TST*",    ("FOOD_AND_DRINK", "FOOD_AND_DRINK_RESTAURANT"), "flag"),
 ]
