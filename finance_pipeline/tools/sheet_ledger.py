@@ -106,3 +106,32 @@ def budget_tab(workbook) -> list[tuple[str, float, float]]:
         if isinstance(average, float) and isinstance(goal, float):
             table.append((label, average, goal))
     return table
+
+
+# The Budget tab's historic tables fold parking into rent; the year tabs call it Rent.
+HISTORIC_LABELS = {"Rent + Parking": "Rent"}
+
+
+def historic_goals(workbook) -> dict[int, dict[str, float]]:
+    """``{year: {category: goal}}`` from the Budget tab's "Historic Data" block: each year
+    heads a pair of columns (actual, then goal), and categories run down column B to the
+    TOTAL row."""
+    cells = read_sheet(workbook, "Budget")
+    header = next((n for n, row in sorted(cells.items())
+                   if str(row.get("B", "")).startswith("Historic Data")), None)
+    if header is None:
+        return {}
+    years = {col: int(value) for col, value in cells[header].items()
+             if col != "B" and isinstance(value, float)}
+    goals: dict[int, dict[str, float]] = {year: {} for year in years.values()}
+    for number, row in sorted(cells.items()):
+        label = row.get("B")
+        if number <= header + 1 or not isinstance(label, str):
+            continue
+        if label.strip().upper() == "TOTAL":
+            break
+        for column, year in years.items():
+            goal = row.get(chr(ord(column) + 1))
+            if isinstance(goal, float):
+                goals[year][HISTORIC_LABELS.get(label.strip(), label.strip())] = goal
+    return goals
