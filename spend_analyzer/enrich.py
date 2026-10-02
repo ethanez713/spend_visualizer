@@ -19,6 +19,9 @@ from taxonomy import Taxonomy
 _NON_ALNUM = re.compile(r"[^a-z0-9]+")
 
 
+INCOME_TIER0 = "Income"
+
+
 def _norm_merchant(name: str | None) -> str:
     if not name:
         return ""
@@ -88,7 +91,7 @@ def _detect_recurrence(df: pd.DataFrame) -> pd.Series:
     similar if coefficient of variation is small.
     """
     rec = pd.Series("one-off", index=df.index, dtype="object")
-    spend = df[df["flow"] == "spend"]
+    spend = df[(df["flow"] == "spend") & ~df["refund"]]
     for mid, grp in spend.groupby("merchant_id"):
         if mid in ("", "unknown") or len(grp) < 3:
             continue
@@ -131,13 +134,18 @@ def enrich(
         tags = taxonomy.resolve(
             t.pfc_detailed, t.pfc_primary, t.merchant_name, t.merchant_entity_id
         )
-        # finalize flow: exclusions win, else direction -> income/spend
+        # finalize flow: exclusions win; money in under an income category is
+        # income; money in under any other category is a refund, which nets against
+        # that category's spend rather than inflating income and spending both.
+        abs_amt = abs(t.amount)
+        refund = False
         if tags.excluded:
             flow = "excluded"
+        elif t.direction == "in" and tags.tier0 == INCOME_TIER0:
+            flow = "income"
         else:
-            flow = "income" if t.direction == "in" else "spend"
-
-        abs_amt = abs(t.amount)
+            flow = "spend"
+            refund = t.direction == "in"
         m = _merchant_dims(t)
         g = _geo_dims(t)
         iso = _resolve_date(t)
@@ -152,7 +160,10 @@ def enrich(
                 "amount": t.amount,
                 "abs_amount": abs_amt,
                 "flow": flow,
-                "spend": abs_amt if flow == "spend" else 0.0,
+                "spend": (-abs_amt if refund else abs_amt) if flow == "spend" else 0.0,
+                "refund": refund,
+                # what a transaction table shows: negative for a refund
+                "display_amount": -abs_amt if refund else abs_amt,
                 "income": abs_amt if flow == "income" else 0.0,
                 "count": 1,
                 # category dims — level columns + path

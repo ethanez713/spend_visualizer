@@ -8,11 +8,11 @@ import corrections as corr
 import manual_edits
 import rules_bridge
 import state
-from viz import (PROVENANCE_BADGES, blank_if_missing, humanize_atom, md_text, money, money_md,
+from viz import (PROVENANCE_BADGES, blank_if_missing, humanize_atom, md_text, money, money_cents, money_md,
                  provenance_why, table_height)
 
 # Columns shown in a raw transaction-detail table.
-_TXN_COLS = ["date_resolved", "abs_amount", "merchant", "name", "tier1", "tier2",
+_TXN_COLS = ["date_resolved", "display_amount", "merchant", "name", "tier1", "tier2",
              "atom_display", "person", "account_name", "confidence", "why"]
 
 
@@ -40,10 +40,10 @@ def transaction_detail(rows: pd.DataFrame, title: str = "Transactions",
     disp = view[cols].copy()
     disp.insert(0, "Flag", False)
 
-    st.caption(f"{md_text(title)} — {len(disp)} txns · {money_md(rows['abs_amount'].sum())}  "
+    st.caption(f"{md_text(title)} — {len(disp)} txns · {money_md(_net(rows))}  "
                "·  tick Flag on a row to fix its category")
     edited = st.data_editor(
-        disp.style.format({"abs_amount": "${:,.2f}"}), width="stretch", hide_index=True, key=f"txned_{key}",
+        disp.style.format({"display_amount": money_cents}), width="stretch", hide_index=True, key=f"txned_{key}",
         height=table_height(len(disp), max_rows),
         disabled=[c for c in disp.columns if c != "Flag"],
         column_config={
@@ -55,7 +55,8 @@ def transaction_detail(rows: pd.DataFrame, title: str = "Transactions",
             "tier1": "Category",
             "tier2": "Subcategory",
             "atom_display": "Atom",
-            "abs_amount": st.column_config.NumberColumn("Amount"),
+            "display_amount": st.column_config.NumberColumn(
+                "Amount", help="A negative amount is a refund."),
             "person": "Person",
             "account_name": "Account",
             "why": st.column_config.TextColumn(
@@ -67,8 +68,12 @@ def transaction_detail(rows: pd.DataFrame, title: str = "Transactions",
     flagged = [i for i, f in enumerate(edited["Flag"].tolist()) if f]
     for i in flagged[:6]:
         r = ordered.iloc[i]
-        label = f"{r.get('merchant')} · {money(r.get('abs_amount', 0))} · {r.get('date_resolved')}"
+        label = f"{r.get('merchant')} · {money(r.get('display_amount', 0))} · {r.get('date_resolved')}"
         fix_categorization(row=r, label=label, key=f"txn_{key}_{i}", expanded=True)
+
+
+def _net(rows: pd.DataFrame) -> float:
+    return float(rows["display_amount"].sum())
 
 
 def hide_button(dim: str, value, label: str, *, key: str) -> None:

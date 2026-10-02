@@ -59,7 +59,7 @@ def render(cube: Cube, spec: GroupingSpec, anchor: date) -> None:
         column_config={"Logo": st.column_config.ImageColumn("", width="small")},
     )
     picked = event.selection["rows"] if event and "rows" in event.selection else []
-    everyone = sorted(rows.loc[rows["spend"] > 0, "merchant"].dropna().unique())
+    everyone = sorted(rows.loc[~rows["refund"], "merchant"].dropna().unique())
     searched = st.selectbox("Merchant", everyone, index=None, key="merchant_search",
                             placeholder=f"Search {len(everyone)} merchants",
                             label_visibility="collapsed")

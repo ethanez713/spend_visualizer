@@ -81,7 +81,6 @@ def render(cube: Cube, spec: GroupingSpec, earliest: date) -> None:
     rows = cube.filtered(GroupingSpec(filters={**spec.filters, "flow": "spend"},
                                       date_from=spec.date_from, date_to=spec.date_to,
                                       include_hidden=True))
-    rows = rows[rows["spend"] > 0]
     root = _hierarchy(rows)
     _detail_section(rows, root)
 
@@ -271,7 +270,11 @@ def _build_hierarchy_fig(vis, levels, root, treemap: bool):
     """
     totals: dict[tuple, float] = {}
     parent: dict[tuple, tuple] = {}
-    for _, r in vis.iterrows():
+    # A sunburst cannot draw a negative wedge and needs each parent to equal its
+    # children, so refunds net at the leaf (merchant) and a leaf that nets to zero
+    # or below drops out before the parents are summed.
+    leaves = vis.groupby([c for c in levels], dropna=False)["spend"].sum().reset_index()
+    for _, r in leaves[leaves["spend"] > 0].iterrows():
         rel = []
         for c in levels:
             v = r[c]

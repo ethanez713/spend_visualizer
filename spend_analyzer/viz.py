@@ -13,6 +13,10 @@ def money(x: float) -> str:
         return "—"
 
 
+def money_cents(x: float) -> str:
+    return f"{'−' if x < 0 else ''}${abs(x):,.2f}"
+
+
 def money_md(x: float) -> str:
     """`money` for Markdown surfaces (captions, st.markdown): two bare dollar signs
     in one string are read as LaTeX delimiters and garble the text between them."""

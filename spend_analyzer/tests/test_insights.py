@@ -80,3 +80,23 @@ def test_rows_without_a_merchant_are_identified_by_description_not_lumped_togeth
     again = _merchant_dims(_txn(name="Acme Loan  MTG PMT"))
     assert a["id"] != b["id"] and a["id"] == again["id"]
     assert _merchant_dims(_txn())["id"] == "unknown"
+
+
+def test_refund_nets_against_its_category_and_only_income_categories_are_income():
+    from enrich import enrich
+    from taxonomy import load_taxonomy
+    txns = [
+        _txn(transaction_id="a", account_id="x", amount=100.0, direction="out", posted_date="2026-05-01",
+             name="SHOP", pfc_primary="GENERAL_MERCHANDISE",
+             pfc_detailed="GENERAL_MERCHANDISE_ONLINE_MARKETPLACES"),
+        _txn(transaction_id="b", account_id="x", amount=-30.0, direction="in", posted_date="2026-05-03",
+             name="SHOP", pfc_primary="GENERAL_MERCHANDISE",
+             pfc_detailed="GENERAL_MERCHANDISE_ONLINE_MARKETPLACES"),
+        _txn(transaction_id="c", account_id="x", amount=-2000.0, direction="in", posted_date="2026-05-15",
+             name="PAYROLL", pfc_primary="INCOME", pfc_detailed="INCOME_WAGES"),
+    ]
+    df = enrich(txns, load_taxonomy()).set_index("transaction_id")
+    assert df["spend"].sum() == 70.0 and df["income"].sum() == 2000.0
+    assert (df.loc["b", "flow"], df.loc["b", "refund"], df.loc["b", "display_amount"]) == (
+        "spend", True, -30.0)
+    assert df.loc["c", "flow"] == "income"

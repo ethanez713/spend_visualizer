@@ -11,7 +11,7 @@ from views._widgets import transaction_detail
 _SORTS = {"Newest": ("date_resolved", False), "Oldest": ("date_resolved", True),
           "Largest": ("abs_amount", False), "Smallest": ("abs_amount", True)}
 _EXPORT_COLS = ["date_resolved", "name", "merchant", "tier1", "tier2", "atom", "flow",
-                "abs_amount", "person", "account_name"]
+                "display_amount", "person", "account_name"]
 
 
 def search(rows: pd.DataFrame, text: str) -> pd.DataFrame:
@@ -53,6 +53,6 @@ def render(cube: Cube, spec: GroupingSpec) -> None:
     transaction_detail(out, title="Matching", key="txn_tab", sort=col, ascending=ascending,
                        max_rows=25)
     export = out[[c for c in _EXPORT_COLS if c in out.columns]]
-    st.download_button(f"Download {len(out)} rows as CSV · {money(out['abs_amount'].sum())}",
+    st.download_button(f"Download {len(out)} rows as CSV · {money(out['display_amount'].sum())}",
                        sanitize_for_csv(export).to_csv(index=False),
                        file_name="transactions.csv", mime="text/csv")

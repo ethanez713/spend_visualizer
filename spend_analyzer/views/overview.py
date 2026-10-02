@@ -137,7 +137,7 @@ def _changes(rows, current, previous, earliest, anchor) -> None:
 
 def _largest(rows, current) -> None:
     d = rows["date_resolved"].str[:10]
-    sel = rows[(rows["flow"] == "spend") & (d >= current[0].isoformat())
+    sel = rows[(rows["flow"] == "spend") & ~rows["refund"] & (d >= current[0].isoformat())
                & (d <= current[1].isoformat())]
     top = sel.nlargest(10, "abs_amount")
     st.subheader("Largest transactions")
