@@ -13,6 +13,7 @@ import pandas as pd
 from config_io import (AppConfig, load_accounts, load_app_config,
                        CONFIG_DIR, PERSONAL_CONFIG_DIR)
 from cube import Cube
+import manual_edits
 from enrich import enrich
 from ingest import ingest
 from taxonomy import load_taxonomy, Taxonomy
@@ -62,7 +63,7 @@ def build_cube(
     taxonomy = load_taxonomy(taxonomy_path)
     accounts = load_accounts(accounts_path)
 
-    res = ingest(app.resolved_archive_paths)
+    res = ingest(app.resolved_archive_paths, overlay=manual_edits.overlay)
     df = enrich(res.transactions, taxonomy, accounts)
     qc = _qc(df, taxonomy, res.qc)
     return BuildResult(cube=Cube(df), df=df, qc=qc)

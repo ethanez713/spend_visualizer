@@ -16,6 +16,7 @@ description, and the provenance columns the snapshot needs.
 from __future__ import annotations
 
 import sys
+import os
 from pathlib import Path
 
 from config_io import DATA_ROOT, load_app_config
@@ -82,6 +83,22 @@ def revoke(intent_id: str, *, note: str = "", path: str | None = None) -> dict:
         path or edits_path(), manual.build_revoke(intent_id, note=note, source="ui"))
 
 
+def overlay(records: list[dict], path: str | None = None) -> None:
+    """Replay the live intents over raw records in memory (mutates them).
+
+    The categorized store only reflects an intent after the next categorize run;
+    replaying here with the transformer's own code shows the same result at once,
+    so an override, a revoke or a review decision is visible as soon as it is
+    saved. Fail-soft: without the transformer the records are left as stored.
+    """
+    if status() is not None:
+        return
+    manual, _ = _import()
+    live = manual.resolve_intents(manual.load_intents(path or edits_path()))
+    store = {r["transaction_id"]: r for r in records if r.get("transaction_id")}
+    manual.apply_manual_edits(store, manual.ManualIndex(live))
+
+
 def affected_counts(items: list[dict], records: list[dict] | None = None) -> dict[str, int]:
     """{intent id: how many archive rows it currently covers}.
 
@@ -102,8 +119,9 @@ def affected_counts(items: list[dict], records: list[dict] | None = None) -> dic
 
 
 def archive_sig() -> tuple:
-    """Cache key (mtime/size per archive) for the raw-record index."""
-    sig = []
+    """Cache key for anything derived from the archives plus the intent log
+    (mtime/size of each): both change what a loaded record says."""
+    sig = [edits_sig()]
     for p in load_app_config().resolved_archive_paths:
         try:
             sig.append(stat_source(p).cache_key)
@@ -112,7 +130,18 @@ def archive_sig() -> tuple:
     return tuple(sig)
 
 
+def edits_sig() -> tuple:
+    """(name, mtime, size) of the intent log — a cache-key entry."""
+    try:
+        s = os.stat(edits_path())
+        return ("manual_edits.jsonl", s.st_mtime, s.st_size)
+    except OSError:
+        return ("manual_edits.jsonl", 0.0, 0)
+
+
 def raw_index() -> dict[str, dict]:
-    """{transaction_id: raw record} across the configured archives (full Plaid rows)."""
-    return {r["transaction_id"]: r
-            for r in load_sources(load_app_config().resolved_archive_paths)}
+    """{transaction_id: raw record} across the configured archives (full Plaid
+    rows), with the live intents replayed — what the UI is showing."""
+    records = load_sources(load_app_config().resolved_archive_paths)
+    overlay(records)
+    return {r["transaction_id"]: r for r in records}

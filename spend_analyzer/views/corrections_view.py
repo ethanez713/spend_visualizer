@@ -44,7 +44,8 @@ def _render_overrides() -> None:
         f"`{manual_edits.edits_path()}` and replayed by the categorizer on "
         "**every** run: overrides trump rules and the LLM, survive full "
         "re-audits, and merchant scope covers future transactions too. "
-        "Revoking hands the row back to the pipeline on the next run."
+        "Revoking shows the pre-override category at once and hands the row back to "
+        "the pipeline on the next run."
     )
     if not items:
         st.info("No overrides yet. Tick Flag on a transaction in Drilldown or "

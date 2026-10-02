@@ -61,7 +61,8 @@ def test_personal_config_files_are_stat_in_the_data_root(monkeypatch, tmp_path):
     cfg = SimpleNamespace(resolved_archive_paths=[])
 
     before = app._config_signature(cfg)
-    assert _sig_names(before) == {"app.yaml", "accounts.yaml", "budget.yaml"}
+    assert _sig_names(before) == {"app.yaml", "accounts.yaml", "budget.yaml",
+                                  "manual_edits.jsonl"}
 
     (personal / "accounts.yaml").write_text("acc_1: {person: A, include: false}\n")
     assert app._config_signature(cfg) != before, \

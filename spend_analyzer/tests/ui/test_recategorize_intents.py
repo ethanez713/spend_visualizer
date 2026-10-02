@@ -27,7 +27,7 @@ def test_given_new_category_when_save_clicked_then_intent_appended_to_log(at, is
     widget(at.button, key_prefix="rc_b_").click()
     at.run()
     assert not at.exception, [str(e.value) for e in at.exception]
-    assert at.success, "no success message after saving the intent"
+    assert at.toast, "no confirmation after saving the intent"
 
     lines = isolate_writes.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 1, lines

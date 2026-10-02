@@ -6,7 +6,7 @@ those are ANALYZE concerns. This is the extractable seam (PLAN.md §2).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Iterable
+from typing import Callable, Iterable
 
 from models import CanonicalTransaction
 from .load import load_sources, stat_source, SourceStat
@@ -25,7 +25,11 @@ class IngestResult:
         return tuple(s.cache_key for s in self.sources)
 
 
-def ingest(paths: Iterable[str]) -> IngestResult:
+def ingest(paths: Iterable[str],
+           overlay: Callable[[list[dict]], None] | None = None) -> IngestResult:
+    """`overlay`, when given, mutates the surviving raw records before they are
+    normalized — the hook the analyzer uses to replay manual-edit intents the
+    categorized store has not caught up with yet."""
     paths = list(paths)
     sources = [stat_source(p) for p in paths]
     raw = load_sources(paths)
@@ -33,6 +37,8 @@ def ingest(paths: Iterable[str]) -> IngestResult:
 
     deduped, n_dupes = dedupe_by_id(raw)
     kept, n_settled = drop_settled_pending(deduped)
+    if overlay is not None:
+        overlay(kept)
     txns = normalize(kept)
 
     n_pending = sum(1 for t in txns if t.pending)

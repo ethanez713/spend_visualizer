@@ -89,3 +89,22 @@ def test_taxonomy_menu_comes_from_the_transformer():
     primaries, detailed = manual_edits.taxonomy()
     assert "FOOD_AND_DRINK" in primaries
     assert "FOOD_AND_DRINK_COFFEE" in detailed["FOOD_AND_DRINK"]
+
+
+def test_overlay_shows_an_intent_before_the_store_catches_up_and_a_revoke_undoes_it(tmp_path):
+    path = str(tmp_path / "edits.jsonl")
+    it = manual_edits.add_edit(RAW, scope="merchant", primary="FOOD_AND_DRINK",
+                               detailed="FOOD_AND_DRINK_COFFEE", path=path)
+    sibling = {**RAW, "transaction_id": "txn_ui_2",
+               "personal_finance_category": dict(RAW["personal_finance_category"])}
+    records = [{**RAW, "personal_finance_category": dict(RAW["personal_finance_category"])},
+               sibling]
+    manual_edits.overlay(records, path)
+    assert [r["personal_finance_category"]["detailed"] for r in records] == [
+        "FOOD_AND_DRINK_COFFEE"] * 2
+    assert records[1]["category_update_step"] == "manual"
+
+    manual_edits.revoke(it["id"], path=path)
+    manual_edits.overlay(records, path)
+    assert records[1]["personal_finance_category"]["detailed"] == \
+        "GENERAL_MERCHANDISE_OTHER_GENERAL_MERCHANDISE"

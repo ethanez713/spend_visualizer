@@ -201,9 +201,8 @@ def recategorize_form(*, row, key: str, default_scope: str = "transaction") -> N
     pfc = raw.get("personal_finance_category") or {}
     cur_p, cur_d = pfc.get("primary"), pfc.get("detailed")
     primaries, detailed_map = manual_edits.taxonomy()
-    st.caption(f"Current: `{cur_p} / {cur_d}`. The edit is queued as an intent and "
-               "applied by the **next categorize run** (it never expires — revoke it "
-               "from the Overrides tab).")
+    st.caption(f"Current: `{cur_p} / {cur_d}`. An override shows here at once, is written "
+               "into the store by the next categorize run, and holds until you revoke it.")
     c1, c2 = st.columns(2)
     p = c1.selectbox("Primary", primaries,
                      index=primaries.index(cur_p) if cur_p in primaries else 0,
@@ -230,8 +229,8 @@ def recategorize_form(*, row, key: str, default_scope: str = "transaction") -> N
         except (ValueError, OSError) as e:
             st.error(f"Could not save the edit: {e}")
             return
-        st.success(f"Saved intent `{it['id']}` ({scope}) → `{p} / {d}`. Applies on the "
-                   "next categorize run; all overrides are listed in the Overrides tab.")
+        st.toast(f"Override saved: {humanize_atom(d)}. Revoke it from Overrides.")
+        st.rerun()
 
 
 def correction_form(*, scope: str, original: dict, target: dict, key: str,

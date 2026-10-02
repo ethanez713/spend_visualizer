@@ -10,6 +10,7 @@ from pathlib import Path
 
 import streamlit as st
 
+import manual_edits
 import state
 import theme
 from config_io import CONFIG_DIR, PERSONAL_CONFIG_DIR, load_app_config, load_budget
@@ -25,8 +26,8 @@ from views import qc as qc_view
 st.set_page_config(page_title="Spend analyzer", layout="wide")
 
 def _config_signature(app) -> tuple:
-    """Cache key: archive + config file stats (mtime/size)."""
-    sig = []
+    """Cache key: archive, intent log and config file stats (mtime/size)."""
+    sig = [manual_edits.edits_sig()]
     for p in app.resolved_archive_paths:
         try:
             sig.append(stat_source(p).cache_key)
