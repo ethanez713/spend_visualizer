@@ -157,6 +157,7 @@ def enrich(
                 "transaction_id": t.transaction_id,
                 "account_id": t.account_id,
                 "name": t.name,
+                "description": t.merchant_name or t.name or raw.get("original_description") or "",
                 "amount": t.amount,
                 "abs_amount": abs_amt,
                 "flow": flow,
