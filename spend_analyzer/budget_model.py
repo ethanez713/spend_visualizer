@@ -75,14 +75,32 @@ def load_budget_model(generic: Path = CONFIG_DIR / "budget_model.yaml",
         pinned=_pinned(mine.get("pinned")))
 
 
-def annotate(df: pd.DataFrame, model: BudgetModel) -> pd.DataFrame:
-    """``df`` plus ``budget_cat``: set on spend rows, ``None`` everywhere else."""
+def annotate(df: pd.DataFrame, model: BudgetModel, overrides: dict[str, dict] | None = None) -> pd.DataFrame:
+    """``df`` plus the budget columns: ``budget_cat`` (``None`` when the row is not budget
+    spending), ``budget_amount`` (its signed amount, 0 when not counted), ``budget_note``
+    and ``budget_edit_id``.
+
+    ``overrides`` are the household's budget edits by transaction id (see
+    ``budget_edits.overrides_for``); an edit that sets a category or excludes the row beats
+    the model, and can count a row the model would not (a transfer someone paid back).
+    """
     if df.empty:
         return df
+    overrides = overrides or {}
     out = df.copy()
-    spend = out["flow"] == "spend"
-    out["budget_cat"] = pd.Series([None] * len(out), index=out.index, dtype="object")
-    out.loc[spend, "budget_cat"] = [
-        model.assign(t, a, d) for t, a, d in
-        zip(out.loc[spend, "tier1"], out.loc[spend, "atom"], out.loc[spend, "description"])]
+    categories, notes, edit_ids = [], [], []
+    for tid, flow, tier1, atom, text in zip(out["transaction_id"], out["flow"], out["tier1"],
+                                            out["atom"], out["description"]):
+        override = overrides.get(tid)
+        if override and override["edit"]:
+            category = override["category"]
+        else:
+            category = model.assign(tier1, atom, text) if flow == "spend" else None
+        categories.append(category)
+        notes.append(override["note"] if override else "")
+        edit_ids.append(override["edit"] if override else "")
+    out["budget_cat"] = pd.Series(categories, index=out.index, dtype="object")
+    out["budget_amount"] = out["amount"].where(out["budget_cat"].notna(), 0.0)
+    out["budget_note"] = notes
+    out["budget_edit_id"] = edit_ids
     return out

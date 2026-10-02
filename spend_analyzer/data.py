@@ -12,6 +12,7 @@ import pandas as pd
 
 from config_io import (AppConfig, load_accounts, load_app_config,
                        CONFIG_DIR, DATA_ROOT, PERSONAL_CONFIG_DIR)
+import budget_edits
 from budget_model import BudgetModel, annotate, load_budget_model
 from cube import Cube
 import manual_edits
@@ -72,7 +73,8 @@ def build_cube(
 
     res = ingest(app.resolved_archive_paths, overlay=manual_edits.overlay,
                  live_ids=load_live_ids(mirror_csv))
+    overrides = budget_edits.overrides_for([t.raw for t in res.transactions if t.raw])
     df = annotate(enrich(res.transactions, taxonomy, accounts),
-                  budget_model or load_budget_model())
+                  budget_model or load_budget_model(), overrides)
     qc = _qc(df, taxonomy, res.qc)
     return BuildResult(cube=Cube(df), df=df, qc=qc)

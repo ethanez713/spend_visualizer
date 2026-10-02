@@ -6,7 +6,14 @@ from config_io import COMPLETE_MONTHS, MONTHS_WITH_DATA, Budget, Offset, Project
 from tests.ui._harness import widget
 
 
-def _configured(monkeypatch):
+def _no_history(monkeypatch, tmp_path):
+    import legacy
+    monkeypatch.setattr(legacy, "LEDGER", tmp_path / "absent_ledger.csv")
+    monkeypatch.setattr(legacy, "GOALS", tmp_path / "absent_goals.json")
+
+
+def _configured(monkeypatch, tmp_path):
+    _no_history(monkeypatch, tmp_path)
     budget = Budget(goals={"Mortgage": 4500.0}, indexed_goals={"Dining Out": 1100.0},
                     goal_base_year=2024, goal_inflation=0.03,
                     offsets=[Offset("Venmo - Income", {"Dining Out": 0.5, "Travel": 0.5})],
@@ -14,8 +21,9 @@ def _configured(monkeypatch):
     monkeypatch.setattr(config_io, "load_budget", lambda *a, **k: budget)
 
 
-def test_given_offset_without_rows_when_budget_opens_then_a_note_names_it(monkeypatch, boot_app):
-    _configured(monkeypatch)
+def test_given_offset_without_rows_when_budget_opens_then_a_note_names_it(
+        monkeypatch, tmp_path, boot_app):
+    _configured(monkeypatch, tmp_path)
 
     at = boot_app("Budget")
 
@@ -23,8 +31,8 @@ def test_given_offset_without_rows_when_budget_opens_then_a_note_names_it(monkey
 
 
 def test_given_projects_configured_when_budget_opens_then_the_panel_and_grid_render(
-        monkeypatch, boot_app):
-    _configured(monkeypatch)
+        monkeypatch, tmp_path, boot_app):
+    _configured(monkeypatch, tmp_path)
 
     at = boot_app("Budget")
 
@@ -33,8 +41,8 @@ def test_given_projects_configured_when_budget_opens_then_the_panel_and_grid_ren
 
 
 def test_given_months_with_data_configured_when_budget_opens_then_that_mode_is_selected(
-        monkeypatch, boot_app):
-    _configured(monkeypatch)
+        monkeypatch, tmp_path, boot_app):
+    _configured(monkeypatch, tmp_path)
 
     at = boot_app("Budget")
 
@@ -42,7 +50,10 @@ def test_given_months_with_data_configured_when_budget_opens_then_that_mode_is_s
     assert any("months that have spending" in c.value for c in at.caption)
 
 
-def test_given_default_config_when_budget_opens_then_complete_months_is_selected(boot_app):
+def test_given_default_config_when_budget_opens_then_complete_months_is_selected(
+        monkeypatch, tmp_path, boot_app):
+    _no_history(monkeypatch, tmp_path)
+
     at = boot_app("Budget")
 
     assert widget(at.radio, key="budget_averaging").value == COMPLETE_MONTHS
