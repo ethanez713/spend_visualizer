@@ -24,6 +24,16 @@ it never edits records — category fixes append INTENTS to the transformer's lo
   over the loaded records with the transformer's own replay, so the app never waits
   for a categorize run. Anything new that a human decides in the UI is an intent in
   that log (overrides, review decisions, dismissals), never a second store.
+- Budget categories are a second layer over Plaid's: `budget_model.py` computes
+  `budget_cat` for every row (tier-1 folded, pinned merchants, atom exceptions, PFC
+  codes dropped whatever the merchant), and `budget_edits.py` lets the household
+  override it per transaction, merchant or phrase, exclude a row, or add a note. Both
+  kinds of budget edit, and `budget_adjust` rows (budget-only entries with no bank
+  transaction), are intents in the SAME log the transformer replays; the transformer
+  ignores them, so a budget edit never changes a Plaid category. Adjustments are
+  applied in the Budget tab only, never to the cube. The Budget tab's `budget_amount`
+  is the signed amount of any row that has a `budget_cat`, whatever its flow, which is
+  how an edit counts a transfer.
 - The Rules tab and provenance explainers are read-only over the transformer's rule
   tables, its merchant memory, and the optional converter's Sheet mapping (loaded
   fail-soft via `$SPEND_VISUALIZER_CONVERTER` / `<data_root>/converter_root`).

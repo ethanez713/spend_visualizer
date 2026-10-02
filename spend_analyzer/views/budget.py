@@ -21,11 +21,13 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+import budget_edits
 import legacy
+import manual_edits
 import state
 import theme
-from budget_table import (apply_offsets, historic_detail, historic_summary, monthly_grid,
-                          split_projects, yearly_averages)
+from budget_table import (apply_offsets, historic_detail, historic_summary, known_categories,
+                          monthly_grid, split_projects, yearly_averages)
 from config_io import COMPLETE_MONTHS, MONTHS_WITH_DATA, Budget
 from cube import Cube, GroupingSpec
 from periods import CUSTOM, averaging_months, preset_range
@@ -137,6 +139,44 @@ def _add_legacy(pivot: pd.DataFrame, rows: pd.DataFrame, spec: GroupingSpec) -> 
     return extra if pivot.empty else pivot.add(extra, fill_value=0.0)
 
 
+def _adjustments_panel(cube: Cube, spec: GroupingSpec, categories: list[str]) -> None:
+    items = budget_edits.adjustments()
+    with st.expander(f"Manual adjustments · {len(items)}"):
+        st.caption("Budget rows that are not bank transactions, such as a gift toward a trip "
+                   "or a spending offset. Positive is money out, negative a credit. They count "
+                   "in this tab only.")
+        for entry in reversed(items):
+            chosen = entry["set"]
+            left, right = st.columns([5, 1])
+            left.write(f"`{entry['id']}` · {chosen['date']} · **{chosen['description']}** · "
+                       f"{chosen['budget_category']} · {chosen['amount']:+,.2f}"
+                       + (f" · {chosen['person']}" if chosen.get("person") else "")
+                       + (f" — {entry['note']}" if entry.get("note") else ""))
+            if right.button("Revoke", key=f"revoke_adjust_{entry['id']}"):
+                manual_edits.revoke(entry["id"])
+                st.rerun()
+        with st.form("budget_adjustment", clear_on_submit=True):
+            c1, c2, c3 = st.columns([1, 3, 2])
+            day = c1.date_input("Date", value=date.fromisoformat(spec.date_to), key="adjust_date")
+            description = c2.text_input("Description", key="adjust_description")
+            category = c3.selectbox("Budget category", categories, key="adjust_category")
+            c4, c5, c6 = st.columns([1, 1, 3])
+            amount = c4.number_input("Amount", value=0.0, step=10.0, key="adjust_amount")
+            person = c5.selectbox("Person", ["", *cube.distinct("person")], key="adjust_person",
+                                  format_func=lambda p: p or "Shared")
+            note = c6.text_input("Note", key="adjust_note")
+            if st.form_submit_button("Add adjustment", type="primary", key="adjust_submit"):
+                try:
+                    budget_edits.append_edits([budget_edits.build_adjustment(
+                        day=day.isoformat(), description=description, category=category or "",
+                        amount=amount, person=person, note=note)])
+                except (ValueError, OSError) as e:
+                    st.error(f"Could not save the adjustment: {e}")
+                else:
+                    st.toast("Adjustment saved. Revoke it here.")
+                    st.rerun()
+
+
 def _goals_by_year(budget: Budget, years: list[str]) -> dict[str, dict[str, float]]:
     imported = legacy.load_goals()
     goals = {}
@@ -187,6 +227,9 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
         index=list(AVERAGING_LABELS).index(budget.averaging),
         format_func=AVERAGING_LABELS.get, key="budget_averaging")
     imported = _legacy_rows(cube)
+    adjusted = pd.DataFrame() if use_ledger else budget_edits.adjustment_rows()
+    present = [frame for frame in (imported, adjusted) if not frame.empty]
+    extras = pd.concat(present, ignore_index=True) if present else pd.DataFrame()
     if use_ledger:
         pivot = _ledger_pivot(ledger_csv, spec)
         st.caption(f"YTD average and trailing {window}-month running average vs monthly "
@@ -194,11 +237,14 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
                    "and person filters apply here.")
     else:
         shown = _reaching_legacy(spec, imported)
-        pivot = _add_legacy(_model_pivot(cube, shown), imported, shown)
+        pivot = _add_legacy(_model_pivot(cube, shown), extras, shown)
         st.caption(f"YTD average and trailing {window}-month running average vs monthly goal.")
         if not imported.empty:
             st.caption(f"Spending through {imported['date'].max()} comes from the imported sheet "
                        "history, to which only the date and person filters apply.")
+        if not adjusted.empty:
+            st.caption(f"{len(adjusted)} manual adjustment{'s are' if len(adjusted) != 1 else ' is'} "
+                       "included, to which only the date and person filters apply.")
         spec = shown
 
     pivot, missing_offsets = apply_offsets(pivot, budget.offsets)
@@ -290,7 +336,9 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
         else:
             st.dataframe(style_table(grid, money_cols=list(grid.columns)), width="stretch",
                          height=table_height(len(grid)))
-    _history(cube, spec, budget, imported)
+    if not use_ledger:
+        _adjustments_panel(cube, spec, known_categories(budget, pivot.index))
+    _history(cube, spec, budget, extras)
     if ledger_present:
         _compare_sources(cube, original_spec, ledger_csv, window)
     _export_buttons(indexed, pivot)
