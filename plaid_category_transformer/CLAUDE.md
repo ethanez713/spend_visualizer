@@ -10,8 +10,13 @@ explicit in-session go-ahead, no data in-repo).
 - Authority order: mechanical `trust="auto"` rules overwrite → LLM flags (or
   auto-applies only per LLM_AUTHORITY on untrusted rows) → manual edit intents trump
   everything and are REPLAYED every run from the append-only intent log.
-- The intent log carries three actions: `edit` (set a category, transaction or merchant
-  scope), `dismiss` (reject one named suggestion for one row, category untouched —
+- **Every machine that runs the transformer must be on code that knows a scope
+  before the first intent of that scope is written.** Replay skips an unknown scope,
+  and `apply_manual_edits` then sees the rows another machine set as manual rows with
+  no covering intent and REVERTS them — the two machines undo each other every run.
+- The intent log carries three actions: `edit` (set a category; transaction, merchant
+  or description scope — description is the only one that reaches rows Plaid gives
+  no merchant, and it matches a normalized phrase as whole tokens), `dismiss` (reject one named suggestion for one row, category untouched —
   cleared again at every replay if a re-audit re-raises the same suggestion) and
   `revoke` (retire either). `manual.load_index` is the one way to turn the log into
   what replay uses; the analyzer's Review view writes `edit`/`dismiss` and is the

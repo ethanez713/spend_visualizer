@@ -218,24 +218,69 @@ def recategorize_form(*, row, key: str, default_scope: str = "transaction") -> N
                      format_func=lambda d: humanize_atom(d.removeprefix(p + "_")) or humanize_atom(d),
                      key=f"rc_d_{key}")
     merchant = raw.get("merchant_name") or row.get("merchant") or "this merchant"
-    scopes = ["transaction", "merchant"]
+    has_merchant = bool(raw.get("merchant_entity_id") or raw.get("merchant_name"))
+    # Plaid names no merchant on these rows, so only the description can generalize.
+    scopes = ["transaction", "merchant", "description"] if has_merchant \
+        else ["transaction", "description"]
+    labels = {"transaction": "just this transaction",
+              "merchant": f"every transaction from “{merchant}”",
+              "description": "every transaction whose description contains…"}
     scope = st.radio(
-        "Apply to", scopes, index=scopes.index(default_scope), horizontal=True,
-        format_func=lambda s: ("just this transaction" if s == "transaction"
-                               else f"every transaction from “{merchant}”"),
-        key=f"rc_s_{key}")
+        "Apply to", scopes, horizontal=True, format_func=labels.get, key=f"rc_s_{key}",
+        index=scopes.index(default_scope) if default_scope in scopes else 0)
+    phrase, would_change = None, 0
+    if scope == "description":
+        phrase, would_change = _description_rule(raw, d, key)
     note = st.text_input("Note (why?)", key=f"rc_n_{key}")
     if st.button("Save edit", key=f"rc_b_{key}", type="primary"):
-        if (p, d) == (cur_p, cur_d):
+        if (p, d) == (cur_p, cur_d) and not would_change:
             st.warning("That is already the current category — nothing to save.")
             return
         try:
-            it = manual_edits.add_edit(raw, scope=scope, primary=p, detailed=d, note=note)
+            manual_edits.add_edit(raw, scope=scope, primary=p, detailed=d, note=note,
+                                  phrase=phrase)
         except (ValueError, OSError) as e:
             st.error(f"Could not save the edit: {e}")
             return
         st.toast(f"Override saved: {humanize_atom(d)}. Revoke it from Overrides.")
         st.rerun()
+
+
+def _description_rule(raw: dict, detailed: str, key: str) -> tuple[str, int]:
+    """The phrase input and a live preview of what a rule on it would cover.
+
+    Returns (phrase, rows whose category the rule would change). The preview is the
+    point of the control: a phrase one token too short sweeps in other payees, and
+    that is visible here before anything is saved.
+    """
+    default = manual_edits.normalize_phrase(raw.get("name") or raw.get("merchant_name") or "")
+    phrase = st.text_input(
+        "Description contains", value=default, key=f"rc_ph_{key}",
+        help="Matched as whole words, ignoring case, digits and punctuation. "
+             "Applies to past and future transactions.")
+    hits = manual_edits.description_matches(
+        list(_raw_index(manual_edits.archive_sig()).values()), phrase)
+    if not hits:
+        st.caption("No transaction matches. Use at least four letters from the description.")
+        return phrase, 0
+    cat = lambda r: (r.get("personal_finance_category") or {}).get("detailed")  # noqa: E731
+    changing = [r for r in hits if cat(r) != detailed]
+    payees = {manual_edits.normalize_phrase(r.get("merchant_name") or r.get("name") or "")
+              for r in hits}
+    st.caption(f"{len(hits)} transactions match across {len(payees)} "
+               f"{'payee' if len(payees) == 1 else 'payees'}; "
+               f"{len(changing)} would change category.")
+    preview = pd.DataFrame([{
+        "Date": r.get("authorized_date") or r.get("date"),
+        "Amount": r.get("amount"),
+        "Description": r.get("name"),
+        "Merchant": r.get("merchant_name") or "",
+        "Current category": humanize_atom(cat(r)).capitalize(),
+        "Changes": cat(r) != detailed,
+    } for r in hits]).sort_values("Date", ascending=False)
+    st.dataframe(preview.style.format({"Amount": money_cents}), hide_index=True,
+                 width="stretch", height=table_height(len(preview), 8))
+    return phrase, len(changing)
 
 
 def correction_form(*, scope: str, original: dict, target: dict, key: str,

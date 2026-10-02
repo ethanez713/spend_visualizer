@@ -61,3 +61,24 @@ def test_given_pending_intent_when_revoked_then_it_no_longer_applies(boot_app, i
     assert manual_edits.intents() == [], "revoked intent still applies"
     # the log is append-only: revoking adds a tombstone, never rewrites history
     assert len(isolate_writes.read_text(encoding="utf-8").splitlines()) == 2
+
+
+def test_given_description_scope_when_saved_then_rule_intent_carries_the_previewed_phrase(
+        at, isolate_writes):
+    open_first_merchant(at)
+    primaries, detailed_map = manual_edits.taxonomy()
+    cur_p = widget(at.selectbox, key_prefix="rc_p_").value
+    new_p = [p for p in primaries if p != cur_p][0]
+    widget(at.selectbox, key_prefix="rc_p_").set_value(new_p)
+    at.run()
+    widget(at.radio, key_prefix="rc_s_").set_value("description")
+    at.run()
+    phrase = widget(at.text_input, key_prefix="rc_ph_").value
+    assert any("transactions match" in str(c.value) for c in at.caption), "no rule preview"
+    widget(at.button, key_prefix="rc_b_").click()
+    at.run()
+    assert not at.exception, [str(e.value) for e in at.exception]
+
+    it = json.loads(isolate_writes.read_text(encoding="utf-8").splitlines()[0])
+    assert it["scope"] == "description"
+    assert it["match"] == {"description_contains": phrase} and len(phrase) >= 4

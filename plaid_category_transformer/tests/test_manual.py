@@ -384,3 +384,55 @@ def given_a_row_without_a_suggestion_when_dismissal_built_then_raises(make_recor
     from src.manual import build_dismissal
     with pytest.raises(ValueError):
         build_dismissal(make_record(transaction_id="t_plain"))
+
+
+# ── description scope: the rule that reaches merchant-less rows ───────────────
+
+def _ach(make_record, tid, name):
+    return make_record(transaction_id=tid, name=name, original_description=name,
+                       merchant_name=None, merchant_entity_id=None)
+
+
+def given_a_description_intent_when_matched_then_it_covers_same_payee_rows_only(make_record):
+    first = _ach(make_record, "a1", "ACME LOAN DES:MTG PMT ID:XXXXX11111 INDN:J DOE")
+    later = _ach(make_record, "a2", "ACME LOAN DES:MTG PMT ID:XXXXX22222 INDN:J DOE")
+    other = _ach(make_record, "a3", "ACME LOANER TOOLS 42")
+    it = build_intent(scope="description", primary=COFFEE[0], detailed=COFFEE[1],
+                      record=first, phrase="Acme Loan")
+    index = ManualIndex(resolve_intents([it]))
+    assert it["match"] == {"description_contains": "acme loan"}
+    assert index.match(first) is it and index.match(later) is it
+    assert index.match(other) is None                   # whole tokens: 'loaner' ≠ 'loan'
+
+
+def given_merchant_and_description_intents_when_matched_then_the_narrower_scope_wins(
+        make_record):
+    rec = make_record(name="SQ *BLUE BOTTLE COFFEE")
+    by_desc = build_intent(scope="description", primary=FLIGHTS[0], detailed=FLIGHTS[1],
+                           record=rec, phrase="blue bottle")
+    by_merchant = _intent(rec, scope="merchant")
+    index = ManualIndex(resolve_intents([by_merchant, by_desc]))    # description is newer
+    assert index.match(rec)["id"] == by_merchant["id"]
+
+
+def given_a_too_short_or_non_matching_phrase_when_built_then_raises(make_record):
+    rec = _ach(make_record, "a4", "CITY WATER DEPT 0042")
+    for phrase in ("0042", "wa", "gas company"):
+        with pytest.raises(ValueError):
+            build_intent(scope="description", primary=COFFEE[0], detailed=COFFEE[1],
+                         record=rec, phrase=phrase)
+
+
+def given_a_description_intent_when_replayed_then_future_rows_are_covered_and_revocable(
+        make_record):
+    seen = _ach(make_record, "b1", "CITY WATER DEPT 0042")
+    it = build_intent(scope="description", primary=COFFEE[0], detailed=COFFEE[1],
+                      record=seen, phrase="city water dept")
+    future = _ach(make_record, "b2", "CITY WATER DEPT 0077")
+    store = {"b1": seen, "b2": future}
+    apply_manual_edits(store, ManualIndex(resolve_intents([it])))
+    assert future["category_update_reason"] == f"manual:description:{it['id']}"
+
+    apply_manual_edits(store, ManualIndex(resolve_intents([it, build_revoke(it["id"])])))
+    assert future["category_update_step"] == "" and future[SOURCE_HASH_FIELD] == \
+        HASH_PENDING_REVOKED

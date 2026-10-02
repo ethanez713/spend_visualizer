@@ -7,14 +7,18 @@ run, after the mechanical rules and the LLM. That makes edits sticky by construc
 replay re-asserts each intent over whatever the earlier stages decided. Rows covered by an
 intent skip Stages 1–2 entirely (the verdict is predetermined; no LLM call is wasted).
 
-Two scopes in v1 (the ``match`` block is the extensibility point for richer predicates):
+Three scopes (the ``match`` block is the extensibility point for richer predicates):
   * ``transaction`` — pin one row by ``transaction_id``;
   * ``merchant``    — pin every row of a merchant: ``merchant_entity_id`` when Plaid
     provides one, plus a ``normalize_merchant`` name fallback for rows without it.
-    Conflicting entity ids veto a name match (same name ≠ same merchant).
+    Conflicting entity ids veto a name match (same name ≠ same merchant);
+  * ``description`` — pin every row whose description contains a phrase, as whole
+    tokens after ``normalize_merchant``. This is the only scope that reaches the rows
+    Plaid gives no merchant (ACH payees, loan servicers, bill pay), and it covers
+    future ones.
 
-Precedence is SPECIFICITY first (a transaction intent beats a merchant intent on its row —
-a hand-marked one-off must survive a later merchant-wide edict), then RECENCY (the latest
+Precedence is SPECIFICITY first (transaction beats merchant beats description — a
+hand-marked one-off must survive a later, broader edict), then RECENCY (the latest
 appended intent wins within a scope). A ``revoke`` entry retires an earlier intent; a row
 that loses its (only) covering intent is restored to its pre-manual category and stamped
 ``HASH_PENDING_REVOKED`` so the next run re-audits it from scratch — the pipeline decides
@@ -39,7 +43,7 @@ from datetime import datetime
 from .incremental import HASH_PENDING_REVOKED, SOURCE_HASH_FIELD
 from .paths import DATA_DIR
 from .pfc_taxonomy import is_valid
-from .rules import normalize_merchant
+from .rules import contains_word, normalize_merchant
 from .schema import clear_review_flag, set_provenance, stamp_audited_at
 
 # The intent log is SOURCE data the store is rebuilt from — it lives with the data,
@@ -52,7 +56,25 @@ DEFAULT_EDITS = str(DATA_DIR / "manual_edits.jsonl")
 _KNOWN_MATCH_KEYS = {
     "transaction": {"transaction_id"},
     "merchant": {"merchant_entity_id", "merchant_name_normalized"},
+    "description": {"description_contains"},
 }
+
+# A phrase shorter than this, once normalized, matches too much to be a rule.
+MIN_PHRASE_CHARS = 4
+_DESCRIPTION_FIELDS = ("name", "original_description", "merchant_name")
+
+
+def normalize_phrase(text: str) -> str:
+    """A description phrase in the form it is matched in (see ``normalize_merchant``)."""
+    return normalize_merchant(text or "")
+
+
+def description_matches(record: dict, phrase: str) -> bool:
+    """Whether a NORMALIZED phrase occurs, as whole tokens, in any of the row's
+    description fields. Each field is normalized on its own, so a phrase can never
+    match across the seam between two fields."""
+    return any(contains_word(normalize_merchant(record.get(f) or ""), phrase)
+               for f in _DESCRIPTION_FIELDS)
 
 
 def _warn(msg: str) -> None:
@@ -93,7 +115,7 @@ def snapshot_of(record: dict) -> dict:
 
 
 def build_intent(*, scope: str, primary: str, detailed: str, record: dict,
-                 note: str = "", source: str = "cli") -> dict:
+                 note: str = "", source: str = "cli", phrase: str | None = None) -> dict:
     """Build one edit intent from a representative record. Raises ValueError on bad input.
 
     ``record`` supplies the match keys (transaction id, or the merchant's entity id +
@@ -118,8 +140,17 @@ def build_intent(*, scope: str, primary: str, detailed: str, record: dict,
             match["merchant_entity_id"] = ent
         if norm:
             match["merchant_name_normalized"] = norm
+    elif scope == "description":
+        norm = normalize_phrase(phrase if phrase is not None else record.get("name"))
+        if len(norm) < MIN_PHRASE_CHARS:
+            raise ValueError(f"a description rule needs at least {MIN_PHRASE_CHARS} "
+                             "letters once digits and punctuation are dropped")
+        if not description_matches(record, norm):
+            raise ValueError("the phrase does not match the transaction it was written from")
+        match = {"description_contains": norm}
     else:
-        raise ValueError(f"unknown scope {scope!r} (expected transaction|merchant)")
+        raise ValueError(f"unknown scope {scope!r} "
+                         "(expected transaction|merchant|description)")
     return {
         "id": uuid.uuid4().hex[:8],
         "created_at": datetime.now().isoformat(timespec="seconds"),
@@ -234,6 +265,10 @@ def resolve_intents(entries: list[dict]) -> list[dict]:
                                         or match.get("merchant_name_normalized")):
             _warn(f"intent {eid}: merchant scope without an entity id or name — skipped")
             continue
+        if scope == "description" and len(match.get("description_contains") or "") \
+                < MIN_PHRASE_CHARS:
+            _warn(f"intent {eid}: description scope without a usable phrase — skipped")
+            continue
         tgt = e.get("set") or {}
         if not is_valid(tgt.get("primary"), tgt.get("detailed")):
             _warn(f"intent {eid}: {tgt.get('primary')}/{tgt.get('detailed')} is not a "
@@ -272,7 +307,8 @@ class ManualIndex:
     ``match`` precedence: a transaction-scope intent on the row's id always wins
     (specificity); otherwise the LATEST-appended merchant-scope intent whose entity id
     or normalized name matches — except that a name match is vetoed when both sides
-    carry entity ids that differ (same normalized name, demonstrably different merchant).
+    carry entity ids that differ (same normalized name, demonstrably different merchant);
+    otherwise the LATEST-appended description-scope intent whose phrase the row contains.
     """
 
     def __init__(self, intents: list[dict],
@@ -282,10 +318,13 @@ class ManualIndex:
         self.by_txn: dict[str, dict] = {}
         self._by_ent: dict[str, tuple[int, dict]] = {}
         self._by_name: dict[str, tuple[int, dict]] = {}
+        self._by_phrase: list[dict] = []                       # newest first
         for seq, it in enumerate(intents):
             m = it.get("match") or {}
             if it["scope"] == "transaction":
                 self.by_txn[m["transaction_id"]] = it          # last wins
+            elif it["scope"] == "description":
+                self._by_phrase.insert(0, it)
             else:
                 if m.get("merchant_entity_id"):
                     self._by_ent[m["merchant_entity_id"]] = (seq, it)
@@ -314,9 +353,12 @@ class ManualIndex:
             it_ent = (name_it.get("match") or {}).get("merchant_entity_id")
             if not (it_ent and ent and it_ent != ent):       # conflicting ids veto
                 candidates.append((seq, name_it))
-        if not candidates:
-            return None
-        return max(candidates, key=lambda c: c[0])[1]        # latest appended wins
+        if candidates:
+            return max(candidates, key=lambda c: c[0])[1]    # latest appended wins
+        for it in self._by_phrase:
+            if description_matches(record, it["match"]["description_contains"]):
+                return it
+        return None
 
 
 def apply_manual_edits(store: dict[str, dict], index: ManualIndex) -> dict:

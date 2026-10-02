@@ -3,9 +3,10 @@
 **Status:** DECIDED & IMPLEMENTED (Phases 1+2, 2026-07-12). The open questions below
 were resolved as follows; Phase 3 (F) is deliberately not built:
 
-1. **Editable rules stay code-only.** The UI is read-only over the rule tables (A–E);
-   rule authoring remains an edit to the owning project's `config.py` /
-   `personal_rules.json`. F is off the table unless this is revisited.
+1. **The rule tables stay code-only; user rules are intents.** The UI is read-only over
+   the rule tables (A–E). A rule the user writes in the UI is a description-scope
+   intent in `manual_edits.jsonl`, which answers open question 1 without moving the
+   tables: it is append-only, revocable, synced, and outranks the tables.
 2. **The report queue survives, demoted.** "✅ Override category (sticky)" is the
    primary action; "📝 Note for triage (changes nothing)" is the clearly-secondary one.
 3. **Converter rules ARE shown** in the Rules tab, in a clearly-fenced

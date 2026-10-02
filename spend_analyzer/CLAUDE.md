@@ -24,11 +24,12 @@ it never edits records — category fixes append INTENTS to the transformer's lo
   over the loaded records with the transformer's own replay, so the app never waits
   for a categorize run. Anything new that a human decides in the UI is an intent in
   that log (overrides, review decisions, dismissals), never a second store.
-- Rule surfaces are READ-ONLY by decision (docs/categorization-ux-ideation.md):
-  the Rules tab and provenance explainers render the transformer's tables, its
-  merchant memory, and the optional converter's Sheet mapping (loaded fail-soft
-  via `$SPEND_VISUALIZER_CONVERTER` / `<data_root>/converter_root`) — never a
-  write path. Rule authoring stays a code edit in the owning project.
+- The Rules tab and provenance explainers are read-only over the transformer's rule
+  tables, its merchant memory, and the optional converter's Sheet mapping (loaded
+  fail-soft via `$SPEND_VISUALIZER_CONVERTER` / `<data_root>/converter_root`).
+  A rule the user writes in the UI is a description-scope intent in the manual-edit
+  log, never an edit to those tables; its form shows the rows it would cover before
+  it saves, because a phrase one token short sweeps in other payees.
 - UI: the look and behaviour follow the Ethan design system (`~/ethan_design_system`,
   start at its `readme.md`); `theme.py` is the only place tokens are mapped, and views
   take colours and chart styling from it as `theme.<TOKEN>`, which resolves against

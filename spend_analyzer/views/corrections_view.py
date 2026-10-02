@@ -62,10 +62,7 @@ def _render_overrides() -> None:
         "id": it["id"],
         "when": it["created_at"],
         "scope": it["scope"],
-        "target": (it["match"].get("transaction_id")
-                   or (it.get("snapshot") or {}).get("merchant_name")
-                   or it["match"].get("merchant_name_normalized")
-                   or it["match"].get("merchant_entity_id")),
+        "target": _target(it),
         "→ category": f"{it['set']['primary']} / {it['set']['detailed']}",
         "rows covered": counts.get(it["id"], 0),
         "source": it.get("source", ""),
@@ -81,6 +78,16 @@ def _render_overrides() -> None:
     with st.expander(f"Revoke an override · {len(items)}"):
         st.caption("The row reverts and is re-audited on the next categorize run.")
         _revoke_list(items, rows)
+
+
+def _target(it: dict) -> str:
+    match = it["match"]
+    if it["scope"] == "description":
+        return f"description contains “{match.get('description_contains')}”"
+    return (match.get("transaction_id")
+            or (it.get("snapshot") or {}).get("merchant_name")
+            or match.get("merchant_name_normalized")
+            or match.get("merchant_entity_id"))
 
 
 def _revoke_list(items: list[dict], rows: list[dict]) -> None:

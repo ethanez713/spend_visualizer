@@ -62,12 +62,30 @@ def taxonomy() -> tuple[list[str], dict[str, list[str]]]:
 
 
 def add_edit(raw_record: dict, *, scope: str, primary: str, detailed: str,
-             note: str = "", path: str | None = None, source: str = "ui") -> dict:
-    """Validate + append one intent. Raises ValueError on bad input."""
+             note: str = "", path: str | None = None, source: str = "ui",
+             phrase: str | None = None) -> dict:
+    """Validate + append one intent. Raises ValueError on bad input. ``phrase`` is the
+    text a description-scope intent matches on."""
     manual, _ = _import()
     intent = manual.build_intent(scope=scope, primary=primary, detailed=detailed,
-                                 record=raw_record, note=note, source=source)
+                                 record=raw_record, note=note, source=source, phrase=phrase)
     return manual.append_intent(path or edits_path(), intent)
+
+
+def normalize_phrase(text: str) -> str:
+    """A description phrase as the transformer will match it."""
+    manual, _ = _import()
+    return manual.normalize_phrase(text)
+
+
+def description_matches(records: list[dict], phrase: str) -> list[dict]:
+    """The records a description-scope intent with this phrase would cover, by the
+    transformer's own matcher. [] for a phrase too short to be a rule."""
+    manual, _ = _import()
+    norm = manual.normalize_phrase(phrase)
+    if len(norm) < manual.MIN_PHRASE_CHARS:
+        return []
+    return [r for r in records if manual.description_matches(r, norm)]
 
 
 def dismiss(raw_record: dict, *, note: str = "", path: str | None = None,
