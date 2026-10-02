@@ -59,6 +59,10 @@ _KNOWN_MATCH_KEYS = {
     "description": {"description_contains"},
 }
 
+# Actions the spend analyzer writes into this log for its budget view. They share the
+# log (and its Drive sync) but never change a PFC category, so replay ignores them.
+ANALYZER_ACTIONS = frozenset({"budget_edit", "budget_adjust"})
+
 # A phrase shorter than this, once normalized, matches too much to be a rule.
 MIN_PHRASE_CHARS = 4
 _DESCRIPTION_FIELDS = ("name", "original_description", "merchant_name")
@@ -114,6 +118,38 @@ def snapshot_of(record: dict) -> dict:
     }
 
 
+def build_match(scope: str, record: dict, phrase: str | None = None) -> dict:
+    """The ``match`` block of an intent of ``scope`` written from ``record``. Raises
+    ValueError when the record or phrase cannot support that scope."""
+    if scope == "transaction":
+        tid = record.get("transaction_id")
+        if not tid:
+            raise ValueError("transaction-scope intent needs a transaction_id")
+        return {"transaction_id": tid}
+    if scope == "merchant":
+        ent = record.get("merchant_entity_id")
+        norm = normalize_merchant(record.get("merchant_name") or "")
+        if not ent and not norm:
+            raise ValueError("merchant-scope intent needs a merchant_entity_id "
+                             "or a merchant_name")
+        match: dict = {}
+        if ent:
+            match["merchant_entity_id"] = ent
+        if norm:
+            match["merchant_name_normalized"] = norm
+        return match
+    if scope == "description":
+        norm = normalize_phrase(phrase if phrase is not None else record.get("name"))
+        if len(norm) < MIN_PHRASE_CHARS:
+            raise ValueError(f"a description rule needs at least {MIN_PHRASE_CHARS} "
+                             "letters once digits and punctuation are dropped")
+        if not description_matches(record, norm):
+            raise ValueError("the phrase does not match the transaction it was written from")
+        return {"description_contains": norm}
+    raise ValueError(f"unknown scope {scope!r} "
+                     "(expected transaction|merchant|description)")
+
+
 def build_intent(*, scope: str, primary: str, detailed: str, record: dict,
                  note: str = "", source: str = "cli", phrase: str | None = None) -> dict:
     """Build one edit intent from a representative record. Raises ValueError on bad input.
@@ -124,40 +160,13 @@ def build_intent(*, scope: str, primary: str, detailed: str, record: dict,
     """
     if not is_valid(primary, detailed):
         raise ValueError(f"{primary}/{detailed} is not a valid PFC category")
-    if scope == "transaction":
-        tid = record.get("transaction_id")
-        if not tid:
-            raise ValueError("transaction-scope intent needs a transaction_id")
-        match: dict = {"transaction_id": tid}
-    elif scope == "merchant":
-        ent = record.get("merchant_entity_id")
-        norm = normalize_merchant(record.get("merchant_name") or "")
-        if not ent and not norm:
-            raise ValueError("merchant-scope intent needs a merchant_entity_id "
-                             "or a merchant_name")
-        match = {}
-        if ent:
-            match["merchant_entity_id"] = ent
-        if norm:
-            match["merchant_name_normalized"] = norm
-    elif scope == "description":
-        norm = normalize_phrase(phrase if phrase is not None else record.get("name"))
-        if len(norm) < MIN_PHRASE_CHARS:
-            raise ValueError(f"a description rule needs at least {MIN_PHRASE_CHARS} "
-                             "letters once digits and punctuation are dropped")
-        if not description_matches(record, norm):
-            raise ValueError("the phrase does not match the transaction it was written from")
-        match = {"description_contains": norm}
-    else:
-        raise ValueError(f"unknown scope {scope!r} "
-                         "(expected transaction|merchant|description)")
     return {
         "id": uuid.uuid4().hex[:8],
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "action": "edit",
         "source": source,
         "scope": scope,
-        "match": match,
+        "match": build_match(scope, record, phrase),
         "set": {"primary": primary, "detailed": detailed},
         "note": note,
         "snapshot": snapshot_of(record),
@@ -242,6 +251,8 @@ def resolve_intents(entries: list[dict]) -> list[dict]:
         eid = e.get("id", "?")
         if e.get("action") == "dismiss":
             continue                      # not an edit: see resolve_dismissals
+        if e.get("action") in ANALYZER_ACTIONS:
+            continue                      # the analyzer's budget layer, never a PFC edit
         if e.get("action", "edit") != "edit":
             _warn(f"intent {eid}: unknown action {e.get('action')!r} — skipped")
             continue
