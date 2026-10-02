@@ -172,3 +172,70 @@ def given_two_runs_when_input_changes_then_delta_applied(tmp_path, make_record):
     assert set(s2) == {"A", "B", "D"}                       # C pruned, D added
     assert s2["A"]["amount"] == 42.0                        # changed row re-audited
     assert s2["B"]["personal_finance_category"]["detailed"] == "TRAVEL_FLIGHTS"  # carried fwd
+
+
+def _reviewed(rec, **extra):
+    """A prior row a human settled in --review: category corrected, step 'review'."""
+    from src.schema import set_provenance
+    prior = _prior(rec, **extra)
+    set_provenance(prior, "FOOD_AND_DRINK", "FOOD_AND_DRINK_RESTAURANT", "review",
+                   "manual re-pick", "HIGH")
+    return prior
+
+
+def given_full_when_a_human_reviewed_row_is_unchanged_then_it_is_carried_not_reaudited(make_record):
+    rec = make_record()
+    prior = {"txn_1": _reviewed(rec)}
+
+    delta = classify({"txn_1": rec}, prior, full=True)
+
+    assert delta.to_process == {} and delta.carryover["txn_1"]["category_update_step"] == "review"
+
+
+def given_full_when_a_reviewed_rows_plaid_data_changed_then_it_is_reaudited(make_record):
+    prior = {"txn_1": _reviewed(make_record(amount=6.5))}
+
+    delta = classify({"txn_1": make_record(amount=99.0)}, prior, full=True)
+
+    assert list(delta.to_process) == ["txn_1"] and delta.carryover == {}
+
+
+def given_full_when_a_machine_corrected_row_then_it_is_reaudited(make_record):
+    from src.schema import set_provenance
+    rec = make_record()
+    prior = _prior(rec)
+    set_provenance(prior, "TRAVEL", "TRAVEL_FLIGHTS", "mechanical", "pos:cot*flt", "MEDIUM")
+
+    delta = classify({"txn_1": rec}, {"txn_1": prior}, full=True)
+
+    assert list(delta.to_process) == ["txn_1"]
+
+
+def given_full_when_a_reviewed_row_predates_hashing_then_it_is_carried_with_the_current_hash(make_record):
+    rec = make_record()
+    prior = _reviewed(rec)
+    del prior[SOURCE_HASH_FIELD]
+
+    delta = classify({"txn_1": rec}, {"txn_1": prior}, full=True)
+
+    assert delta.carryover["txn_1"][SOURCE_HASH_FIELD] == source_hash(rec)
+
+
+def given_a_reviewed_decision_when_a_full_run_executes_then_the_decision_and_its_provenance_survive(
+        tmp_path, make_record):
+    import json
+    rec = make_record()
+    prior_row = _reviewed(rec)
+    src, out = tmp_path / "input.jsonl", tmp_path / "out.jsonl"
+    src.write_text(json.dumps(rec) + "\n")
+    out.write_text(json.dumps(prior_row) + "\n")
+
+    run(input_path=str(src), out_jsonl=str(out), out_csv=str(tmp_path / "o.csv"),
+        flags_csv=str(tmp_path / "f.csv"), log_path=str(tmp_path / "l.jsonl"),
+        levels={"LOW", "MEDIUM", "HIGH", "VERY_HIGH", "UNKNOWN"}, memory_path=None,
+        do_drive=False, no_llm=True, debug=False, full=True)
+
+    kept = persister.load_jsonl(str(out))["txn_1"]
+    assert kept["personal_finance_category"]["detailed"] == "FOOD_AND_DRINK_RESTAURANT"
+    assert (kept["category_update_step"], kept["category_update_reason"]) == ("review", "manual re-pick")
+    assert kept["original_pf_category_detailed"] == "GENERAL_MERCHANDISE_OTHER_GENERAL_MERCHANDISE"

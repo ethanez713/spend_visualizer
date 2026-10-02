@@ -36,6 +36,11 @@ explicit in-session go-ahead, no data in-repo).
   `config.FLAG_INTRA_PRIMARY_LATERALS=True`. The LLM's self-reported confidence is
   anti-calibrated (HIGH was wrong 76% of the time) — don't gate auto-apply on it
   (`LLM_AUTHORITY="apply_when_high"` is discouraged).
+- `--full` re-derives every machine decision from Plaid's raw row, but carries over a row a
+  person settled in `--review` (step `review`) whose Plaid data is unchanged: that pick
+  lives only in the store, so a rebuild would erase it. Manual intents are replayed on top
+  as always. A hit the pipeline may apply (`trust="auto"`) outranks one it may only suggest,
+  wherever the cascade finds it (`rules.apply_rules`).
 - Incremental engine (`src/incremental.py`): rows are re-audited only when their
   `source_content_hash` changes; the hash excludes our provenance columns AND
   `txn_owner` (`_NON_SOURCE_FIELDS`). Adding any record field that isn't Plaid

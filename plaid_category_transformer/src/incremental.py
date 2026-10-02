@@ -74,6 +74,13 @@ class Delta:
     changed: list[str] = field(default_factory=list)
 
 
+def _human_settled(prev: dict, rec: dict) -> bool:
+    """A row whose category a person chose in review and whose Plaid data has not changed
+    since (a changed row is re-audited like any other)."""
+    return (prev.get("category_update_step") == "review"
+            and prev.get(SOURCE_HASH_FIELD) in (None, source_hash(rec)))
+
+
 def classify(input_store: dict[str, dict], prior_store: dict[str, dict],
              *, full: bool = False) -> Delta:
     """Diff ``input_store`` (Plaid truth) against ``prior_store`` (last categorized output).
@@ -81,7 +88,8 @@ def classify(input_store: dict[str, dict], prior_store: dict[str, dict],
     Each input row is NEW (no prior), CHANGED (prior hash differs), or UNCHANGED (hash
     matches → carried over). A prior row absent from the input is REMOVED. ``full=True``
     forces every input row through the audit (re-categorize everything, e.g. after editing
-    the rules) while still computing removals.
+    the rules) while still computing removals; rows a human settled in review, with
+    unchanged Plaid data, are carried over instead.
 
     A prior row that predates content hashing (no ``source_content_hash``) is adopted as the
     baseline *without* re-auditing — its current input content becomes its stamped hash — so
@@ -95,6 +103,11 @@ def classify(input_store: dict[str, dict], prior_store: dict[str, dict],
 
     for tid, rec in input_store.items():
         prev = prior_store.get(tid)
+        if full and prev is not None and _human_settled(prev, rec):
+            # A re-audit rebuilds machine decisions from Plaid's raw row; a human's pick
+            # in --review lives only in the store, so rebuilding it would lose it.
+            carryover[tid] = {**prev, SOURCE_HASH_FIELD: source_hash(rec)}
+            continue
         if full or prev is None:
             to_process[tid] = rec
             (changed if prev is not None else new).append(tid)
