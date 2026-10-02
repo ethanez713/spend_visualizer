@@ -38,5 +38,10 @@ it never edits records — category fixes append INTENTS to the transformer's lo
 - Only the active view renders (`app._current_view`), so a UI test opens the view it
   asserts on (`tests/ui/_harness.go`). Don't move views back into `st.tabs`: the
   hierarchy chart drops its labels when mounted inside a hidden tab panel.
+- The Budget tab merges imported sheet history (`legacy.py`; files written by
+  `finance_pipeline/tools/import_sheet_history.py`) for dates before the archive's first
+  transaction. Those rows carry no facets, so only the date and person filters apply to
+  them, and only the Budget tab reaches back that far: widening the sidebar range would
+  make every other view average over empty months.
 - Tie-out invariant: every grouping must sum to the grand total (no double count);
   `tests/test_cube.py` checks it on the real archive.

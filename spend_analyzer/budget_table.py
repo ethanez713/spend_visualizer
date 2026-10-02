@@ -56,3 +56,41 @@ def monthly_grid(pivot: pd.DataFrame, months: list[str]) -> pd.DataFrame:
     grid["Annualized"] = grid["Avg"] * 12
     grid.loc["Total"] = grid.sum()
     return grid
+
+
+def yearly_averages(pivot: pd.DataFrame) -> pd.DataFrame:
+    """Average monthly spend per category for each calendar year (columns are the year as
+    text), dividing by the months that year has spending in, partial ones included."""
+    if pivot.empty:
+        return pd.DataFrame()
+    out = {}
+    for year in sorted({m[:4] for m in pivot.columns}):
+        months = [m for m in pivot.columns if m[:4] == year]
+        out[year] = pivot[months].sum(axis=1) / len(months)
+    return pd.DataFrame(out)
+
+
+def historic_summary(yearly: pd.DataFrame, goals: dict[str, dict[str, float]]) -> pd.DataFrame:
+    """One row per year: monthly actual and goal over the categories that had a goal that
+    year (a one-off category with no goal is shown elsewhere), the share of goal, and both
+    annualized."""
+    rows = []
+    for year in yearly.columns:
+        budgeted = goals.get(year, {})
+        actual = float(yearly.loc[yearly.index.intersection(list(budgeted)), year].sum())
+        goal = float(sum(budgeted.values()))
+        rows.append({"Year": year, "Actual": actual, "Goal": goal,
+                     "% of goal": actual / goal * 100.0 if goal else float("nan"),
+                     "Actual (annualized)": actual * 12, "Goal (annualized)": goal * 12})
+    return pd.DataFrame(rows, columns=["Year", "Actual", "Goal", "% of goal",
+                                       "Actual (annualized)", "Goal (annualized)"])
+
+
+def historic_detail(yearly: pd.DataFrame, goals: dict[str, dict[str, float]]) -> pd.DataFrame:
+    """Category rows with an actual and a goal column for each year."""
+    cats = sorted(set(yearly.index) | {c for g in goals.values() for c in g})
+    columns = {}
+    for year in yearly.columns:
+        columns[f"{year} actual"] = [float(yearly.loc[c, year]) if c in yearly.index else 0.0 for c in cats]
+        columns[f"{year} goal"] = [goals.get(year, {}).get(c, float("nan")) for c in cats]
+    return pd.DataFrame(columns, index=pd.Index(cats, name="Category"))

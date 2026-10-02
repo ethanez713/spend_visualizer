@@ -84,3 +84,38 @@ def test_given_sources_that_agree_when_compared_then_no_rows():
 
 def test_given_empty_pivots_when_compared_then_empty_not_error():
     assert compare_averages(pd.DataFrame(), pd.DataFrame(), [], window=3).empty
+
+
+def _imported(*rows):
+    df = pd.DataFrame(rows, columns=["person", "date", "category", "spend"])
+    df["month"] = df["date"].str[:7]
+    return df
+
+
+def test_given_imported_rows_when_added_then_their_months_join_the_pivot_and_overlap_sums():
+    from views.budget import _add_legacy
+    pivot = pd.DataFrame({"2026-04": [10.0]}, index=["House"])
+    rows = _imported(("A", "2026-02-10", "House", 5.0), ("A", "2026-04-01", "House", 1.0),
+                     ("A", "2026-02-11", "Rent", 7.0))
+
+    out = _add_legacy(pivot, rows, _spec())
+
+    assert out.loc["House"].to_dict() == {"2026-02": 5.0, "2026-04": 11.0}
+    assert out.loc["Rent", "2026-02"] == 7.0
+
+
+def test_given_person_and_date_filters_when_imported_rows_added_then_both_apply():
+    from views.budget import _add_legacy
+    rows = _imported(("Jordan", "2026-02-10", "Rent", 7.0), ("Ethan", "2026-02-11", "Rent", 3.0),
+                     ("Jordan", "2025-12-01", "Rent", 9.0))
+
+    out = _add_legacy(pd.DataFrame(), rows, _spec(filters={"person": ["Jordan"]}, date_from="2026-01-01"))
+
+    assert out.loc["Rent"].to_dict() == {"2026-02": 7.0}
+
+
+def test_given_no_imported_rows_when_added_then_pivot_unchanged():
+    from views.budget import _add_legacy
+    pivot = pd.DataFrame({"2026-04": [10.0]}, index=["House"])
+
+    assert _add_legacy(pivot, pd.DataFrame(), _spec()) is pivot

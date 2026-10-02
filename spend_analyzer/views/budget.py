@@ -13,18 +13,22 @@ pivot before rendering:
 """
 from __future__ import annotations
 
+from dataclasses import replace
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+import legacy
 import state
 import theme
-from budget_table import apply_offsets, monthly_grid, split_projects
+from budget_table import (apply_offsets, historic_detail, historic_summary, monthly_grid,
+                          split_projects, yearly_averages)
 from config_io import COMPLETE_MONTHS, MONTHS_WITH_DATA, Budget
 from cube import Cube, GroupingSpec
-from periods import averaging_months
+from periods import CUSTOM, averaging_months, preset_range
 from ledger import load_ledger, monthly_pivot as ledger_monthly_pivot
 from viz import sanitize_for_csv, style_table, table_height
 
@@ -100,7 +104,69 @@ def _ytd_avg(pivot: pd.DataFrame) -> pd.Series:
     return pivot[ytd_months].mean(axis=1)
 
 
+def _legacy_rows(cube: Cube) -> pd.DataFrame:
+    """Imported sheet rows from before the archive's first transaction."""
+    if not legacy.LEDGER.exists():
+        return pd.DataFrame()
+    info = legacy.LEDGER.stat()
+    rows = _cached_ledger(str(legacy.LEDGER), (str(legacy.LEDGER), info.st_mtime, info.st_size))
+    return legacy.before_coverage(rows, str(cube.df["date_resolved"].dropna().min()))
+
+
+def _reaching_legacy(spec: GroupingSpec, rows: pd.DataFrame) -> GroupingSpec:
+    """The sidebar clamps every period to the archive's first date, so a preset cannot
+    reach the imported months; recompute its start from the oldest imported row. A
+    custom range is the user's own and is left alone."""
+    preset = st.session_state.get("period_preset")
+    if rows.empty or preset in (None, CUSTOM):
+        return spec
+    start, _ = preset_range(preset, date.fromisoformat(spec.date_to),
+                            date.fromisoformat(rows["date"].min()))
+    return replace(spec, date_from=str(start))
+
+
+def _add_legacy(pivot: pd.DataFrame, rows: pd.DataFrame, spec: GroupingSpec) -> pd.DataFrame:
+    if rows.empty:
+        return pivot
+    extra = ledger_monthly_pivot(rows, persons=spec.filters.get("person") or None,
+                                 date_from=spec.date_from, date_to=spec.date_to)
+    if extra.empty:
+        return pivot
+    return extra if pivot.empty else pivot.add(extra, fill_value=0.0)
+
+
+def _goals_by_year(budget: Budget, years: list[str]) -> dict[str, dict[str, float]]:
+    imported = legacy.load_goals()
+    goals = {}
+    for year in years:
+        computed = {c: budget.goal(c, int(year)) for c in budget.goal_categories()}
+        goals[year] = imported.get(int(year)) or {c: g for c, g in computed.items() if g is not None}
+    return goals
+
+
+def _history(cube: Cube, spec: GroupingSpec, budget: Budget, rows: pd.DataFrame) -> None:
+    everything = replace(spec, date_from=None, date_to=None)
+    full = _add_legacy(_model_pivot(cube, everything), rows, everything)
+    full, _ = apply_offsets(full, budget.offsets)
+    full, _ = split_projects(full, budget.projects)
+    yearly = yearly_averages(full)
+    if yearly.shape[1] < 2:
+        return
+    goals = _goals_by_year(budget, list(yearly.columns))
+    with st.expander("History by year"):
+        st.caption("Monthly average per year over the months that year has spending, against "
+                   "that year's goals; the summary counts only categories that had a goal.")
+        summary = historic_summary(yearly, goals).set_index("Year")
+        st.dataframe(style_table(summary, money_cols=["Actual", "Goal", "Actual (annualized)",
+                                                      "Goal (annualized)"], pct_cols=["% of goal"]),
+                     width="stretch")
+        detail = historic_detail(yearly, goals)
+        st.dataframe(style_table(detail, money_cols=list(detail.columns)), width="stretch",
+                     height=table_height(len(detail)))
+
+
 def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
+    original_spec = spec
     st.subheader("Budget vs actual")
     if not budget.goal_categories():
         st.info("No `config/budget.yaml` found — add monthly goals to enable this view.")
@@ -118,14 +184,20 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
         "Average over", list(AVERAGING_LABELS), horizontal=True,
         index=list(AVERAGING_LABELS).index(budget.averaging),
         format_func=AVERAGING_LABELS.get, key="budget_averaging")
+    imported = _legacy_rows(cube)
     if use_ledger:
         pivot = _ledger_pivot(ledger_csv, spec)
         st.caption(f"YTD average and trailing {window}-month running average vs monthly "
                    "goal. Actuals from the external categorized ledger — only the date "
                    "and person filters apply here.")
     else:
-        pivot = _model_pivot(cube, spec)
+        shown = _reaching_legacy(spec, imported)
+        pivot = _add_legacy(_model_pivot(cube, shown), imported, shown)
         st.caption(f"YTD average and trailing {window}-month running average vs monthly goal.")
+        if not imported.empty:
+            st.caption(f"Spending through {imported['date'].max()} comes from the imported sheet "
+                       "history, to which only the date and person filters apply.")
+        spec = shown
 
     pivot, missing_offsets = apply_offsets(pivot, budget.offsets)
     for source in missing_offsets:
@@ -216,8 +288,9 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
         else:
             st.dataframe(style_table(grid, money_cols=list(grid.columns)), width="stretch",
                          height=table_height(len(grid)))
+    _history(cube, spec, budget, imported)
     if ledger_present:
-        _compare_sources(cube, spec, ledger_csv, window)
+        _compare_sources(cube, original_spec, ledger_csv, window)
     _export_buttons(indexed, pivot)
     _trends(pivot, window)
 
