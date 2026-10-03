@@ -24,7 +24,7 @@ def _only_intent(log) -> dict:
 def review(boot_app, cube_df):
     if not cube_df["review_pending"].fillna(False).any():
         pytest.skip("no pending suggestions in the archive")
-    return boot_app("Review")
+    return boot_app("Suggestions")
 
 
 def test_given_pending_row_when_kept_then_suggestion_is_dismissed_and_row_leaves(

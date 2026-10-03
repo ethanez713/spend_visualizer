@@ -1,4 +1,4 @@
-"""Review: adjudicate the category suggestions the pipeline raised but did not apply.
+"""Suggestions: adjudicate the category suggestions the pipeline raised but did not apply.
 
 Every decision is an intent in the transformer's manual-edit log, so it is replayed
 on every categorize run: accepting sets the suggested category, picking another is
