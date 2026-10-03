@@ -194,3 +194,84 @@ def edits_from_grid(before: pd.DataFrame, after: pd.DataFrame, raw_lookup) -> li
             record, scope="transaction", note=note, exclude=excluded,
             category=new["category"] if moved and not excluded else None, source="ui-review"))
     return edits
+
+
+def rule_category(edit: dict) -> str:
+    chosen = edit.get("set") or {}
+    return NOT_IN_BUDGET if chosen.get("exclude") else chosen.get("budget_category") or ""
+
+
+def rule_preview(candidate: dict, current: list[dict], raw_records: list[dict],
+                 categories: dict[str, str | None], retire: str | None = None) -> list[str]:
+    """The transaction ids whose budget category ``candidate`` would change, matched with
+    the transformer's precedence against the edits already in force (``current``, minus
+    the one being replaced, ``retire``). ``categories`` is each row's current category."""
+    manual, _ = manual_edits._import()
+    deciding = [e for e in current if e["set"] and e.get("id") != retire] + [candidate]
+    index = manual.ManualIndex(deciding)
+    target = rule_category(candidate)
+    return [r["transaction_id"] for r in raw_records
+            if r.get("transaction_id") in categories and index.match(r) is candidate
+            and category_label(categories[r["transaction_id"]]) != target]
+
+
+def merchant_offers(before: pd.DataFrame, after: pd.DataFrame, raw_lookup) -> list[dict]:
+    """After a grid save, one merchant-wide rule offer per merchant whose rows were moved
+    to a single new category: ``{"transaction_id", "merchant", "category"}``. Rows Plaid
+    names no merchant for are left out, since only a phrase could generalize them."""
+    moved = after[after["category"] != before["category"]]
+    offers, seen = [], set()
+    for tid, category, merchant in zip(moved["transaction_id"], moved["category"],
+                                       moved["description"]):
+        record = raw_lookup(tid) or {}
+        key = record.get("merchant_entity_id") or record.get("merchant_name")
+        if not key:
+            continue
+        targets = set(moved.loc[moved["description"] == merchant, "category"])
+        if key in seen or len(targets) != 1:
+            continue
+        seen.add(key)
+        offers.append({"transaction_id": tid, "merchant": merchant, "category": category})
+    return offers
+
+
+def build_rule(record: dict, category: str, *, scope: str = "merchant",
+               phrase: str | None = None, note: str = "") -> dict:
+    excluded = category == NOT_IN_BUDGET
+    return budget_edits.build_edit(record, scope=scope, phrase=phrase, note=note,
+                                   category=None if excluded else category, exclude=excluded,
+                                   source="ui-review")
+
+
+def retarget(rule: dict, category: str) -> dict:
+    """A copy of a merchant or phrase rule that sets ``category`` instead (same match)."""
+    excluded = category == NOT_IN_BUDGET
+    return {**rule, "id": uuid.uuid4().hex[:8],
+            "created_at": datetime.now().isoformat(timespec="seconds"), "source": "ui-review",
+            "set": {"exclude": True} if excluded else {"budget_category": category}}
+
+
+def rule_suggestions(current: list[dict], raw_lookup, merchant_of: dict[str, str],
+                     min_edits: int = 2) -> list[dict]:
+    """Merchants the household has moved by hand, row by row, at least ``min_edits`` times,
+    always to the same category, and that no merchant rule covers yet:
+    ``{"transaction_id", "merchant", "category", "edits"}``."""
+    manual, _ = manual_edits._import()
+    merchant_rules = manual.ManualIndex([e for e in current if e["set"] and e["scope"] == "merchant"])
+    by_merchant: dict[str, list[tuple[str, str]]] = {}
+    for edit in current:
+        tid = (edit.get("match") or {}).get("transaction_id")
+        if edit["scope"] != "transaction" or not edit["set"] or tid not in merchant_of:
+            continue
+        by_merchant.setdefault(merchant_of[tid], []).append((tid, rule_category(edit)))
+    out = []
+    for merchant, hits in by_merchant.items():
+        categories = {c for _, c in hits}
+        record = raw_lookup(hits[-1][0])
+        if (len(hits) < min_edits or len(categories) != 1 or record is None
+                or not (record.get("merchant_entity_id") or record.get("merchant_name"))
+                or merchant_rules.match(record) is not None):
+            continue
+        out.append({"transaction_id": hits[-1][0], "merchant": merchant,
+                    "category": categories.pop(), "edits": len(hits)})
+    return out
