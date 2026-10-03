@@ -34,6 +34,14 @@ it never edits records — category fixes append INTENTS to the transformer's lo
   applied in the Budget tab only, never to the cube. The Budget tab's `budget_amount`
   is the signed amount of any row that has a `budget_cat`, whatever its flow, which is
   how an edit counts a transfer.
+- Review sign-offs are `budget_review` intents in the same log (`signoff.py`): each
+  records the budget category every row had when confirmed. A row needs review until a
+  live sign-off covers it with its current category, so a rule change or re-audit that
+  moves a confirmed row brings it back as "changed"; the household's own newer budget
+  edit does not. Review covers budget rows plus the off-budget atoms in `decide_atoms`
+  (payment apps) — never card payments or own-account transfers, which would double
+  count. Fixes made there are transaction budget edits; a merchant-wide rule is written
+  only when the user accepts the offer.
 - The Rules tab and provenance explainers are read-only over the transformer's rule
   tables, its merchant memory, and the optional converter's Sheet mapping (loaded
   fail-soft via `$SPEND_VISUALIZER_CONVERTER` / `<data_root>/converter_root`).
