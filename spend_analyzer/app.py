@@ -19,7 +19,8 @@ from data import MIRROR_CSV, build_cube
 from ingest.load import stat_source
 from views import budget as budget_view
 from periods import CUSTOM, DEFAULT_PRESET, PRESETS, preset_range
-from views import cashflow, drilldown, merchants, overview, review, transactions
+from views import cashflow, drilldown, merchants, overview, suggestions, transactions
+from views import signoff as signoff_view
 from views import corrections_view, rules_view
 from views import qc as qc_view
 
@@ -79,6 +80,7 @@ def main() -> None:
     cube = Cube(df)
 
     spec, earliest, anchor = _sidebar_filters(cube, df)
+    to_review = signoff_view.queue(df)
 
     views = {
         "Overview": lambda: overview.render(cube, spec, earliest, anchor),
@@ -87,12 +89,14 @@ def main() -> None:
         "Budget": lambda: budget_view.render(cube, spec, budget, app.trailing_avg_months),
         "Merchants and recurring": lambda: merchants.render(cube, spec, anchor),
         "Cash flow": lambda: cashflow.render(cube, spec),
-        "Review": lambda: review.render(df),
+        "Review": lambda: signoff_view.render(df, to_review, budget),
+        "Suggestions": lambda: suggestions.render(df),
         "Overrides": corrections_view.render,
         "Rules": lambda: rules_view.render(df),
         "Checks": lambda: qc_view.render(cube, qc, spec),
     }
-    views[_current_view(list(views), {"Review": len(review.pending(df))})]()
+    views[_current_view(list(views), {"Review": len(to_review),
+                                      "Suggestions": len(suggestions.pending(df))})]()
 
 
 VIEW_KEY = "view"
