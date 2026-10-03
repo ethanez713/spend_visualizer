@@ -25,6 +25,7 @@ from views._widgets import all_raw_records, raw_record
 CHANGED_GROUP = "Changed since you signed off"
 DECIDE_GROUP = "Needs a budget decision"
 GEN_KEY = "so_gen"
+OFFERS_KEY = "so_offers"
 _EDITABLE = ["category", "note"]
 
 
@@ -43,6 +44,9 @@ def render(df: pd.DataFrame, todo: pd.DataFrame, budget: Budget) -> None:
         st.caption(f"Review unavailable: {err}")
         return
     entries = signoff.load_entries()
+    current = budget_edits.resolve(entries)
+    categories = dict(zip(df["transaction_id"], df["budget_cat"]))
+    _offers(df, current, categories)
     if not signoff.has_any(entries):
         _baseline_panel(df)
     if todo.empty:
@@ -56,6 +60,8 @@ def render(df: pd.DataFrame, todo: pd.DataFrame, budget: Budget) -> None:
         edits_by_id = {e.get("id"): e for e in entries if e.get("action") == budget_edits.ACTION}
         for label, rows in _groups(todo):
             _block(label, rows, df, history, options, edits_by_id)
+        _batch_rules(todo, edits_by_id, current, categories, options)
+    _suggestions(df, current, categories)
     _recent(entries)
 
 
@@ -200,6 +206,8 @@ def _save(grid: pd.DataFrame, edited: pd.DataFrame, *, sign: bool) -> None:
         st.error(f"Could not save: {e}")
         return
     st.session_state[GEN_KEY] = st.session_state.get(GEN_KEY, 0) + 1
+    st.session_state[OFFERS_KEY] = [*st.session_state.get(OFFERS_KEY, []),
+                                    *signoff.merchant_offers(grid, edited, raw_record)]
     done = f"Saved {len(edits)} change{'s' if len(edits) != 1 else ''}"
     st.toast(f"{done} and signed off {len(grid)} rows. Undo under Recent sign-offs."
              if sign else f"{done}.")
@@ -250,3 +258,130 @@ def _recent(entries: list[dict], limit: int = 5) -> None:
 
 def _slug(label: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
+
+
+def _preview(df: pd.DataFrame, ids: list[str]) -> None:
+    rows = df[df["transaction_id"].isin(ids)].sort_values("date_resolved", ascending=False)
+    st.dataframe(pd.DataFrame({
+        "Date": rows["date_resolved"], "Description": rows["merchant"].fillna(rows["name"]),
+        "Amount": rows["display_amount"].map(money_cents),
+        "Budget category now": rows["budget_cat"].map(signoff.category_label)}),
+        hide_index=True, width="stretch", height=table_height(len(rows), 10))
+
+
+def _write(intents: list[dict], done: str, *, revoke: str | None = None) -> None:
+    try:
+        signoff.append(intents)
+        if revoke:
+            manual_edits.revoke(revoke, note="replaced from Review")
+    except (ValueError, OSError) as e:
+        st.error(f"Could not save: {e}")
+        return
+    st.toast(done)
+    st.rerun()
+
+
+def _offers(df: pd.DataFrame, current: list[dict], categories: dict) -> None:
+    """After a fix, offer the merchant-wide rule it suggests, with the rows it would move."""
+    offers = st.session_state.get(OFFERS_KEY) or []
+    for offer in list(offers):
+        record = raw_record(offer["transaction_id"])
+        if record is None:
+            offers.remove(offer)
+            continue
+        rule = signoff.build_rule(record, offer["category"])
+        moves = signoff.rule_preview(rule, current, all_raw_records(), categories)
+        key = f"so_offer_{offer['transaction_id']}"
+        with st.container(border=True):
+            st.markdown(f"Make **{md_text(offer['category'])}** the default for "
+                        f"**{md_text(offer['merchant'])}**?")
+            st.caption(f"It would move {len(moves)} other transaction"
+                       f"{'s' if len(moves) != 1 else ''} from this merchant now, and every "
+                       "future one. Rows you set by hand keep their own category.")
+            if moves:
+                with st.expander("Rows it would move"):
+                    _preview(df, moves)
+            c = st.columns([1, 1, 6])
+            if c[0].button("Yes", key=f"{key}_yes", type="primary", width="stretch"):
+                offers.remove(offer)
+                _write([rule], f"{offer['merchant']} now defaults to {offer['category']}.")
+            if c[1].button("No", key=f"{key}_no", width="stretch"):
+                offers.remove(offer)
+                st.rerun()
+
+
+def _rule_label(rule: dict) -> str:
+    match = rule.get("match") or {}
+    if rule.get("scope") == "description":
+        return f"description has “{match.get('description_contains', '')}”"
+    return match.get("merchant_name_normalized") or match.get("merchant_entity_id", "")
+
+
+def _batch_rules(todo: pd.DataFrame, edits_by_id: dict, current: list[dict],
+                 categories: dict, options: list[str]) -> None:
+    """The rules that chose this batch's categories. The ones written here can be pointed
+    at another category or deleted; the others are overridden with a merchant rule."""
+    mine = todo.loc[todo["budget_source"] == "edit", "budget_edit_id"].map(edits_by_id.get).dropna()
+    mine = [r for r in mine if r.get("scope") in ("merchant", "description")]
+    pinned = todo.loc[todo["budget_source"].str.startswith("pinned:"), "budget_source"]
+    transformer = todo.loc[(todo["budget_source"] == "fold")
+                           & (todo["category_update_step"] == "mechanical"), "category_update_reason"]
+    if not (mine or len(pinned) or len(transformer)):
+        return
+    with st.expander("Rules behind this batch"):
+        for rule_id in dict.fromkeys(r["id"] for r in mine):
+            _own_rule(edits_by_id[rule_id], sum(r["id"] == rule_id for r in mine), current,
+                      categories, options, todo)
+        for source, n in pinned.value_counts().items():
+            st.caption(f"Pinned rule “{md_text(source.removeprefix('pinned:'))}” · {n} rows here. "
+                       "It lives in budget.yaml and the converter's PINNED_RULES (change both); "
+                       "a merchant rule made here overrides it.")
+        for reason, n in transformer.value_counts().items():
+            st.caption(f"Transformer rule {md_text(reason)} · {n} rows here. See the Rules tab; "
+                       "a merchant rule made here overrides it for the budget.")
+
+
+def _own_rule(rule: dict, here: int, current: list[dict], categories: dict,
+              options: list[str], todo: pd.DataFrame) -> None:
+    now = signoff.rule_category(rule)
+    key = f"so_rule_{rule['id']}"
+    with st.container(border=True):
+        st.markdown(f"Your rule: **{md_text(_rule_label(rule))}** → {md_text(now)} · {here} rows here")
+        c = st.columns([3, 1, 1])
+        choice = c[0].selectbox("Category", options, index=options.index(now) if now in options else 0,
+                                key=f"{key}_cat", label_visibility="collapsed")
+        if choice != now:
+            moves = signoff.rule_preview(signoff.retarget(rule, choice), current,
+                                         all_raw_records(), categories, retire=rule["id"])
+            st.caption(f"Pointing it at {md_text(choice)} moves {len(moves)} rows.")
+        if c[1].button("Change", key=f"{key}_change", disabled=choice == now, width="stretch"):
+            _write([signoff.retarget(rule, choice)], f"Rule now sets {choice}.", revoke=rule["id"])
+        if c[2].button("Delete", key=f"{key}_delete", width="stretch"):
+            try:
+                manual_edits.revoke(rule["id"], note="deleted from Review")
+            except (ValueError, OSError) as e:
+                st.error(f"Could not delete: {e}")
+                return
+            st.toast("Rule deleted; its rows fall back to the budget model.")
+            st.rerun()
+
+
+def _suggestions(df: pd.DataFrame, current: list[dict], categories: dict) -> None:
+    found = signoff.rule_suggestions(current, raw_record,
+                                     dict(zip(df["transaction_id"], df["merchant"].fillna(""))))
+    if not found:
+        return
+    with st.expander(f"Rules you could make · {len(found)}"):
+        st.caption("Merchants you have moved by hand more than once, always to the same "
+                   "category. A rule files their future transactions for you.")
+        for s in found:
+            record = raw_record(s["transaction_id"])
+            if record is None:
+                continue
+            rule = signoff.build_rule(record, s["category"])
+            moves = signoff.rule_preview(rule, current, all_raw_records(), categories)
+            c = st.columns([6, 2])
+            c[0].markdown(f"**{md_text(s['merchant'])}** → {md_text(s['category'])} · moved by "
+                          f"hand {s['edits']} times · the rule would move {len(moves)} more rows")
+            if c[1].button("Make rule", key=f"so_suggest_{s['transaction_id']}", width="stretch"):
+                _write([rule], f"{s['merchant']} now defaults to {s['category']}.")

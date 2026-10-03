@@ -183,3 +183,65 @@ def test_given_only_a_note_changed_when_edits_built_then_a_note_only_edit(bridge
 def test_given_a_row_missing_from_the_archive_when_edits_built_then_refused(bridge):
     with pytest.raises(ValueError):
         signoff.edits_from_grid(_grid(("zz", "Dining Out", "")), _grid(("zz", "Travel", "")), RAW.get)
+
+
+def _rule(record, category, scope="merchant"):
+    return signoff.build_rule(record, category, scope=scope)
+
+
+def test_given_a_merchant_rule_when_previewed_then_rows_set_by_hand_keep_their_category(bridge):
+    hand = {**_rule(RAW["a"], "Dining Out", scope="transaction"), "id": "hand"}
+    rule = _rule(RAW["b"], "Travel")
+    categories = {"a": "Dining Out", "b": "Dining Out", "c": "Travel"}
+
+    assert signoff.rule_preview(rule, [hand], list(RAW.values()), categories) == ["b"]
+
+
+def test_given_an_existing_rule_retargeted_when_previewed_then_the_old_rule_is_ignored(bridge):
+    old = {**_rule(RAW["a"], "Dining Out"), "id": "old"}
+    new = signoff.retarget(old, signoff.NOT_IN_BUDGET)
+    categories = {"a": "Dining Out", "b": "Dining Out", "c": None}
+
+    assert signoff.rule_preview(new, [old], list(RAW.values()), categories, retire="old") == ["a", "b"]
+    assert new["match"] == old["match"] and new["set"] == {"exclude": True} and new["id"] != "old"
+
+
+def _moves(*rows):
+    return pd.DataFrame(rows, columns=["transaction_id", "description", "category"])
+
+
+def test_given_rows_moved_in_the_grid_when_offers_built_then_one_per_named_merchant():
+    raw = {**RAW, "x": {"transaction_id": "x", "merchant_entity_id": None, "merchant_name": None}}
+    before = _moves(("a", "Cafe", "Other"), ("b", "Cafe", "Other"), ("x", "ACH 123", "Other"))
+    after = _moves(("a", "Cafe", "Dining Out"), ("b", "Cafe", "Dining Out"), ("x", "ACH 123", "Travel"))
+
+    assert signoff.merchant_offers(before, after, raw.get) == [
+        {"transaction_id": "a", "merchant": "Cafe", "category": "Dining Out"}]
+
+
+def test_given_one_merchant_moved_to_two_categories_when_offers_built_then_none():
+    before = _moves(("a", "Cafe", "Other"), ("b", "Cafe", "Other"))
+    after = _moves(("a", "Cafe", "Dining Out"), ("b", "Cafe", "Travel"))
+
+    assert signoff.merchant_offers(before, after, RAW.get) == []
+
+
+def _hand(tid, category):
+    return {**_rule(RAW[tid], category, scope="transaction"), "id": f"h{tid}"}
+
+
+def test_given_repeated_hand_moves_to_one_category_when_suggested_then_a_merchant_rule(bridge):
+    current = [_hand("a", "Groceries"), _hand("b", "Groceries")]
+
+    got = signoff.rule_suggestions(current, RAW.get, {"a": "Cafe", "b": "Cafe"})
+
+    assert [(s["merchant"], s["category"], s["edits"]) for s in got] == [("Cafe", "Groceries", 2)]
+
+
+def test_given_hand_moves_that_disagree_or_a_rule_exists_when_suggested_then_none(bridge):
+    merchants = {"a": "Cafe", "b": "Cafe", "c": "Cafe"}
+    mixed = [_hand("a", "Groceries"), _hand("b", "Dining Out")]
+    covered = [_hand("a", "Groceries"), _hand("b", "Groceries"), _rule(RAW["c"], "Groceries")]
+
+    assert signoff.rule_suggestions(mixed, RAW.get, merchants) == []
+    assert signoff.rule_suggestions(covered, RAW.get, merchants) == []
