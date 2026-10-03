@@ -115,7 +115,7 @@ reference month, biggest category changes) · **Drilldown** (spend table + click
 hierarchy + transaction detail) · **Transactions** (search and filter individual rows) ·
 **Budget** (budget vs actual) · **Merchants and recurring** (top merchants, recurring
 charges with cadence and next expected date) · **Cash flow** (income vs spending by
-month, quarter or year, and a flow diagram of where income went) · **Review** (accept, keep or re-pick each pending category suggestion) · **Overrides**
+month, quarter or year, and a flow diagram of where income went) · **Review** (sign off new transactions one budget category at a time, fixing outliers in place; fixes become merchant rules on request) · **Suggestions** (accept, keep or re-pick each pending category suggestion) · **Overrides**
 (manual overrides + the triage-note queue) · **Rules** (read-only browser over every rule table
 that can decide a category) · **Checks** (taxonomy coverage and the double-count tie-out).
 The active view is mirrored in the URL (`?view=`), so a bookmark or reload returns to it.
