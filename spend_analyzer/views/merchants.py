@@ -11,7 +11,7 @@ import recurring
 import state
 import theme
 from cube import Cube, GroupingSpec
-from viz import blank_if_missing, md_text, money, style_table, table_height
+from viz import blank_if_missing, md_text, money, money_md, plural, style_table, table_height
 from views._widgets import fix_categorization, hide_button, transaction_detail
 
 _TOP_MERCHANTS = 40
@@ -82,7 +82,12 @@ def _merchant_detail(rows: pd.DataFrame, pick: str) -> None:
     sub = rows[rows["merchant"] == pick]
     mid = sub["merchant_id"].iloc[0]
     st.subheader(md_text(pick))
-    monthly = sub.groupby("month")["spend"].sum().sort_index()
+    # Every month of the period, so a gap reads as a month without a visit.
+    months = pd.period_range(rows["month"].min(), rows["month"].max(), freq="M").strftime("%Y-%m")
+    monthly = sub.groupby("month")["spend"].sum().reindex(months, fill_value=0.0)
+    visits = int((~sub["refund"]).sum())
+    st.caption(f"{money_md(float(sub['spend'].sum()))} over {plural(visits, 'visit')} · "
+               f"{sub['date_resolved'].min()[:10]} to {sub['date_resolved'].max()[:10]}")
     fig = go.Figure(go.Bar(x=pd.to_datetime(monthly.index).strftime("%b %Y"), y=monthly.values,
                            marker_color=theme.SPEND,
                            hovertemplate="%{y:$,.0f}<extra>%{x}</extra>"))
