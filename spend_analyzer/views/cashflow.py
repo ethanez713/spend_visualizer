@@ -17,9 +17,12 @@ def render(cube: Cube, spec: GroupingSpec) -> None:
     # Income and spending are the two halves of this view, so Flow is ignored.
     filters = {k: v for k, v in spec.filters.items() if k != "flow"}
     base = dict(filters=filters, date_from=spec.date_from, date_to=spec.date_to)
-    c1, c2 = st.columns([2, 3])
-    timeframe = c1.radio("Group by", list(_TIMEFRAMES), horizontal=True, key="cash_timeframe")
-    view = c2.radio("View", ["Over time", "Where it went"], horizontal=True, key="cash_view")
+    c1, c2 = st.columns([3, 2])
+    view = c1.radio("View", ["Over time", "Where it went"], horizontal=True, key="cash_view")
+    timeframe = "Month"
+    if view == "Over time":
+        timeframe = c2.radio("Group by", list(_TIMEFRAMES), horizontal=True,
+                             key="cash_timeframe")
 
     periods = cube.rollup(GroupingSpec(group_by=_TIMEFRAMES[timeframe],
                                        measures=["spend", "income"], order_by=None, **base))
@@ -84,7 +87,9 @@ def _over_time(p: pd.DataFrame, timeframe: str) -> None:
 def _sankey(cube: Cube, base: dict, income: float, spend: float) -> None:
     """Income sources into one pool, out to the largest spend categories and what
     was kept. A shortfall is drawn as a source, so both sides balance."""
-    sources = cube.rollup(GroupingSpec(group_by=["tier1"], measures=["income"],
+    # Income is a single top-level category, so its sources are the subcategories
+    # (salary, wages, refunds, ...).
+    sources = cube.rollup(GroupingSpec(group_by=["tier2"], measures=["income"],
                                        order_by="income", **base))
     sources = sources[sources["income"] > 0]
     uses = cube.rollup(GroupingSpec(group_by=["tier1"], measures=["spend"],
@@ -103,7 +108,7 @@ def _sankey(cube: Cube, base: dict, income: float, spend: float) -> None:
         return len(labels) - 1
 
     for _, r in sources.iterrows():
-        src.append(node(str(r["tier1"]), theme.INCOME)); dst.append(0); val.append(r["income"])
+        src.append(node(str(r["tier2"]), theme.INCOME)); dst.append(0); val.append(r["income"])
     if spend > income:
         src.append(node("From savings", theme.OTHER)); dst.append(0); val.append(spend - income)
     palette = theme.series_colors(top["tier1"].tolist())
