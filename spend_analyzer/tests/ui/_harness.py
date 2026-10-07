@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 APP = str(ROOT / "app.py")
 
 
-VIEWS = ["Overview", "Drilldown", "Transactions", "Budget", "Merchants and recurring",
+VIEWS = ["Overview", "Drilldown", "Transactions", "Budget", "Merchants",
          "Cash flow", "Review", "Suggestions", "Overrides", "Rules", "Checks"]
 
 
@@ -73,7 +73,7 @@ def spend_table(at: AppTest):
 
 def open_first_merchant(at: AppTest) -> None:
     """Open a merchant's detail (and its fix form) through the merchant search."""
-    go(at, "Merchants and recurring")
+    go(at, "Merchants")
     box = widget(at.selectbox, key="merchant_search")
     box.set_value(box.options[0])
     at.run()

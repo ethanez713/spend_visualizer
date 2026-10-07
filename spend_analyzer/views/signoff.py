@@ -19,7 +19,7 @@ import signoff
 from budget_model import load_budget_model
 from budget_table import known_categories
 from config_io import Budget
-from viz import md_text, money_cents, money_md, provenance_why, table_height
+from viz import md_text, money_cents, money_md, plural, provenance_why, table_height
 from views._widgets import all_raw_records, raw_record
 
 CHANGED_GROUP = "Changed since you signed off"
@@ -52,7 +52,7 @@ def render(df: pd.DataFrame, todo: pd.DataFrame, budget: Budget) -> None:
     if todo.empty:
         st.info("Everything is signed off. New transactions appear here after the next fetch.")
     else:
-        st.caption(f"{len(todo)} rows to review, grouped by budget category. Fix a category "
+        st.caption(f"{plural(len(todo), 'row')} to review, grouped by budget category. Fix a category "
                    "or note in place, then sign off the group.")
         history = signoff.merchant_history(df, exclude=set(todo["transaction_id"]))
         options = [*known_categories(budget, df["budget_cat"].dropna().unique()),
@@ -133,7 +133,7 @@ def _block(label: str, rows: pd.DataFrame, df: pd.DataFrame, history: dict,
     key = f"so_{_slug(label)}_{st.session_state.get(GEN_KEY, 0)}"
     grid = _grid(rows, history, edits_by_id)
     with st.container(border=True):
-        st.markdown(f"**{md_text(label)}** · {len(rows)} rows · "
+        st.markdown(f"**{md_text(label)}** · {plural(len(rows), 'row')} · "
                     f"{money_md(float(rows['display_amount'].sum()))}")
         if label == CHANGED_GROUP:
             st.caption("You signed these off under the category in Was; a rule or a re-audit "
@@ -141,8 +141,10 @@ def _block(label: str, rows: pd.DataFrame, df: pd.DataFrame, history: dict,
         elif label == DECIDE_GROUP:
             st.caption("Money moved through a payment app stays out of the budget until you "
                        "give it a category, e.g. your share of a dinner someone paid for.")
-        columns = ["person", "date", "description", "amount", "account", "category", "note",
-                   *(["was"] if label == CHANGED_GROUP else []), "history", "why", "flags"]
+        # The judgement columns sit beside the category; the account is reference only.
+        columns = ["person", "date", "description", "amount", "category", "note",
+                   *(["was"] if label == CHANGED_GROUP else []), "flags", "history", "why",
+                   "account"]
         edited = st.data_editor(
             grid, key=key, hide_index=True, width="stretch", column_order=columns,
             height=table_height(len(grid), 20),
@@ -166,7 +168,7 @@ def _block(label: str, rows: pd.DataFrame, df: pd.DataFrame, history: dict,
         if c[0].button(f"Save {changed} change{'s' if changed != 1 else ''}", key=f"{key}_save",
                        disabled=not changed, width="stretch"):
             _save(grid, edited, sign=False)
-        if c[1].button(f"Save and sign off {len(grid)} rows", key=f"{key}_sign", type="primary",
+        if c[1].button(f"Save and sign off {plural(len(grid), 'row')}", key=f"{key}_sign", type="primary",
                        width="stretch"):
             _save(grid, edited, sign=True)
         _merchant_lookup(rows, df, key)
@@ -209,7 +211,7 @@ def _save(grid: pd.DataFrame, edited: pd.DataFrame, *, sign: bool) -> None:
     st.session_state[OFFERS_KEY] = [*st.session_state.get(OFFERS_KEY, []),
                                     *signoff.merchant_offers(grid, edited, raw_record)]
     done = f"Saved {len(edits)} change{'s' if len(edits) != 1 else ''}"
-    st.toast(f"{done} and signed off {len(grid)} rows. Undo under Recent sign-offs."
+    st.toast(f"{done} and signed off {plural(len(grid), 'row')}. Undo under Recent sign-offs."
              if sign else f"{done}.")
     st.rerun()
 

@@ -7,7 +7,7 @@ import streamlit as st
 from budget_table import known_categories
 from config_io import Budget
 from cube import Cube, GroupingSpec
-from viz import money, sanitize_for_csv
+from viz import money, plural, sanitize_for_csv
 from views._budget_edit import bulk_panel
 from views._widgets import transaction_detail
 
@@ -72,6 +72,6 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget) -> None:
     bulk_panel(out, search=text, key="txn_budget",
                categories=known_categories(budget, cube.df["budget_cat"].dropna().unique()))
     export = out[[c for c in _EXPORT_COLS if c in out.columns]]
-    st.download_button(f"Download {len(out)} rows as CSV · {money(out['display_amount'].sum())}",
+    st.download_button(f"Download {plural(len(out), 'row')} as CSV · {money(out['display_amount'].sum())}",
                        sanitize_for_csv(export).to_csv(index=False),
                        file_name="transactions.csv", mime="text/csv")

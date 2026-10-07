@@ -8,13 +8,15 @@ import corrections as corr
 import manual_edits
 import rules_bridge
 import state
-from viz import (PROVENANCE_BADGES, blank_if_missing, humanize_atom, md_text, money, money_cents, money_md,
+from viz import (PROVENANCE_BADGES, blank_if_missing, humanize_atom, md_text, money, money_cents, money_md, plural,
                  provenance_why, table_height)
 
 # Columns shown in a raw transaction-detail table.
-_TXN_COLS = ["date_resolved", "display_amount", "merchant", "name", "tier1", "tier2",
-             "atom_display", "budget_cat", "budget_note", "person", "account_name",
-             "confidence", "why"]
+# What a person scans for comes first; the raw description and the provenance codes
+# sit at the right, past the fold on a laptop screen.
+_TXN_COLS = ["date_resolved", "display_amount", "merchant", "budget_cat", "tier1", "tier2",
+             "person", "account_name", "budget_note", "name", "why", "atom_display",
+             "confidence"]
 
 
 def transaction_detail(rows: pd.DataFrame, title: str = "Transactions",
@@ -41,7 +43,7 @@ def transaction_detail(rows: pd.DataFrame, title: str = "Transactions",
     disp = view[cols].copy()
     disp.insert(0, "Flag", False)
 
-    st.caption(f"{md_text(title)} — {len(disp)} txns · {money_md(_net(rows))}  "
+    st.caption(f"{md_text(title)} — {plural(len(disp), 'transaction')} · {money_md(_net(rows))}  "
                "·  tick Flag on a row to fix its category")
     edited = st.data_editor(
         disp.style.format({"display_amount": money_cents}), width="stretch", hide_index=True, key=f"txned_{key}",
@@ -73,7 +75,7 @@ def transaction_detail(rows: pd.DataFrame, title: str = "Transactions",
     flagged = [i for i, f in enumerate(edited["Flag"].tolist()) if f]
     for i in flagged[:6]:
         r = ordered.iloc[i]
-        label = f"{r.get('merchant')} · {money(r.get('display_amount', 0))} · {r.get('date_resolved')}"
+        label = f"{r.get('merchant')} · {money_cents(r.get('display_amount', 0))} · {r.get('date_resolved')}"
         fix_categorization(row=r, label=label, key=f"txn_{key}_{i}", expanded=True)
 
 
@@ -85,7 +87,7 @@ def hide_button(dim: str, value, label: str, *, key: str) -> None:
     """An 'eye' toggle that hides/shows a category across all views."""
     hidden = state.is_hidden(dim, value)
     icon = "Show" if hidden else "Hide"
-    if st.button(f"{icon} {label}", key=key, width="stretch"):
+    if st.button(f"{icon} {label}", key=key):
         state.toggle_hidden(dim, value, label)
         st.rerun()
 
