@@ -17,8 +17,8 @@ import streamlit as st
 import budget_edits
 import corrections as corr
 import manual_edits
-from viz import sanitize_for_csv, table_height
-from views._widgets import all_raw_records
+from viz import money_cents, plural, sanitize_for_csv, table_height
+from views._widgets import all_raw_records, raw_record
 
 
 def render() -> None:
@@ -44,13 +44,11 @@ def _render_overrides() -> None:
         return
     items = manual_edits.intents()
     st.caption(
-        "The **authoritative** fix path — appended to "
-        f"`{manual_edits.edits_path()}` and replayed by the categorizer on "
-        "**every** run: overrides trump rules and the LLM, survive full "
-        "re-audits, and merchant scope covers future transactions too. "
-        "Revoking shows the pre-override category at once and hands the row back to "
-        "the pipeline on the next run."
-    )
+        "Category overrides beat every rule and survive full re-audits; a merchant "
+        "override also covers that merchant's future transactions. Revoking one "
+        "restores the earlier category at once.",
+        help=f"Stored in `{manual_edits.edits_path()}` and replayed by the categorizer "
+             "on every run.")
     if not items:
         st.info("No overrides yet. Tick Flag on a transaction in Drilldown or "
                 "Merchants, then use ‘Override category’.")
@@ -116,7 +114,7 @@ def _render_budget_edits() -> None:
         for e, row in zip(reversed(items), reversed(rows)):
             c1, c2 = st.columns([5, 1])
             c1.write(f"`{e['id']}` · {e['scope']} · **{row['target']}** → {row['counts as']} · "
-                     f"covers {row['rows covered']} row(s)"
+                     f"covers {plural(row['rows covered'], 'row')}"
                      + (f" — {e['note']}" if e.get("note") else ""))
             if c2.button("Revoke", key=f"revoke_budget_{e['id']}"):
                 manual_edits.revoke(e["id"])
@@ -127,17 +125,28 @@ def _target(it: dict) -> str:
     match = it["match"]
     if it["scope"] == "description":
         return f"description contains “{match.get('description_contains')}”"
-    return (match.get("transaction_id")
-            or (it.get("snapshot") or {}).get("merchant_name")
+    if match.get("transaction_id"):
+        return _describe_transaction(match["transaction_id"])
+    return ( (it.get("snapshot") or {}).get("merchant_name")
             or match.get("merchant_name_normalized")
             or match.get("merchant_entity_id"))
+
+
+def _describe_transaction(transaction_id: str) -> str:
+    """`2026-03-08 · Clip Mx · $73.61` rather than an opaque Plaid id."""
+    raw = raw_record(transaction_id)
+    if raw is None:
+        return transaction_id
+    name = raw.get("merchant_name") or raw.get("name") or ""
+    day = raw.get("authorized_date") or raw.get("date") or ""
+    return f"{day} · {name} · {money_cents(float(raw.get('amount') or 0))}"
 
 
 def _revoke_list(items: list[dict], rows: list[dict]) -> None:
     for it, row in zip(reversed(items), reversed(rows)):
         c1, c2 = st.columns([5, 1])
         c1.write(f"`{it['id']}` · {it['scope']} · **{row['target']}** → "
-                 f"{it['set']['detailed']} · covers {row['rows covered']} row(s)"
+                 f"{it['set']['detailed']} · covers {plural(row['rows covered'], 'row')}"
                  + (f" — {it['note']}" if it.get("note") else ""))
         if c2.button("Revoke", key=f"revoke_{it['id']}"):
             manual_edits.revoke(it["id"])
