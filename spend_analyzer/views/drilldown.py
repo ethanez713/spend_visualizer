@@ -36,7 +36,7 @@ ROOT_KEY = "wheel_root"
 
 
 def _disp(col: str, v) -> str:
-    return humanize_atom(v) if col == "atom" else str(v)
+    return humanize_atom(v).capitalize() if col == "atom" else str(v)
 
 
 def granularity_control(cube: Cube, spec: GroupingSpec) -> tuple[str, str]:
@@ -131,7 +131,7 @@ def _spend_table(cube, spec, level_col, level_name, table, raw_vals, hidden_flag
 
     if picked:
         all_hidden = all(state.is_hidden(level_col, v) for v in picked)
-        c1, c2, _ = st.columns([2, 2, 6])
+        c1, c2, c3, _ = st.columns([2, 2, 3, 3])
         if c1.button(f"{'Show' if all_hidden else 'Hide'} {len(picked)}",
                      key=f"hidebtn_{level_col}", width="stretch"):
             for v in picked:
@@ -141,9 +141,25 @@ def _spend_table(cube, spec, level_col, level_name, table, raw_vals, hidden_flag
                      width="stretch"):
             st.session_state[f"flagged_{level_col}"] = set(picked)
             st.rerun()
+        path = _path_to(cube, spec, level_col, picked[0]) if len(picked) == 1 else None
+        if path and c3.button(f"Open {_disp(level_col, picked[0])} in the chart",
+                              key=f"drillbtn_{level_col}", type="primary", width="stretch"):
+            st.session_state[ROOT_KEY] = path
+            st.rerun()
 
     for v in list(st.session_state.get(f"flagged_{level_col}", set())):
         _flag_category(cube, spec, level_col, v)
+
+
+def _path_to(cube, spec, level_col, value) -> list | None:
+    """The hierarchy path down to one table row, or None when the value sits under more
+    than one parent (a merchant filed under two categories) and no single node holds it."""
+    rows = cube.filtered(GroupingSpec(filters={**spec.filters, "flow": "spend", level_col: value},
+                                      date_from=spec.date_from, date_to=spec.date_to,
+                                      include_hidden=True))
+    levels = CATEGORY_LEVELS[:CATEGORY_LEVELS.index(level_col) + 1]
+    paths = rows[levels].drop_duplicates()
+    return paths.iloc[0].tolist() if len(paths) == 1 else None
 
 
 def _previous_spend(cube, spec, level_col, earliest) -> pd.Series | None:
@@ -180,13 +196,8 @@ def _hierarchy(rows: pd.DataFrame) -> list:
     if root and _drill_filter(rows, root).empty:
         root = st.session_state[ROOT_KEY] = []
 
-    c1, c3 = st.columns([6, 1])
-    kind = c1.radio("Chart", ["Wheel", "Treemap"], horizontal=True,
+    kind = st.radio("Chart", ["Wheel", "Treemap"], horizontal=True,
                     key="hier_kind", label_visibility="collapsed")
-    if c3.button("Zoom out", disabled=not root):
-        st.session_state[ROOT_KEY] = root[:-1]
-        st.rerun()
-
     _breadcrumb(root)
 
     sub = _drill_filter(rows, root)
@@ -251,10 +262,15 @@ def _clicked_path(clicks, abs_nodes: list) -> list | None:
 
 def _breadcrumb(root: list) -> None:
     crumbs = ["All"] + [_disp(CATEGORY_LEVELS[i], v) for i, v in enumerate(root)]
-    cols = st.columns(len(crumbs) + 4)
-    for i, name in enumerate(crumbs):
-        if cols[i].button(name, key=f"crumb_{i}"):
-            st.session_state[ROOT_KEY] = root[:i]
+    with st.container(horizontal=True, gap="small", vertical_alignment="center"):
+        for i, name in enumerate(crumbs):
+            here = i == len(crumbs) - 1
+            if st.button(name, key=f"crumb_{i}", type="tertiary" if here else "secondary",
+                         disabled=here):
+                st.session_state[ROOT_KEY] = root[:i]
+                st.rerun()
+        if root and st.button("Zoom out", key="zoom_out", icon=":material/arrow_upward:"):
+            st.session_state[ROOT_KEY] = root[:-1]
             st.rerun()
 
 
@@ -349,7 +365,7 @@ def _trailing_avg(cube, spec, level_col, months: list[str]) -> pd.Series:
     pivot = monthly.pivot_table(index=level_col, columns="month", values="spend",
                                 aggfunc="sum").fillna(0.0)
     out = pivot.reindex(columns=months, fill_value=0.0).mean(axis=1)
-    out.index = [humanize_atom(i) if level_col == "atom" else i for i in out.index]
+    out.index = [_disp(level_col, i) for i in out.index]
     return out
 
 

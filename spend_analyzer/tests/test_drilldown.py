@@ -35,9 +35,8 @@ def test_every_sector_click_resolves_to_a_nonempty_slice():
 def test_atom_sector_labels_are_humanized_even_though_state_is_raw():
     fig, abs_nodes = _build_hierarchy_fig(_ROWS, CATEGORY_LEVELS, [], treemap=False)
     # the drill state (abs_nodes) keeps the raw underscore code...
-    assert ["FOOD_AND_DRINK_COFFEE"] != ["FOOD AND DRINK COFFEE"]
     assert any(p[-1] == "FOOD_AND_DRINK_COFFEE" for p in abs_nodes if len(p) == 4)
     # ...while the visible label for that sector is humanized
     labels = list(fig.data[0].labels)
-    assert "FOOD AND DRINK COFFEE" in labels
+    assert "Food and drink coffee" in labels
     assert "FOOD_AND_DRINK_COFFEE" not in labels
