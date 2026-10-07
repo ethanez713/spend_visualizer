@@ -10,7 +10,7 @@ import pandas as pd
 import streamlit as st
 
 import manual_edits
-from viz import humanize_atom, md_text, money
+from viz import humanize_atom, md_text, money_cents
 from views._widgets import raw_record, recategorize_form
 
 _SOURCES = {"mechanical": "a rule", "llm": "the local model", "claude": "the Claude audit"}
@@ -50,7 +50,7 @@ def _card(row) -> None:
     tid = str(row["transaction_id"])
     raw = raw_record(tid)
     with st.container(border=True):
-        st.markdown(f"**{md_text(row['merchant'])}** · {money(row['display_amount'])} · "
+        st.markdown(f"**{md_text(row['merchant'])}** · {money_cents(row['display_amount'])} · "
                     f"{row['date_resolved']}")
         if row.get("name") and row["name"] != row["merchant"]:
             st.caption(md_text(row["name"]))

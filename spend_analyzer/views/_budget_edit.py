@@ -7,6 +7,7 @@ import streamlit as st
 
 import budget_edits
 import manual_edits
+from viz import plural
 from views._widgets import all_raw_records, raw_record
 
 KEEP_CATEGORY = "Keep the category (note only)"
@@ -21,7 +22,7 @@ def bulk_panel(rows: pd.DataFrame, *, search: str, categories: list[str], key: s
     if err:
         st.caption(f"Budget edits unavailable: {err}")
         return
-    with st.expander(f"Set the budget category for these {len(rows)} rows"):
+    with st.expander(f"Set the budget category for these {plural(len(rows), 'row')}"):
         choice = st.selectbox("Budget category", [KEEP_CATEGORY, *categories, EXCLUDE],
                               key=f"{key}_category")
         note = st.text_input("Note", key=f"{key}_note",
@@ -38,7 +39,7 @@ def bulk_panel(rows: pd.DataFrame, *, search: str, categories: list[str], key: s
 
 
 def _scopes(rows: pd.DataFrame, search: str) -> dict[str, str]:
-    scopes = {"transaction": f"just these {len(rows)} rows"}
+    scopes = {"transaction": f"just these {plural(len(rows), 'row')}"}
     merchants = rows["merchant"].dropna().unique()
     if len(merchants) == 1 and _names_a_merchant(rows.iloc[0]["transaction_id"]):
         scopes["merchant"] = f"every transaction from “{merchants[0]}”, including future ones"

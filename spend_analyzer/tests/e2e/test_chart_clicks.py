@@ -35,9 +35,9 @@ def test_given_sunburst_when_sector_clicked_then_app_drills_to_that_path(app):
     crumbs = breadcrumbs(app)
     assert crumbs[-1] == top["label"], crumbs
     assert crumbs[0] == "All" and len(crumbs) >= 2, crumbs
-    # the transaction-detail table follows the chart ("<path> — N txns")
+    # the transaction-detail table follows the chart ("<path> — N transactions")
     expect(app.get_by_text(
-        re.compile(rf"{re.escape(top['label'])} — \d+ txns")).first).to_be_visible()
+        re.compile(rf"{re.escape(top['label'])} — \d+ transactions?")).first).to_be_visible()
     assert_no_exception(app)
 
 

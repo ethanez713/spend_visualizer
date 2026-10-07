@@ -6,11 +6,18 @@ import pandas as pd
 import theme
 
 def money(x: float) -> str:
+    """Whole dollars for a total; cents only under $10, where rounding would hide the
+    amount. A single transaction's amount uses `money_cents`."""
     try:
         sign = "−" if x < 0 else ""
-        return f"{sign}${abs(x):,.0f}" if abs(x) >= 100 else f"{sign}${abs(x):,.2f}"
+        return f"{sign}${abs(x):,.0f}" if abs(x) >= 10 else f"{sign}${abs(x):,.2f}"
     except (TypeError, ValueError):
         return "—"
+
+
+def plural(n: int, noun: str) -> str:
+    """`1 row`, `2 rows`."""
+    return f"{n:,} {noun}{'' if n == 1 else 's'}"
 
 
 def money_cents(x: float) -> str:

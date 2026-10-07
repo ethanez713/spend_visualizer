@@ -61,12 +61,12 @@ def test_given_transaction_flag_ticked_then_fix_expander_opens(app):
 
 
 def test_given_merchant_picked_in_dropdown_then_detail_follows(app):
-    go(app, "Merchants and recurring")
+    go(app, "Merchants")
     app.locator('[data-testid="stMain"]').get_by_role("combobox").first.click()
     second = app.get_by_role("option").nth(1)
     picked = second.inner_text().strip()
     second.click()
     wait_idle(app)
     expect(app.get_by_text(
-        re.compile(rf"{re.escape(picked)} — \d+ txns")).first).to_be_visible()
+        re.compile(rf"{re.escape(picked)} — \d+ transactions?")).first).to_be_visible()
     assert_no_exception(app)

@@ -11,7 +11,7 @@ import insights
 import theme
 from cube import Cube, GroupingSpec
 from periods import add_months, month_start, previous_period
-from viz import money, money_md, style_table, table_height
+from viz import money, money_md, plural, style_table, table_height
 from views._widgets import transaction_detail
 
 _PACE_OPTIONS = ["Last month", "Average month", "Same month last year"]
@@ -137,11 +137,13 @@ def _changes(rows, current, previous, earliest, anchor) -> None:
 
 def _largest(rows, current) -> None:
     d = rows["date_resolved"].str[:10]
-    sel = rows[(rows["flow"] == "spend") & ~rows["refund"] & (d >= current[0].isoformat())
-               & (d <= current[1].isoformat())]
+    # Recurring bills (the mortgage above all) would fill the list with the same row
+    # every month; they have their own table under Merchants.
+    sel = rows[(rows["flow"] == "spend") & ~rows["refund"] & (rows["recurrence"] != "recurring")
+               & (d >= current[0].isoformat()) & (d <= current[1].isoformat())]
     top = sel.nlargest(10, "abs_amount")
-    st.subheader("Largest transactions")
-    transaction_detail(top, title="Top 10 by amount", key="overview_top")
+    st.subheader("Largest purchases")
+    transaction_detail(top, title="Top 10 by amount, recurring bills left out", key="overview_top")
 
 
 def _pending(rows) -> None:
@@ -149,4 +151,4 @@ def _pending(rows) -> None:
         return
     n = int(rows["review_pending"].fillna(False).astype(bool).sum())
     if n:
-        st.caption(f"{n} category suggestions await a decision in Review.")
+        st.caption(f"{plural(n, 'category suggestion')} awaiting a decision in Suggestions.")

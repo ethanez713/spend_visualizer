@@ -87,7 +87,7 @@ def main() -> None:
         "Drilldown": lambda: drilldown.render(cube, spec, earliest),
         "Transactions": lambda: transactions.render(cube, spec, budget),
         "Budget": lambda: budget_view.render(cube, spec, budget, app.trailing_avg_months),
-        "Merchants and recurring": lambda: merchants.render(cube, spec, anchor),
+        "Merchants": lambda: merchants.render(cube, spec, anchor),
         "Cash flow": lambda: cashflow.render(cube, spec),
         "Review": lambda: signoff_view.render(df, to_review, budget),
         "Suggestions": lambda: suggestions.render(df),
