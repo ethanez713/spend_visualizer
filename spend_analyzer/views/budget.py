@@ -18,7 +18,7 @@ from datetime import date
 from pathlib import Path
 
 import pandas as pd
-import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 import budget_edits
@@ -341,8 +341,8 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
     _history(cube, spec, budget, extras)
     if ledger_present:
         _compare_sources(cube, original_spec, ledger_csv, window)
-    _export_buttons(indexed, pivot)
     _trends(pivot, window)
+    _export_buttons(indexed, pivot)
 
 
 def _compare_sources(cube: Cube, spec: GroupingSpec, ledger_csv: str, window: int) -> None:
@@ -400,17 +400,40 @@ def _trends(pivot: pd.DataFrame, window: int) -> None:
     if piv.empty:
         st.caption("No spend to chart.")
         return
-    # Largest categories take the palette; the tail shares the neutral.
-    order = list(piv.sum().sort_values(ascending=False).index)
-    fig = px.bar(piv, x=piv.index, y=order, color_discrete_map=theme.series_colors(order))
-    fig.update_traces(marker_line_color=theme.PAPER_1, marker_line_width=1)
+    series = _fold_tail(piv, _TREND_SERIES)
+    colors = theme.series_colors([c for c in series.columns if c != TAIL_SERIES])
+    labels = pd.to_datetime(series.index).strftime("%b %Y")
+    fig = go.Figure()
+    # go.Bar rather than px.bar: px gives every trace its own offsetgroup, and plotly.js
+    # then draws the "stacked" bars side by side.
+    for cat in series.columns:
+        fig.add_bar(x=labels, y=series[cat], name=cat,
+                    marker=dict(color=colors.get(cat, theme.OTHER),
+                                line=dict(color=theme.PAPER_1, width=1)),
+                    hovertemplate="%{y:$,.0f}<extra>" + cat + "</extra>")
     roll = piv.sum(axis=1).rolling(min(window, len(piv)), min_periods=1).mean()
-    fig.add_scatter(x=piv.index, y=roll, mode="lines+markers",
-                    name=f"{window}-month average", line=dict(color=theme.NET, width=2))
-    fig.update_layout(barmode="stack", height=430, margin=dict(t=10),
-                      xaxis_title=None, legend_title_text="",
+    fig.add_scatter(x=labels, y=roll.values, mode="lines+markers",
+                    name=f"{window}-month average", line=dict(color=theme.NET, width=2),
+                    hovertemplate="%{y:$,.0f}<extra>" + f"{window}-month average</extra>")
+    fig.update_layout(barmode="relative", height=430, margin=dict(t=10), hovermode="x unified",
+                      xaxis=dict(title=None, type="category"),
                       yaxis=dict(title=None, tickprefix="$", tickformat=",.0f"))
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+
+
+TAIL_SERIES = "Smaller categories"
+# One series per categorical palette slot (theme.CATEGORICAL holds seven).
+_TREND_SERIES = 7
+
+
+def _fold_tail(piv: pd.DataFrame, keep: int) -> pd.DataFrame:
+    """The `keep - 1` largest categories by total, plus one column summing the rest: past
+    the palette every series would share the neutral and be told apart by nothing."""
+    order = list(piv.sum().sort_values(ascending=False).index)
+    if len(order) <= keep:
+        return piv[order]
+    head, tail = order[:keep - 1], order[keep - 1:]
+    return piv[head].assign(**{TAIL_SERIES: piv[tail].sum(axis=1)})
 
 
 def _cat(table: pd.DataFrame, name: str, avg_col: str) -> tuple[float, float]:
