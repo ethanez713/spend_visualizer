@@ -189,4 +189,6 @@ Plaid ──sync (cursor/Item)──▶ raw xz store ──persist/reconcile─�
   Sheet held, pending-row reconciliation, warning rows) in
   `<data_root>/sheet_exports/manifest.jsonl` — the orchestrator passes no window.
 - `PLAN.md` files are historical design docs; READMEs are the current truth.
+- Work in flight is planned in `docs/plans/README.md` (phase index — read it first on
+  "continue the plan", then only the current phase file).
 - Component-level `CLAUDE.md` files hold per-component specifics.
