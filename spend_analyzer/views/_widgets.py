@@ -8,7 +8,7 @@ import corrections as corr
 import manual_edits
 import rules_bridge
 import state
-from viz import (PROVENANCE_BADGES, blank_if_missing, humanize_atom, md_text, money, money_cents, money_md, plural,
+from viz import (PROVENANCE_BADGES, blank_if_missing, humanize_atom, md_text, money_cents, money_md, plural,
                  provenance_why, table_height)
 
 # Columns shown in a raw transaction-detail table.

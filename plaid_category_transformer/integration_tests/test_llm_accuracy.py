@@ -130,7 +130,7 @@ def decisions():
     """Run the real LLM once over the whole golden set; reuse across assertions."""
     items = []
     for i, (_tier, rec, _p, _d) in enumerate(GOLDEN):
-        pfc = rec.get("personal_finance_category") or {}
+        _pfc = rec.get("personal_finance_category") or {}
         full = {**rec}
         full.setdefault("transaction_id", f"g_{i}")
         items.append(_build_item(i, full, None))

@@ -8,7 +8,7 @@ columns (tree walking / top-K) per PLAN.md §7.4.
 from __future__ import annotations
 
 import re
-from datetime import date, datetime
+from datetime import datetime
 from statistics import median
 
 import pandas as pd

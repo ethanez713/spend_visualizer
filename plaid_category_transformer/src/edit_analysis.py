@@ -116,10 +116,10 @@ def report_markdown(entries: list[dict], *, min_count: int = 2) -> str:
         L.append("")
         L.append("  ```python")
         if c.get("website"):
-            L.append(f"  # config.py → WEBSITE_RULES")
+            L.append("  # config.py → WEBSITE_RULES")
             L.append(f'  ("{c["website"]}", ("{t["primary"]}", "{t["detailed"]}"), "flag"),')
         else:
-            L.append(f"  # config.py → KEYWORD_RULES (refine the keyword if too broad)")
+            L.append("  # config.py → KEYWORD_RULES (refine the keyword if too broad)")
             L.append(f'  ("{c["merchant"]}", ("{t["primary"]}", "{t["detailed"]}"), "flag"),')
         L.append("  ```")
     L.append("")

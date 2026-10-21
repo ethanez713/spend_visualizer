@@ -737,7 +737,7 @@ def edit_run(*, out_jsonl: str, out_csv: str, flags_csv: str, log_path: str,
     persister.derive_csv(store, out_csv, COLUMNS, row_fn=row_fn)
     n_flagged = write_flags_file(flags_csv, store)
     write_category_log(log_path, summary["applied"])
-    print(f"  Replayed {len(index)} intent(s): applied {len(summary['applied'])}, "
+    print(f"  Replayed {len(index)} intent(s): applied {len(summary['applied'])}, "  # noqa: F821
           f"already satisfied {summary['already']}, reverted {len(summary['reverted'])}.")
     print(f"  Updated {out_jsonl}, {out_csv}, and {flags_csv} "
           f"({n_flagged} row(s) pending review).")

@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 import tempfile
 
 # Least-privilege scope: the app only ever sees files it created.

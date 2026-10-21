@@ -330,7 +330,6 @@ def given_no_drive_flag_when_main_then_no_cred_seeding_needed(fake_world):
 # root a real (synthetic) git repo with a local bare "GitHub" remote.
 
 def _remote_commits(origin) -> int:
-    import subprocess
     proc = subprocess.run(["git", "rev-list", "--count", "main"],
                           cwd=str(origin), capture_output=True, text=True)
     return int(proc.stdout) if proc.returncode == 0 else 0

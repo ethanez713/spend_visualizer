@@ -2,7 +2,6 @@
 
 [![CI](https://github.com/ethanez713/spend_visualizer/actions/workflows/ci.yml/badge.svg)](https://github.com/ethanez713/spend_visualizer/actions/workflows/ci.yml)
 ![Python 3.12](https://img.shields.io/badge/python-3.12-blue)
-![Tests](https://img.shields.io/badge/tests-442%20offline-brightgreen)
 
 Personal finance pipeline: fetch bank/card transactions from Plaid, audit and correct
 their categories (deterministic rules, with periodic deep review by Claude — the local

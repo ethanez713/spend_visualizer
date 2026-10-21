@@ -31,7 +31,6 @@ import json
 import lzma
 import os
 import re
-import sys
 from pathlib import Path
 
 _OWNER_RE = re.compile(r"^[A-Za-z0-9_-]+$")

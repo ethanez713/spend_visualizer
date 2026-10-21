@@ -13,8 +13,7 @@ import pytest
 from playwright.sync_api import expect
 
 from tests.e2e._browser import (CHART_IFRAME, assert_no_exception, breadcrumbs,
-                                click_sector, metric_value, sector_labels,
-                                wait_idle)
+                                click_sector, sector_labels, wait_idle)
 
 pytestmark = pytest.mark.e2e
 

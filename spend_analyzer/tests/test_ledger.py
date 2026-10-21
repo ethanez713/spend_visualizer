@@ -6,8 +6,6 @@ with its supported filters, and the budget.yaml `ledger.csv` switch + resolution
 import csv
 from pathlib import Path
 
-import pandas as pd
-
 from config_io import DATA_ROOT, Budget, load_budget
 from ledger import load_ledger, monthly_pivot
 

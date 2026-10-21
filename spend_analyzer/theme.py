@@ -139,121 +139,121 @@ def _root_vars(t: dict) -> str:
 """
 
 
-_CSS = f"""
+_CSS = """
 <style>
 .stApp, .stApp p, .stApp label, .stApp li, .stApp button, .stApp input, .stApp textarea,
-.stApp [data-baseweb="select"], .stApp [data-baseweb="tab"] {{
+.stApp [data-baseweb="select"], .stApp [data-baseweb="tab"] {
   font-family: var(--font-sans);
-}}
-.stApp h1, .stApp h2, .stApp h3, .stApp h4 {{
+}
+.stApp h1, .stApp h2, .stApp h3, .stApp h4 {
   font-family: var(--font-serif); color: var(--text-heading); font-weight: 600;
   font-optical-sizing: auto; padding-bottom: 2px;
-}}
-.stApp h1 {{ font-size: 28px; letter-spacing: -0.012em; padding-top: 0; }}
-.stApp h2 {{ font-size: 22px; letter-spacing: -0.009em; }}
-.stApp h3 {{ font-size: 18px; letter-spacing: -0.006em; padding: 6px 0 8px; line-height: 1.28; }}
-.stApp [data-testid="stHeadingWithActionElements"] {{ overflow: visible; }}
-.stApp code, .stApp [data-testid="stMetricValue"], .stApp [data-testid="stMetricValue"] * {{
+}
+.stApp h1 { font-size: 28px; letter-spacing: -0.012em; padding-top: 0; }
+.stApp h2 { font-size: 22px; letter-spacing: -0.009em; }
+.stApp h3 { font-size: 18px; letter-spacing: -0.006em; padding: 6px 0 8px; line-height: 1.28; }
+.stApp [data-testid="stHeadingWithActionElements"] { overflow: visible; }
+.stApp code, .stApp [data-testid="stMetricValue"], .stApp [data-testid="stMetricValue"] * {
   font-family: var(--font-mono);
-}}
-.stApp code {{ background: var(--paper-2); color: var(--text-body); border-radius: 3px; }}
+}
+.stApp code { background: var(--paper-2); color: var(--text-body); border-radius: 3px; }
 
-.stApp .block-container {{ padding: 46px 20px 32px; max-width: none; }}
-.stApp [data-testid="stVerticalBlock"] {{ gap: 9px; }}
-.stApp [data-testid="stHorizontalBlock"] {{ gap: 12px; }}
-section[data-testid="stSidebar"] {{
+.stApp .block-container { padding: 46px 20px 32px; max-width: none; }
+.stApp [data-testid="stVerticalBlock"] { gap: 9px; }
+.stApp [data-testid="stHorizontalBlock"] { gap: 12px; }
+section[data-testid="stSidebar"] {
   background: var(--paper-2); border-right: 1px solid var(--border-subtle);
-}}
-section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] {{ gap: 8px; }}
+}
+section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 8px; }
 
-.stApp [data-testid="stMetric"] {{
+.stApp [data-testid="stMetric"] {
   background: var(--paper-0); border: 1px solid var(--border-subtle);
   border-radius: 10px; padding: 10px 12px;
-}}
-.stApp [data-testid="stMetricLabel"] p {{
+}
+.stApp [data-testid="stMetricLabel"] p {
   font-size: 12px; letter-spacing: 0.075em; text-transform: uppercase;
   color: var(--text-muted);
-}}
-.stApp [data-testid="stMetricValue"] {{
+}
+.stApp [data-testid="stMetricValue"] {
   font-size: 22px; font-weight: 500; color: var(--text-heading); line-height: 1.25;
-}}
-.stApp [data-testid="stMetricDelta"] {{ font-family: var(--font-mono); font-size: 12px; }}
+}
+.stApp [data-testid="stMetricDelta"] { font-family: var(--font-mono); font-size: 12px; }
 
 .stApp button[kind="secondary"], .stApp button[kind="primary"],
-.stApp [data-testid="stDownloadButton"] button {{
+.stApp [data-testid="stDownloadButton"] button {
   border-radius: 7px; min-height: 30px; padding: 2px 10px; font-weight: 500;
   border: 1px solid var(--border-default); transition: background 90ms;
-}}
-.stApp button[kind="secondary"], .stApp [data-testid="stDownloadButton"] button {{
+}
+.stApp button[kind="secondary"], .stApp [data-testid="stDownloadButton"] button {
   background: var(--paper-0); color: var(--text-body);
-}}
-.stApp button[kind="secondary"]:hover, .stApp [data-testid="stDownloadButton"] button:hover {{
+}
+.stApp button[kind="secondary"]:hover, .stApp [data-testid="stDownloadButton"] button:hover {
   background: var(--surface-hover); border-color: var(--border-default);
   color: var(--text-heading);
-}}
-.stApp button[kind="primary"] {{
+}
+.stApp button[kind="primary"] {
   background: var(--accent); border-color: var(--accent); color: var(--on-accent);
-}}
-.stApp button[kind="primary"]:hover {{
+}
+.stApp button[kind="primary"]:hover {
   background: var(--accent-hover); border-color: var(--accent-hover);
-}}
-.stApp button[kind="primary"]:active {{ background: var(--accent-press); }}
-.stApp button:disabled {{ opacity: .45; cursor: not-allowed; }}
+}
+.stApp button[kind="primary"]:active { background: var(--accent-press); }
+.stApp button:disabled { opacity: .45; cursor: not-allowed; }
 
 /* The view switcher is a radio dressed as the tab row. */
-.st-key-view [role="radiogroup"] {{
+.st-key-view [role="radiogroup"] {
   gap: 2px; border-bottom: 1px solid var(--ink-rule); flex-wrap: wrap; width: 100%;
-}}
-.st-key-view label[data-testid="stRadioOption"] {{
+}
+.st-key-view label[data-testid="stRadioOption"] {
   height: 36px; padding: 0 10px; margin: 0 0 -1px; cursor: pointer;
   border-bottom: 2px solid transparent; border-radius: 5px 5px 0 0;
   display: flex; align-items: center;
-}}
-.st-key-view label[data-testid="stRadioOption"] > div > div:first-child {{ display: none; }}
-.st-key-view label[data-testid="stRadioOption"] p {{
+}
+.st-key-view label[data-testid="stRadioOption"] > div > div:first-child { display: none; }
+.st-key-view label[data-testid="stRadioOption"] p {
   font-size: 15px; font-weight: 500; color: var(--text-muted);
-}}
-.st-key-view label[data-testid="stRadioOption"]:hover {{ background: var(--surface-hover); }}
-.st-key-view label[data-testid="stRadioOption"][data-selected="true"] {{
+}
+.st-key-view label[data-testid="stRadioOption"]:hover { background: var(--surface-hover); }
+.st-key-view label[data-testid="stRadioOption"][data-selected="true"] {
   border-bottom-color: var(--accent);
-}}
-.st-key-view label[data-testid="stRadioOption"][data-selected="true"] p {{
+}
+.st-key-view label[data-testid="stRadioOption"][data-selected="true"] p {
   color: var(--text-heading);
-}}
+}
 
-.stApp [data-baseweb="tab-list"] {{ gap: 2px; border-bottom: 1px solid var(--ink-rule); }}
-.stApp [data-baseweb="tab"] {{ height: 36px; padding: 0 10px; color: var(--text-muted); }}
-.stApp [data-baseweb="tab"][aria-selected="true"] {{ color: var(--text-heading); }}
-.stApp [data-baseweb="tab"] p {{ font-size: 15px; font-weight: 500; }}
+.stApp [data-baseweb="tab-list"] { gap: 2px; border-bottom: 1px solid var(--ink-rule); }
+.stApp [data-baseweb="tab"] { height: 36px; padding: 0 10px; color: var(--text-muted); }
+.stApp [data-baseweb="tab"][aria-selected="true"] { color: var(--text-heading); }
+.stApp [data-baseweb="tab"] p { font-size: 15px; font-weight: 500; }
 
 .stApp [data-baseweb="select"] > div, .stApp [data-baseweb="input"],
-.stApp [data-baseweb="base-input"] {{ border-radius: 7px; }}
-.stApp [data-testid="stExpander"] details {{
+.stApp [data-baseweb="base-input"] { border-radius: 7px; }
+.stApp [data-testid="stExpander"] details {
   background: var(--paper-0); border: 1px solid var(--border-subtle); border-radius: 10px;
-}}
-.stApp [data-testid="stCaptionContainer"] p {{ color: var(--text-muted); font-size: 14px; }}
-.stApp hr {{ border-color: var(--ink-rule); margin: 8px 0; }}
-.stApp a {{ color: var(--text-accent); text-underline-offset: 2px; }}
+}
+.stApp [data-testid="stCaptionContainer"] p { color: var(--text-muted); font-size: 14px; }
+.stApp hr { border-color: var(--ink-rule); margin: 8px 0; }
+.stApp a { color: var(--text-accent); text-underline-offset: 2px; }
 
 /* st.dataframe is drag-resizable from its bottom-right corner. */
-.stApp div[data-testid="stDataFrame"] {{
+.stApp div[data-testid="stDataFrame"] {
   resize: horizontal; overflow: auto; min-width: 280px;
   border: 1px solid var(--border-subtle); border-radius: 10px;
-}}
+}
 
-.eyebrow {{
+.eyebrow {
   padding: 4px 0 2px;
   font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.075em;
   text-transform: uppercase; color: var(--text-muted); margin: 0;
-}}
-.marker {{ background: linear-gradient(transparent 62%, var(--orange-200) 62%); }}
+}
+.marker { background: linear-gradient(transparent 62%, var(--orange-200) 62%); }
 
-@media (max-width: 820px) {{
-  div[data-testid="stHorizontalBlock"] {{ flex-wrap: wrap; }}
-  div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {{
+@media (max-width: 820px) {
+  div[data-testid="stHorizontalBlock"] { flex-wrap: wrap; }
+  div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
     min-width: 100% !important; flex: 1 1 100% !important;
-  }}
-}}
+  }
+}
 </style>
 """
 
