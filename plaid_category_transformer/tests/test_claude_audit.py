@@ -20,7 +20,7 @@ from src.claude_audit import (
 )
 from src.incremental import source_hash
 from src.rules import MerchantMemory
-from src.schema import COLUMNS, row_fn
+from src.schema import COLUMNS
 from src.transformer import claude_apply_run, claude_export_run
 
 

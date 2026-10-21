@@ -26,7 +26,7 @@ import tempfile
 # this is run in the background / piped to a file (block-buffering would hide it and the
 # process would deadlock waiting on a redirect for a URL you never saw).
 try:
-    sys.stdout.reconfigure(line_buffering=True)
+    sys.stdout.reconfigure(line_buffering=True)  # type: ignore[union-attr]
 except (AttributeError, ValueError):
     pass
 

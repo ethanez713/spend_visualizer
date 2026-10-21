@@ -62,3 +62,27 @@ jobs:
 
       - name: Run offline test suite
         run: ./.civenv/bin/python -m pytest -q
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0  # v6.0.3
+      - name: Set up Python 3.12
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: '3.12'
+      - name: Create venv + install hash-locked ruff and mypy
+        run: |
+          python -m venv .civenv
+          ./.civenv/bin/pip install --upgrade pip
+          ./.civenv/bin/pip install --require-hashes -r requirements-lint.txt
+      - name: Ruff
+        run: ./.civenv/bin/ruff check .
+      # plaid_category_transformer, finance_pipeline and spend_analyzer are not type-checked yet (module layout plus untyped pandas/Streamlit code).
+      - name: Mypy
+        run: |
+          for comp in transactions persister deploy; do
+            (cd "$comp" && ../.civenv/bin/mypy --config-file ../mypy.ini .)
+          done

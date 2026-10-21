@@ -4,7 +4,6 @@ import datetime
 import pytest
 from plaid.api import plaid_api
 
-import src.plaid_client as plaid_client
 from src.plaid_client import (
     ARCHIVE_PRESET,
     CHECKPOINT_PRESET,

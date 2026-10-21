@@ -145,7 +145,7 @@ def given_missing_files_when_migrated_then_skipped_not_crashed(world, capsys):
 
     assert _run(world, "--yes") == 0
 
-    tokens, raw, durable, _ = (json.loads(
+    tokens, _raw, _durable, _ = (json.loads(
         (world / "repo" / "transactions" / ".secrets" / "tokens.json").read_text()), None, None, None)
     assert all(t["owner"] == "Alice" for t in tokens)
     assert "skip (missing)" in capsys.readouterr().out
