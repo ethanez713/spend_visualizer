@@ -355,3 +355,11 @@ suite reads the live archive read-only and guards it with before/after digests).
 
 See [`CLAUDE.md`](CLAUDE.md) — architecture map, invariants, conventions, and the
 rules for working in this repo without touching live data.
+
+## License
+
+MIT. Copyright (c) 2026 Ethan Zhou. See [LICENSE](LICENSE).
+
+IBM Plex Mono, Instrument Sans and Piazzolla, the fonts in
+`spend_analyzer/static/fonts/`, are under the SIL Open Font License 1.1. Their
+license texts are in `THIRD_PARTY_LICENSES/`.
