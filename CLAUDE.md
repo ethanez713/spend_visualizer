@@ -1,5 +1,8 @@
 # CLAUDE.md — agent guide to spend_visualizer
 
+This file is published with the repo. Personal or machine-specific notes go in the
+gitignored `CLAUDE.local.md`, which Claude Code loads right after it.
+
 Personal-finance monorepo: Plaid collector → category auditor → Streamlit UI, plus a
 shared persistence library and an orchestrator. Five components, each with its OWN
 venv, README, tests, and `.secrets/`. Code lives here; **all personal data lives
@@ -189,6 +192,4 @@ Plaid ──sync (cursor/Item)──▶ raw xz store ──persist/reconcile─�
   Sheet held, pending-row reconciliation, warning rows) in
   `<data_root>/sheet_exports/manifest.jsonl` — the orchestrator passes no window.
 - `PLAN.md` files are historical design docs; READMEs are the current truth.
-- Work in flight is planned in `docs/plans/README.md` (phase index — read it first on
-  "continue the plan", then only the current phase file).
 - Component-level `CLAUDE.md` files hold per-component specifics.
