@@ -26,3 +26,8 @@ drive_state.json
 # case anything ever writes a data dir inside the repo again (components also ignore
 # their own data/).
 data/
+
+# Local working notes: kept on disk, not published
+docs/plans/
+docs/ux-findings.md
+docs/verify-workflow-plan.md
