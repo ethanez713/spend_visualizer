@@ -32,8 +32,8 @@ def given_identical_transaction_when_compared_then_paired_exactly():
 
 
 def given_description_retyped_by_hand_when_compared_then_paired_on_amount_alone():
-    c = _compare([row(D(2026, 5, 21), "Gift Fund", 164.33)],
-                 [row(D(2026, 5, 22), "Arcade Bar", 164.33)])
+    c = _compare([row(D(2026, 5, 21), "Weekend Trip", 164.33)],
+                 [row(D(2026, 5, 22), "Escape Room Co", 164.33)])
 
     assert [t for _, _, t in c.pairs] == ["amount-only"]
 
