@@ -8,7 +8,7 @@ PNG per view. Refuses to run if it cannot create its own temp root.
 Usage:
     python -m tools.screenshots [--out DIR]
 
-Default --out is <repo>/docs/img (overview.png, budget.png, merchants.png).
+Default --out is <repo>/docs/img, one PNG per entry in _VIEWS.
 """
 from __future__ import annotations
 
@@ -59,7 +59,8 @@ _READY_JS = """
     const aria = group.querySelector('[role="radio"][aria-checked="true"]');
     selected = aria ? aria.innerText : '';
   }
-  selected = selected.replace(/\\s+/g, ' ').trim();
+  // A view with pending work is labelled "Review · 900"; match the name only.
+  selected = selected.replace(/\\s+/g, ' ').trim().split(' · ')[0];
   if (selected !== spec.view) return fail('view:' + selected);
 
   // innerText applies CSS text-transform, so metric labels arrive uppercase.
@@ -91,6 +92,17 @@ _READY_JS = """
   if (painted.length < spec.frames) {
     return fail('frames:' + painted.length + '/' + frames.length);
   }
+
+  // The drilldown hierarchy is drawn by streamlit-plotly-events inside a
+  // same-origin component iframe, out of reach of the stPlotlyChart check above.
+  if (spec.iframe_chart) {
+    const drawn = Array.from(document.querySelectorAll('iframe')).some(frame => {
+      try {
+        return !!frame.contentDocument.querySelector('.sunburstlayer path, .treemaplayer path');
+      } catch (e) { return false; }
+    });
+    if (!drawn) return fail('iframe-chart');
+  }
   window.__shot = 'ok';
   return true;
 }
@@ -115,6 +127,15 @@ _VIEWS = [
         "frames": 2,
     },
     {
+        "view": "Drilldown",
+        "file": "drilldown.png",
+        "text": ["Spend by Category", "Hierarchy"],
+        "charts": 0,
+        "frames": 1,
+        "iframe_chart": True,
+        "clip": (0, 1520),
+    },
+    {
         "view": "Budget",
         "file": "budget.png",
         "text": ["Budget vs actual", "Trends"],
@@ -128,6 +149,38 @@ _VIEWS = [
         "charts": 0,
         "frames": 1,
         "merchant": _MERCHANT,
+    },
+    {
+        "view": "Cash flow",
+        "file": "cashflow.png",
+        "text": ["Total income", "Net savings"],
+        "charts": 1,
+        "frames": 1,
+        "clip": (0, 1100),
+    },
+    {
+        "view": "Review",
+        "file": "review.png",
+        "text": ["sign off"],
+        "charts": 0,
+        "frames": 2,
+        "clip": (0, 1100),
+    },
+    {
+        "view": "Rules",
+        "file": "rules.png",
+        "text": ["Transformer pattern rules"],
+        "charts": 0,
+        "frames": 1,
+        "clip": (0, 1000),
+    },
+    {
+        "view": "Checks",
+        "file": "checks.png",
+        "text": ["Pipeline health", "Totals tie-out"],
+        "charts": 0,
+        "frames": 1,
+        "clip": (0, 1000),
     },
 ]
 
@@ -264,6 +317,9 @@ def _dump(page) -> None:
 
 def _fit(page) -> None:
     """Match the viewport to the rendered page so the shot is not clipped."""
+    # scrollHeight never reports less than the viewport, so measure from the
+    # floor or a tall view would pad every shorter one shot after it.
+    page.set_viewport_size({"width": WIDTH, "height": 900})
     height = int(page.evaluate(_HEIGHT_JS))
     height = max(900, min(height, 3600))
     if page.viewport_size and page.viewport_size.get("height") == height:
@@ -297,7 +353,11 @@ def _shoot(page, base_url: str, spec: dict, dest: Path) -> None:
       const cap = new Promise(resolve => setTimeout(resolve, 4000));
       return Promise.race([fonts, cap]);
     }""")
-    page.screenshot(path=str(dest), animations="disabled", caret="hide")
+    clip = None
+    if spec.get("clip"):
+        top, bottom = spec["clip"]
+        clip = {"x": 0, "y": top, "width": WIDTH, "height": bottom - top}
+    page.screenshot(path=str(dest), animations="disabled", caret="hide", clip=clip)
 
 
 def _png_size(path: Path) -> tuple[int, int]:
