@@ -88,7 +88,7 @@ image below from that data.
   </tr>
   <tr>
     <td width="50%" valign="top"><img src="docs/img/budget.png" alt="Budget"><br><b>Budget.</b> Each category against its monthly goal as a year-to-date and trailing three-month average, over a stacked monthly trend.</td>
-    <td width="50%" valign="top"><img src="docs/img/cashflow.png" alt="Cash flow"><br><b>Cash flow.</b> Monthly income against spending, with net, savings rate and a cumulative running total.</td>
+    <td width="50%" valign="top"><img src="docs/img/cashflow.png" alt="Cash flow"><br><b>Cash flow.</b> Monthly income against spending, with net, savings rate and a cumulative running total; partial months drawn lighter.</td>
   </tr>
   <tr>
     <td width="50%" valign="top"><img src="docs/img/merchants.png" alt="Merchants"><br><b>Merchants.</b> The largest merchants, one merchant's monthly history and transactions, and recurring charges detected from history with each one's next expected date.</td>

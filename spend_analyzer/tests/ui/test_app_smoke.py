@@ -6,7 +6,7 @@ the class of bug previously only caught by opening the app by hand.
 import pytest
 from streamlit.testing.v1 import AppTest
 
-from tests.ui._harness import APP, VIEWS, go, metric, metrics, money_to_f
+from tests.ui._harness import widget, APP, VIEWS, go, metric, metrics, money_to_f
 
 
 
@@ -52,3 +52,14 @@ def test_given_two_annualized_figures_when_opened_then_each_says_what_it_measure
     assert any("Every spending category" in (m.proto.help or "") for m in drill.metric)
     budget = boot_app("Budget")
     assert any("Budget categories only" in c.value for c in budget.caption)
+
+
+def test_given_a_month_in_progress_when_cash_flow_opens_then_it_is_labelled_partial(boot_app):
+    at = boot_app("Cash flow")
+    assert any("Lighter bars cover part of a month" in c.value for c in at.caption)
+    assert any("(to " in str(label) for d in at.dataframe for label in d.value.index)
+    for timeframe in ("Quarter", "Year"):
+        widget(at.radio, key="cash_timeframe").set_value(timeframe).run()
+        assert not at.exception
+        assert any(" to " in str(label) or "(to " in str(label)
+                   for d in at.dataframe for label in d.value.index)

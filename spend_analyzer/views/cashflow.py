@@ -1,19 +1,23 @@
 """Cash flow: income against spending over time, and where the income went."""
 from __future__ import annotations
 
+from datetime import date
+
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
 import theme
 from cube import Cube, GroupingSpec
+from periods import add_months, month_end
 from viz import money, style_table, table_height
 
 _TIMEFRAMES = {"Month": ["month"], "Quarter": ["year", "quarter"], "Year": ["year"]}
 _SANKEY_CATEGORIES = 8
+_PARTIAL_OPACITY = 0.45
 
 
-def render(cube: Cube, spec: GroupingSpec) -> None:
+def render(cube: Cube, spec: GroupingSpec, earliest: date, anchor: date) -> None:
     # Income and spending are the two halves of this view, so Flow is ignored.
     filters = {k: v for k, v in spec.filters.items() if k != "flow"}
     base = dict(filters=filters, date_from=spec.date_from, date_to=spec.date_to)
@@ -40,7 +44,7 @@ def render(cube: Cube, spec: GroupingSpec) -> None:
     c[3].metric("Saved", f"{net / income * 100:.0f}% of income" if income > 0 else "—")
 
     if view == "Over time":
-        _over_time(periods, timeframe)
+        _over_time(periods, timeframe, earliest, anchor)
     else:
         _sankey(cube, base, income, spend)
 
@@ -61,26 +65,77 @@ def _label_periods(periods: pd.DataFrame, timeframe: str) -> pd.DataFrame:
     return out
 
 
-def _over_time(p: pd.DataFrame, timeframe: str) -> None:
+def _period_bounds(row, timeframe: str) -> tuple[date, date]:
+    if timeframe == "Month":
+        first = date.fromisoformat(f"{row['month']}-01")
+        months = 1
+    elif timeframe == "Quarter":
+        first = date(int(row["year"]), 3 * int(str(row["quarter"]).removeprefix("Q")) - 2, 1)
+        months = 3
+    else:
+        first = date(int(row["year"]), 1, 1)
+        months = 12
+    return first, month_end(add_months(first, months - 1))
+
+
+def partial_periods(periods: pd.DataFrame, timeframe: str, earliest: date, anchor: date) -> pd.Series:
+    """True where the archive covers a period only in part. Strict, unlike the Budget tab's
+    averaging tolerance: the missing days are the ones a paycheck lands on."""
+    bounds = [_period_bounds(row, timeframe) for _, row in periods.iterrows()]
+    return pd.Series([earliest > first or anchor < last for first, last in bounds],
+                     index=periods.index, dtype=bool)
+
+
+def _coverage_note(first: date, last: date, earliest: date, anchor: date) -> str:
+    start = f"from {earliest.day} {earliest:%b}" if earliest > first else ""
+    end = f"to {anchor.day} {anchor:%b}" if anchor < last else ""
+    return " ".join(part for part in (start, end) if part)
+
+
+def _dotted_net(net: pd.Series, partial: pd.Series) -> pd.Series:
+    """Net at each partial point and the points beside it, the segments drawn dotted."""
+    return net.where(partial | partial.shift(1, fill_value=False) | partial.shift(-1, fill_value=False))
+
+
+def _over_time(p: pd.DataFrame, timeframe: str, earliest: date, anchor: date) -> None:
+    partial = partial_periods(p, timeframe, earliest, anchor)
+    hover_note = partial.map({True: " (partial)", False: ""})
+    bar_style = dict(opacity=partial.map({True: _PARTIAL_OPACITY, False: 1.0}).tolist(),
+                     pattern=dict(shape=partial.map({True: "/", False: ""}).tolist()))
     fig = go.Figure()
-    fig.add_bar(x=p["period"], y=p["income"], name="Income", marker_color=theme.INCOME,
-                hovertemplate="%{y:$,.0f}<extra>Income</extra>")
-    fig.add_bar(x=p["period"], y=-p["spend"], name="Spending", marker_color=theme.SPEND,
-                customdata=p["spend"], hovertemplate="%{customdata:$,.0f}<extra>Spending</extra>")
-    fig.add_scatter(x=p["period"], y=p["net"], name="Net", mode="lines+markers",
+    fig.add_bar(x=p["period"], y=p["income"], name="Income",
+                marker=dict(color=theme.INCOME, **bar_style), customdata=hover_note,
+                hovertemplate="%{y:$,.0f}%{customdata}<extra>Income</extra>")
+    fig.add_bar(x=p["period"], y=-p["spend"], name="Spending",
+                marker=dict(color=theme.SPEND, **bar_style),
+                customdata=list(zip(p["spend"], hover_note)),
+                hovertemplate="%{customdata[0]:$,.0f}%{customdata[1]}<extra>Spending</extra>")
+    fig.add_scatter(x=p["period"], y=p["net"].where(~partial), name="Net", mode="lines+markers",
                     line=dict(color=theme.NET, width=2), marker=dict(size=8),
                     hovertemplate="%{y:$,.0f}<extra>Net</extra>")
+    if partial.any():
+        fig.add_scatter(x=p["period"], y=_dotted_net(p["net"], partial), mode="lines", showlegend=False,
+                        line=dict(color=theme.NET, width=2, dash="dot"), hoverinfo="skip")
+        fig.add_scatter(x=p["period"], y=p["net"].where(partial), mode="markers", showlegend=False,
+                        name="Net", marker=dict(color=theme.NET, size=8, symbol="circle-open"),
+                        hovertemplate="%{y:$,.0f} (partial)<extra>Net</extra>")
     fig.update_layout(barmode="relative", height=380, hovermode="x unified",
                       xaxis=dict(type="category"),
                       yaxis=dict(tickprefix="$", tickformat=",.0f"))
     st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+    if partial.any():
+        st.caption("Lighter bars cover part of a month; their income and savings rate are not "
+                   "comparable with settled months.")
 
-    table = p[["period", "income", "spend", "net", "rate", "cumulative"]].rename(columns={
+    labels = [f"{period} ({_coverage_note(*_period_bounds(row, timeframe), earliest, anchor)})" if is_partial
+              else period for period, is_partial, (_, row) in zip(p["period"], partial, p.iterrows())]
+    table = p.assign(period=labels)[["period", "income", "spend", "net", "rate", "cumulative"]].rename(columns={
         "period": timeframe, "income": "Income", "spend": "Spending", "net": "Net",
         "rate": "Saved", "cumulative": "Cumulative net"}).set_index(timeframe)
     st.dataframe(
         style_table(table, money_cols=["Income", "Spending", "Net", "Cumulative net"],
-                    pct_cols=["Saved"], diverging={"Net": 0.0}, higher_is_better=["Net"]),
+                    pct_cols=["Saved"], diverging={"Net": 0.0}, higher_is_better=["Net"],
+                    grey_rows=pd.Series(partial.values, index=table.index)),
         width="stretch", height=table_height(len(table)))
 
 
