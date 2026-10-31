@@ -4,6 +4,7 @@ Runs over the archive's real pending suggestions (skips when there are none); th
 intent log is redirected to tmp by conftest.
 """
 import json
+import re
 
 import pytest
 
@@ -62,3 +63,27 @@ def test_given_pending_row_when_accepted_then_suggestion_becomes_the_category(
 def test_given_a_suggestion_with_a_merchant_when_shown_then_merchant_scope_starts_off(review):
     scopes = [c for c in review.checkbox if (c.key or "").startswith("rv_scope_")]
     assert scopes and not any(c.value for c in scopes)
+
+
+SCREAMING = re.compile(r"[A-Z]{3,}_[A-Z]")
+
+
+def _rendered_text(at) -> str:
+    frames = [d.value.to_string() for d in at.dataframe]
+    return "\n".join([*(m.value for m in at.markdown), *(c.value for c in at.caption), *frames])
+
+
+def test_given_suggestions_when_shown_then_no_raw_category_codes(review):
+    assert not SCREAMING.search(_rendered_text(review))
+
+
+def test_given_an_override_when_listed_then_no_raw_category_codes(boot_app, cube_df, isolate_writes):
+    import manual_edits
+    raw = next(iter(manual_edits.raw_index().values()))
+    manual_edits.add_edit(raw, scope="transaction", primary="TRANSFER_IN",
+                          detailed="TRANSFER_IN_INVESTMENT_AND_RETIREMENT_FUNDS")
+
+    at = boot_app("Overrides")
+
+    assert "Transfer in / investment and retirement funds" in _rendered_text(at)
+    assert not SCREAMING.search(_rendered_text(at))

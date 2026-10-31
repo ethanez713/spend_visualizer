@@ -79,3 +79,10 @@ def test_provenance_why_covers_every_step():
     assert provenance_why("", "", True) == "suggestion pending"   # pending flag only
     assert provenance_why("mechanical", "pos:tst", True) == (
         "rule · pos:tst  suggestion pending")
+
+
+def test_given_rule_names_when_worded_then_plain_and_audit_prose_passes_through():
+    from viz import rule_reason
+    assert rule_reason("memory:name") == "learned from this merchant's name"
+    assert rule_reason("pos:tst") == "description starts with TST*"
+    assert rule_reason("Looks like a flight") == "Looks like a flight"

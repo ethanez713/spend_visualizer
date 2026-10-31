@@ -17,7 +17,7 @@ import streamlit as st
 import budget_edits
 import corrections as corr
 import manual_edits
-from viz import money_cents, plural, sanitize_for_csv, table_height
+from viz import category_pair, money_cents, plural, sanitize_for_csv, table_height
 from views._widgets import all_raw_records, raw_record
 
 
@@ -65,7 +65,7 @@ def _render_overrides() -> None:
         "when": it["created_at"],
         "scope": it["scope"],
         "target": _target(it),
-        "→ category": f"{it['set']['primary']} / {it['set']['detailed']}",
+        "→ category": category_pair(it["set"]["primary"], it["set"]["detailed"]),
         "rows covered": counts.get(it["id"], 0),
         "source": it.get("source", ""),
         "note": it.get("note", ""),
@@ -146,7 +146,7 @@ def _revoke_list(items: list[dict], rows: list[dict]) -> None:
     for it, row in zip(reversed(items), reversed(rows)):
         c1, c2 = st.columns([5, 1])
         c1.write(f"`{it['id']}` · {it['scope']} · **{row['target']}** → "
-                 f"{it['set']['detailed']} · covers {plural(row['rows covered'], 'row')}"
+                 f"{row['→ category']} · covers {plural(row['rows covered'], 'row')}"
                  + (f" — {it['note']}" if it.get("note") else ""))
         if c2.button("Revoke", key=f"revoke_{it['id']}"):
             manual_edits.revoke(it["id"])

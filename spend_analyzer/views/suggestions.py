@@ -10,7 +10,7 @@ import pandas as pd
 import streamlit as st
 
 import manual_edits
-from viz import humanize_atom, md_text, money_cents
+from viz import category_pair, md_text, money_cents, rule_reason
 from views._widgets import raw_record, recategorize_form
 
 _SOURCES = {"mechanical": "a rule", "llm": "the local model", "claude": "the Claude audit"}
@@ -41,11 +41,6 @@ def render(df: pd.DataFrame) -> None:
         _card(row)
 
 
-def _pair(primary, detailed) -> str:
-    detail = str(detailed).removeprefix(f"{primary}_")
-    return f"{humanize_atom(primary).capitalize()} / {humanize_atom(detail).lower()}"
-
-
 def _card(row) -> None:
     tid = str(row["transaction_id"])
     raw = raw_record(tid)
@@ -55,10 +50,10 @@ def _card(row) -> None:
         if row.get("name") and row["name"] != row["merchant"]:
             st.caption(md_text(row["name"]))
         source = _SOURCES.get(row["review_source"], row["review_source"] or "the pipeline")
-        st.markdown(f"Now **{_pair(row['pfc_primary'], row['pfc_detailed'])}**. "
+        st.markdown(f"Now **{category_pair(row['pfc_primary'], row['pfc_detailed'])}**. "
                     f"Suggested by {source}: "
-                    f"**{_pair(row['review_primary'], row['review_detailed'])}**"
-                    + (f" — {md_text(row['review_reason'])}" if row["review_reason"] else ""))
+                    f"**{category_pair(row['review_primary'], row['review_detailed'])}**"
+                    + (f" — {md_text(rule_reason(row['review_reason']))}" if row["review_reason"] else ""))
         if raw is None:
             st.caption("Raw record not found in the archive. Reload data and retry.")
             return

@@ -9,7 +9,7 @@ import corrections as corr
 import manual_edits
 import rules_bridge
 import state
-from viz import (PROVENANCE_BADGES, blank_if_missing, humanize_atom, md_text, money_cents, money_md, plural,
+from viz import (PROVENANCE_BADGES, blank_if_missing, category_pair, humanize_atom, md_text, money_cents, money_md, plural,
                  provenance_why, table_height)
 
 # Columns shown in a raw transaction-detail table.
@@ -218,7 +218,7 @@ def recategorize_form(*, row, key: str, default_scope: str = "transaction") -> N
     pfc = raw.get("personal_finance_category") or {}
     cur_p, cur_d = pfc.get("primary"), pfc.get("detailed")
     primaries, detailed_map = manual_edits.taxonomy()
-    st.caption(f"Current: `{cur_p} / {cur_d}`. An override shows here at once, is written "
+    st.caption(f"Current: {category_pair(cur_p, cur_d)}. An override shows here at once, is written "
                "into the store by the next categorize run, and holds until you revoke it.")
     c1, c2 = st.columns(2)
     p = c1.selectbox("Primary", primaries,

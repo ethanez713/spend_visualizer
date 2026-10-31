@@ -65,6 +65,27 @@ PROVENANCE_BADGES = {
 }
 
 
+def category_pair(primary, detailed) -> str:
+    detail = str(detailed).removeprefix(f"{primary}_")
+    return f"{humanize_atom(primary).capitalize()} / {humanize_atom(detail).lower()}"
+
+
+RULE_REASONS = {
+    "memory:name": "learned from this merchant's name",
+    "memory:entity_id": "learned from this merchant",
+    "pos": "description starts with {upper}*",
+    "website": "website is {raw}",
+    "keyword": "description mentions “{raw}”",
+}
+
+
+def rule_reason(reason: str) -> str:
+    """A transformer rule name in plain words; anything else (an audit's prose) as given."""
+    kind, _, value = reason.partition(":")
+    template = RULE_REASONS.get(reason) or RULE_REASONS.get(kind)
+    return template.format(raw=value, upper=value.upper()) if template else reason
+
+
 def provenance_why(step: str | None, reason: str | None,
                    review_pending: bool = False) -> str:
     """One-cell 'why this category' label: badge + the rule name / intent id."""
