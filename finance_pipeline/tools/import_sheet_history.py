@@ -35,6 +35,8 @@ from tools.xlsx_read import sheet_names  # noqa: E402
 LEDGER_COLUMNS = ["Source", "Date", "Description", "Category", "Debit", "Credit",
                   "Debit Less Credit", "Account", "Note"]
 FORMULA_STARTS = ("=", "+", "-", "@", "\t", "\r")
+# Typed into the Sheet to sanitize totals; these never happened.
+FAKE_ROW_MARKER = "manually added"
 
 
 def _safe(text: str) -> str:
@@ -75,11 +77,14 @@ def main(argv=None) -> int:
     missing = [y for y in years if y not in tabs]
     if missing:
         sys.exit(f"no year tab for {missing}; the workbook has {tabs}")
-    rows = [r for year in years for r in year_tab_rows(args.xlsx, year)]
+    tab_rows = [r for year in years for r in year_tab_rows(args.xlsx, year)]
+    rows = [r for r in tab_rows if FAKE_ROW_MARKER not in r.desc.casefold()]
     goals = {str(y): g for y, g in historic_goals(args.xlsx).items() if g}
 
     out = (args.data_root or _data_root(root)) / "spend_analyzer" / "data"
     print(f"{len(rows)} transactions from tabs {years}; goals for {sorted(goals)}")
+    if len(rows) != len(tab_rows):
+        print(f"skipped {len(tab_rows) - len(rows)} manually added rows")
     if args.dry_run:
         return 0
 

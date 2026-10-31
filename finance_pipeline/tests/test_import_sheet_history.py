@@ -98,6 +98,18 @@ def given_existing_legacy_files_when_reimported_then_replaced_not_appended(tmp_p
     assert [r["Description"] for r in _ledger(tmp_path / "data" / "spend_analyzer" / "data")] == ["Coffee"]
 
 
+def given_manually_added_row_when_imported_then_skipped_and_reported(tmp_path, capsys):
+    book, root = tmp_path / "f.xlsx", tmp_path / "data"
+    make_xlsx(book, {"Budget": [[]], "2026": [HEADER,
+                              ["Alice", date(2026, 1, 1), "Flights -- MANUALLY ADDED", "Travel", None, None, -2000.0, None],
+                              ["Alice", date(2026, 1, 2), "Coffee", "Dining Out", None, None, 4.5, None]]})
+
+    main(["--xlsx", str(book), "--data-root", str(root)])
+
+    assert [r["Description"] for r in _ledger(root / "spend_analyzer" / "data")] == ["Coffee"]
+    assert "skipped 1 manually added" in capsys.readouterr().out
+
+
 def given_workbook_without_a_historic_block_when_read_then_no_goals(tmp_path):
     book = tmp_path / "f.xlsx"
     make_xlsx(book, {"Budget": [[None, "2026 Budget", "Avg", "Goal"]]})
