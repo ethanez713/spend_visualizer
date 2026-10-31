@@ -198,3 +198,13 @@ def test_given_an_adjustment_when_revoked_then_a_tombstone_is_logged(boot_app, i
 
     assert any(json.loads(line).get("revokes") == entry["id"]
                for line in isolate_writes.read_text().splitlines())
+
+
+def test_given_no_filter_when_transactions_opened_then_bulk_edit_waits_for_one(boot_app):
+    at = boot_app("Transactions")
+    assert not any("Set the budget category" in e.label for e in at.expander)
+    assert any("to set a budget category in bulk" in c.value for c in at.caption)
+
+    widget(at.text_input, key="txn_search").set_value("a").run()
+
+    assert any("Set the budget category" in e.label for e in at.expander)

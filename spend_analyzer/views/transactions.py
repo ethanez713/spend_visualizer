@@ -69,8 +69,11 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget) -> None:
     col, ascending = _SORTS[sort]
     transaction_detail(out, title="Matching", key="txn_tab", sort=col, ascending=ascending,
                        max_rows=40)
-    bulk_panel(out, search=text, key="txn_budget",
-               categories=known_categories(budget, cube.df["budget_cat"].dropna().unique()))
+    if text or cats or min_amount or transfers_only:
+        bulk_panel(out, search=text, key="txn_budget",
+                   categories=known_categories(budget, cube.df["budget_cat"].dropna().unique()))
+    else:
+        st.caption("Filter the rows above to set a budget category in bulk.")
     export = out[[c for c in _EXPORT_COLS if c in out.columns]]
     st.download_button(f"Download {plural(len(out), 'row')} as CSV · {money(out['display_amount'].sum())}",
                        sanitize_for_csv(export).to_csv(index=False),
