@@ -68,7 +68,7 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget) -> None:
         return
     col, ascending = _SORTS[sort]
     transaction_detail(out, title="Matching", key="txn_tab", sort=col, ascending=ascending,
-                       max_rows=25)
+                       max_rows=40)
     bulk_panel(out, search=text, key="txn_budget",
                categories=known_categories(budget, cube.df["budget_cat"].dropna().unique()))
     export = out[[c for c in _EXPORT_COLS if c in out.columns]]
