@@ -54,11 +54,16 @@ def boot_app():
 
 
 @pytest.fixture(scope="session")
-def cube_df():
-    """Ground truth: the same enriched DataFrame the app builds (read-only)."""
+def cube_df(tmp_path_factory):
+    """Ground truth: the same enriched DataFrame the app builds (read-only). Session
+    fixtures build before ``isolate_writes``, so it needs the same empty intent log the
+    app under test sees or a live edit makes the two disagree."""
     from data import build_cube
+    empty_log = tmp_path_factory.mktemp("cube_df") / "manual_edits.jsonl"
     try:
-        return build_cube().df
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(manual_edits, "edits_path", lambda: str(empty_log))
+            return build_cube().df
     except FileNotFoundError:
         # Same posture as boot(): no live archive (fresh clone / data root not
         # populated) means the real-archive suite is skipped, never errored.
