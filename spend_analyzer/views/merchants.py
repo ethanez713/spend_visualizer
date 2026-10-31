@@ -9,6 +9,7 @@ import streamlit as st
 
 import manual_edits
 import merchant_merge
+import page_nav
 import recurring
 import state
 import theme
@@ -179,7 +180,16 @@ def _recurring(rows: pd.DataFrame, anchor: date) -> None:
     show = sched.drop(columns=["merchant_id", "Overdue"]).set_index("Merchant")
     show["Next expected"] = [f"{n} (overdue)" if o else n
                              for n, o in zip(sched["Next expected"], sched["Overdue"])]
-    st.dataframe(
+    event = st.dataframe(
         style_table(show, money_cols=["Typical charge", "Monthly"], int_cols=["Charges"],
                     heat_cols=["Monthly"]),
-        width="stretch", height=table_height(len(show)))
+        width="stretch", height=table_height(len(show)),
+        on_select="rerun", selection_mode="single-row", key="recurring_pick")
+    st.caption("Select a row to open that merchant above.")
+    picked = page_nav.picked_row(event)
+    # The selection outlives the rerun, so only a newly picked row may replace the merchant shown.
+    if picked != st.session_state.get("_recurring_last"):
+        st.session_state["_recurring_last"] = picked
+        if picked is not None:
+            st.session_state["_merchant_shown"] = sched["Merchant"].iloc[picked]
+            st.rerun()

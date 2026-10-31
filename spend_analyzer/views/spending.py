@@ -3,6 +3,7 @@ all narrow.
 
 Interaction model:
   • ``wheel_root`` is the single focus: a chart click, a table row or a breadcrumb sets it.
+    Other pages open this one on a row's focus, filter or period (see ``page_nav``).
   • The search, category and amount filters stack on the focus and narrow only the list;
     the table and chart keep showing the whole of the sidebar's period.
   • "Spend by" controls only the table. The chart always renders to the deepest level.
@@ -12,6 +13,7 @@ Interaction model:
 """
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 
 import pandas as pd
@@ -19,6 +21,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from streamlit_plotly_events import plotly_events
 
+import page_nav
 import state
 from budget_table import known_categories
 from config_io import Budget
@@ -34,6 +37,8 @@ _LEVEL_LABELS = {
     "atom": "Atom", "merchant": "Merchant",
 }
 ROOT_KEY = "wheel_root"
+PERIOD_KEY = "_spend_period"
+BUDGET_KEY = "_spend_budget"
 _SORTS = {"Newest": ("date_resolved", False), "Oldest": ("date_resolved", True),
           "Largest": ("abs_amount", False), "Smallest": ("abs_amount", True)}
 _EXPORT_COLS = ["date_resolved", "name", "merchant", "tier1", "tier2", "atom", "flow",
@@ -69,7 +74,27 @@ def _level_control() -> tuple[str, str]:
     return level_name, CATEGORY_LEVEL_BY_NAME[level_name]
 
 
+def _apply_pending_nav() -> None:
+    nav = st.session_state.pop(page_nav.NAV_KEY, None)
+    if not nav:
+        return
+    st.session_state[ROOT_KEY] = nav["focus"]
+    st.session_state["txn_search"] = nav["filters"].get("search", "")
+    st.session_state["txn_cats"] = []
+    st.session_state["txn_min"] = 0.0
+    st.session_state[BUDGET_KEY] = nav["filters"].get("budget_cat")
+    st.session_state[PERIOD_KEY] = nav["period"]
+
+
+def _in_temporary_period(spec: GroupingSpec) -> GroupingSpec:
+    """A period opened from another page narrows this page only: the sidebar's stays as set."""
+    period = st.session_state.get(PERIOD_KEY)
+    return replace(spec, date_from=period[0], date_to=period[1]) if period else spec
+
+
 def render(cube: Cube, spec: GroupingSpec, earliest: date, budget: Budget) -> None:
+    _apply_pending_nav()
+    spec = _in_temporary_period(spec)
     list_rows, narrowing = _list_controls(cube, spec)
     _kpis(cube, spec)
     period_rows = cube.filtered(GroupingSpec(filters={**spec.filters, "flow": "spend"},
@@ -89,7 +114,10 @@ def _list_controls(cube: Cube, spec: GroupingSpec) -> tuple[pd.DataFrame, dict]:
     and what each filter is set to."""
     c = st.columns([4, 3, 2, 2])
     transfers_only = st.session_state.get("txn_transfers", False)
-    filters = {k: v for k, v in spec.filters.items() if not (transfers_only and k == "flow")}
+    budget_cat = st.session_state.get(BUDGET_KEY)
+    # A budget category can hold rows outside the sidebar's flow, such as money in.
+    filters = {k: v for k, v in spec.filters.items()
+               if not ((transfers_only or budget_cat) and k == "flow")}
     rows = cube.filtered(GroupingSpec(filters=filters, date_from=spec.date_from,
                                       date_to=spec.date_to, include_hidden=True))
     if transfers_only:
@@ -108,6 +136,8 @@ def _list_controls(cube: Cube, spec: GroupingSpec) -> tuple[pd.DataFrame, dict]:
                      "money back, or not budget spending at all.")
 
     out = search(rows, text) if text else rows
+    if budget_cat:
+        out = out[out["budget_cat"] == budget_cat]
     if cats:
         out = out[out["tier1"].isin(cats)]
     if min_amount:
@@ -115,7 +145,7 @@ def _list_controls(cube: Cube, spec: GroupingSpec) -> tuple[pd.DataFrame, dict]:
     if pending_only:
         out = out[out["review_pending"].fillna(False).astype(bool)]
     return out, {"text": text, "cats": cats, "min_amount": min_amount, "sort": sort,
-                 "transfers_only": transfers_only}
+                 "transfers_only": transfers_only, "budget_cat": budget_cat}
 
 
 def _kpis(cube: Cube, spec: GroupingSpec) -> None:
@@ -146,7 +176,7 @@ def _table_section(cube: Cube, spec: GroupingSpec, earliest: date) -> None:
         return
     raw_vals = table[level_col].tolist()
     hidden_flags = [state.is_hidden(level_col, v) for v in raw_vals]
-    st.caption("Tick rows to select, then Hide or Flag them in bulk.")
+    st.caption("Tick one row to focus on it; tick several to Hide or Flag them.")
     _spend_table(cube, spec, level_col, level_name, table, raw_vals, hidden_flags, earliest)
 
 
@@ -157,6 +187,11 @@ def _clear_filter(key: str, empty) -> None:
 def _showing(root: list, narrowing: dict) -> None:
     """The narrowing in force, each part with its own ×."""
     chips = []
+    period = st.session_state.get(PERIOD_KEY)
+    if period:
+        chips.append((f"Period: {period[2]}", PERIOD_KEY, None))
+    if narrowing["budget_cat"]:
+        chips.append((f"Budget: {narrowing['budget_cat']}", BUDGET_KEY, None))
     if root:
         chips.append((" › ".join(_disp(CATEGORY_LEVELS[i], v) for i, v in enumerate(root)), ROOT_KEY, []))
     if narrowing["text"]:
@@ -186,7 +221,8 @@ def _transaction_list(cube: Cube, budget: Budget, rows: pd.DataFrame, root: list
     col, ascending = _SORTS[narrowing["sort"]]
     transaction_detail(out, title=crumb, key=f"list_{'_'.join(map(str, root))}", sort=col,
                        ascending=ascending, max_rows=40)
-    if root or narrowing["text"] or narrowing["cats"] or narrowing["min_amount"] or narrowing["transfers_only"]:
+    if (root or narrowing["text"] or narrowing["cats"] or narrowing["min_amount"]
+            or narrowing["transfers_only"] or narrowing["budget_cat"]):
         bulk_panel(out, search=narrowing["text"], key="txn_budget",
                    categories=known_categories(budget, cube.df["budget_cat"].dropna().unique()))
     else:
@@ -241,7 +277,7 @@ def _spend_table(cube, spec, level_col, level_name, table, raw_vals, hidden_flag
 
     if picked:
         all_hidden = all(state.is_hidden(level_col, v) for v in picked)
-        c1, c2, c3, _ = st.columns([2, 2, 3, 3])
+        c1, c2, _ = st.columns([2, 2, 6])
         if c1.button(f"{'Show' if all_hidden else 'Hide'} {len(picked)}",
                      key=f"hidebtn_{level_col}", width="stretch"):
             for v in picked:
@@ -251,14 +287,31 @@ def _spend_table(cube, spec, level_col, level_name, table, raw_vals, hidden_flag
                      width="stretch"):
             st.session_state[f"flagged_{level_col}"] = set(picked)
             st.rerun()
-        path = _path_to(cube, spec, level_col, picked[0]) if len(picked) == 1 else None
-        if path and c3.button(f"Open {_disp(level_col, picked[0])} in the chart",
-                              key=f"drillbtn_{level_col}", type="primary", width="stretch"):
-            st.session_state[ROOT_KEY] = path
-            st.rerun()
+    _focus_on_a_single_pick(cube, spec, level_col, picked)
 
     for v in list(st.session_state.get(f"flagged_{level_col}", set())):
         _flag_category(cube, spec, level_col, v)
+
+
+def _focus_on_a_single_pick(cube, spec, level_col, picked: list) -> None:
+    """The selection outlives the rerun, so only a newly picked row moves the focus: clearing
+    the focus chip must not put it straight back."""
+    last_key = f"_spend_pick_{level_col}"
+    pick = picked[0] if len(picked) == 1 else None
+    if pick == st.session_state.get(last_key):
+        return
+    st.session_state[last_key] = pick
+    if pick is None:
+        return
+    path = _path_to(cube, spec, level_col, pick)
+    if path:
+        st.session_state[ROOT_KEY] = path
+    else:
+        # Filed under more than one parent, so no single node holds it.
+        st.session_state[page_nav.NAV_KEY] = {
+            "focus": [], "filters": {"search": _disp(level_col, pick)},
+            "period": st.session_state.get(PERIOD_KEY)}
+    st.rerun()
 
 
 def _path_to(cube, spec, level_col, value) -> list | None:
@@ -300,9 +353,14 @@ def _flag_category(cube, spec, level_col, value) -> None:
                     key=f"flagcat_{level_col}_{value}")
 
 
+def _nothing_visible_under(rows: pd.DataFrame, root: list) -> bool:
+    focused = _drill_filter(rows, root)
+    return focused.empty or bool(focused["hidden"].all())
+
+
 def _hierarchy(rows: pd.DataFrame) -> list:
     root: list = st.session_state.setdefault(ROOT_KEY, [])
-    if root and _drill_filter(rows, root).empty:
+    if root and _nothing_visible_under(rows, root):
         root = st.session_state[ROOT_KEY] = []
 
     kind = st.radio("Chart", ["Wheel", "Treemap"], horizontal=True,

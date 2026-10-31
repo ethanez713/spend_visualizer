@@ -22,6 +22,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 import budget_edits
+import page_nav
 import legacy
 import manual_edits
 import state
@@ -31,7 +32,7 @@ from budget_table import (apply_offsets, historic_detail, historic_summary, know
                           monthly_grid, split_projects, yearly_averages)
 from config_io import COMPLETE_MONTHS, MONTHS_WITH_DATA, Budget, Offset
 from cube import Cube, GroupingSpec
-from periods import CUSTOM, averaging_months, preset_range
+from periods import CUSTOM, averaging_months, month_end, month_span, preset_range
 from ledger import load_ledger, monthly_pivot as ledger_monthly_pivot
 from viz import sanitize_for_csv, style_table, table_height
 
@@ -118,6 +119,12 @@ def _running_avg(pivot: pd.DataFrame, window: int) -> pd.Series:
         return pd.Series(dtype=float)
     last = sorted(pivot.columns)[-window:]
     return pivot[last].mean(axis=1)
+
+
+def grid_months(pivot: pd.DataFrame) -> tuple[str, str]:
+    """The first and last day of the months a Monthly grid row covers."""
+    months = sorted(pivot.columns)
+    return f"{months[0]}-01", month_end(date.fromisoformat(f"{months[-1]}-01")).isoformat()
 
 
 def _ytd_avg(pivot: pd.DataFrame) -> pd.Series:
@@ -351,7 +358,12 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
     # Each table fills its column and is drag-resizable (global CSS).
     left, right = st.columns([3, 2])
     with left:
-        st.dataframe(styler, width="stretch", height=table_height(len(indexed)))
+        picked = page_nav.picked_row(st.dataframe(
+            styler, width="stretch", height=table_height(len(indexed)),
+            on_select="rerun", selection_mode="single-row", key="budget_pick"))
+        st.caption("Select a row for its transactions.")
+        if picked is not None:
+            page_nav.open_spending(budget_cat=indexed.index[picked])
     with right:
         st.dataframe(style_table(derived.set_index(""), money_cols=["Actual", "Goal"]),
                      width="stretch")
@@ -370,8 +382,14 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
         if grid.empty:
             st.caption("No spend in this period.")
         else:
-            st.dataframe(style_table(grid, money_cols=list(grid.columns)), width="stretch",
-                         height=table_height(len(grid)))
+            picked = page_nav.picked_row(st.dataframe(
+                style_table(grid, money_cols=list(grid.columns)), width="stretch",
+                height=table_height(len(grid)), on_select="rerun", selection_mode="single-row",
+                key="grid_pick"))
+            if picked is not None and grid.index[picked] != "Total":
+                first, last = grid_months(pivot)
+                page_nav.open_spending(budget_cat=grid.index[picked], period=(first, last),
+                                       period_label=month_span([first[:7], last[:7]]))
     if not use_ledger:
         _adjustments_panel(cube, spec, known_categories(budget, pivot.index))
     _history(cube, spec, budget, extras, net_offsets)

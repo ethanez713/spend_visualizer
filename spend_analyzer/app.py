@@ -11,6 +11,7 @@ from pathlib import Path
 import streamlit as st
 
 import manual_edits
+import page_nav
 import state
 import theme
 from config_io import CONFIG_DIR, PERSONAL_CONFIG_DIR, load_app_config, load_budget
@@ -110,6 +111,7 @@ def main() -> None:
     page = st.navigation({"": list(analyze.values()),
                           _counted("Maintain", n_review + n_suggestions): list(maintain.values())},
                          position="top")
+    page_nav.register({**analyze, **maintain})
     _follow_old_view_link({**analyze, **maintain})
     page.run()
 

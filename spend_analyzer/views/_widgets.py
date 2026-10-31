@@ -22,11 +22,12 @@ _TXN_COLS = ["date_resolved", "display_amount", "merchant", "budget_cat", "tier1
 
 def transaction_detail(rows: pd.DataFrame, title: str = "Transactions",
                        key: str = "txn", *, sort: str = "abs_amount",
-                       ascending: bool = False, max_rows: int = 15) -> None:
+                       ascending: bool = False, max_rows: int = 15, open_row=None) -> None:
     """Render the transactions behind a slice/merchant with a flag column.
 
     Checking on a row opens a transaction-scoped correction form (prefilled
-    from that row). Flagging never edits records — it feeds the report.
+    from that row). Flagging never edits records — it feeds the report. ``open_row`` adds an
+    Open tick that calls it with the row: st.data_editor has no row selection.
     """
     if rows.empty:
         st.caption("No transactions.")
@@ -43,16 +44,20 @@ def transaction_detail(rows: pd.DataFrame, title: str = "Transactions",
     cols = [c for c in _TXN_COLS if c in view.columns]
     disp = view[cols].copy()
     disp.insert(0, "Flag", False)
+    if open_row:
+        disp.insert(1, "Open", False)
 
     st.caption(f"{md_text(title)} — {plural(len(disp), 'transaction')} · {money_md(_net(rows))}  "
                "·  tick Flag on a row to fix its category")
     edited = st.data_editor(
         disp.style.format({"display_amount": money_cents}), width="stretch", hide_index=True, key=f"txned_{key}",
         height=table_height(len(disp), max_rows),
-        disabled=[c for c in disp.columns if c != "Flag"],
+        disabled=[c for c in disp.columns if c not in ("Flag", "Open")],
         column_config={
             "Flag": st.column_config.CheckboxColumn("Flag", width="small",
                                                   help="Flag this transaction for correction"),
+            "Open": st.column_config.CheckboxColumn("Open", width="small",
+                                                    help="See every transaction from this merchant"),
             "date_resolved": st.column_config.TextColumn("Date"),
             "name": st.column_config.TextColumn("Description", width="medium"),
             "merchant": st.column_config.TextColumn("Merchant", width="medium"),
@@ -73,6 +78,8 @@ def transaction_detail(rows: pd.DataFrame, title: str = "Transactions",
                             "A pending suggestion awaits review."),
         },
     )
+    if open_row and edited["Open"].any():
+        open_row(ordered.iloc[edited["Open"].tolist().index(True)])
     flagged = [i for i, f in enumerate(edited["Flag"].tolist()) if f]
     for i in flagged[:6]:
         r = ordered.iloc[i]

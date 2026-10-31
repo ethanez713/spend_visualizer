@@ -5,10 +5,13 @@ component, outside AppTest's reach) — the click→path mapping is unit-tested 
 tests/test_drilldown.py. Here we set ``wheel_root`` directly, which is exactly
 the state a click produces, and test everything downstream of it.
 """
-from cube import CATEGORY_LEVELS
-from views.spending import ROOT_KEY
+import pytest
 
-from tests.ui._harness import texts, widget
+from cube import CATEGORY_LEVELS
+from page_nav import NAV_KEY
+from views.spending import BUDGET_KEY, PERIOD_KEY, ROOT_KEY
+
+from tests.ui._harness import go, texts, widget
 
 
 def _top_full_path(cube_df) -> list:
@@ -92,3 +95,48 @@ def test_given_a_search_chip_when_pressed_then_the_search_clears_and_the_focus_s
 
     assert widget(at.text_input, key="txn_search").value == ""
     assert at.session_state[ROOT_KEY] == path
+
+
+def _nav(**over):
+    return {"page": "Spending", "focus": [], "filters": {"search": "", "budget_cat": None},
+            "period": None, **over}
+
+
+def test_given_a_pending_nav_when_spending_opens_then_focus_and_period_apply_and_stay_until_cleared(
+        at, cube_df):
+    path = _top_full_path(cube_df)[:2]
+    at.session_state[NAV_KEY] = _nav(focus=path, period=("2026-08-01", "2026-08-31", "Aug 2026"))
+    go(at, "Spending")
+
+    assert NAV_KEY not in at.session_state
+    assert at.session_state[ROOT_KEY] == path
+    assert any(b.label == "Period: Aug 2026 ×" for b in at.button)
+
+    at.run()
+    assert any(b.label == "Period: Aug 2026 ×" for b in at.button)
+
+    widget(at.button, key=f"chip_{PERIOD_KEY}").click()
+    at.run()
+    assert not any(b.label == "Period: Aug 2026 ×" for b in at.button)
+    assert at.session_state[ROOT_KEY] == path
+
+
+def test_given_a_budget_filter_nav_when_spending_opens_then_only_that_category_is_listed(at, cube_df):
+    category = "Dining Out"
+    expected = cube_df[cube_df["budget_cat"] == category]
+    if expected.empty:
+        pytest.skip("no Dining Out rows in the archive")
+    at.session_state[NAV_KEY] = _nav(filters={"search": "", "budget_cat": category})
+    go(at, "Spending")
+
+    assert any(b.label == f"Budget: {category} ×" for b in at.button)
+    assert at.session_state[BUDGET_KEY] == category
+    widget(at.button, key=f"chip_{BUDGET_KEY}").click()
+    at.run()
+    assert at.session_state[BUDGET_KEY] is None
+
+
+def test_given_a_search_nav_when_spending_opens_then_the_search_box_holds_it(at):
+    at.session_state[NAV_KEY] = _nav(filters={"search": "acme", "budget_cat": None})
+    go(at, "Spending")
+    assert widget(at.text_input, key="txn_search").value == "acme"

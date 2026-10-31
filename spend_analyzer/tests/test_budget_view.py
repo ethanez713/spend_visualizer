@@ -5,7 +5,7 @@ from cube import Cube, GroupingSpec
 from budget_table import apply_offsets
 from config_io import Budget, Offset, load_budget
 from views.budget import (LEDGER_SOURCE, MODEL_SOURCE, _model_pivot, add_pivots, compare_averages,
-                          offset_source_pivot, without_sources)
+                          grid_months, offset_source_pivot, without_sources)
 
 
 def _cube(rows):
@@ -190,3 +190,7 @@ def test_given_yaml_without_or_with_offsets_enabled_when_loaded_then_default_is_
     assert load_budget(path).offsets_enabled is True and Budget().offsets_enabled is True
     path.write_text("goals: {Dining: 1}\noffsets_enabled: false\n")
     assert load_budget(path).offsets_enabled is False
+
+
+def test_given_a_pivot_when_its_months_are_spanned_then_first_and_last_day_of_them():
+    assert grid_months(_pivot(a=[1.0, 2.0])) == ("2026-04-01", "2026-05-31")

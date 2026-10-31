@@ -8,6 +8,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 import insights
+import page_nav
 import theme
 from cube import Cube, GroupingSpec
 from periods import add_months, month_start, previous_period
@@ -131,12 +132,24 @@ def _changes(rows, current, previous, earliest, anchor) -> None:
     spend = rows[rows["flow"] == "spend"]
     table = insights.period_changes(spend, "tier1", current, previous).head(10)
     table.index.name = "Category"
-    st.dataframe(
+    event = st.dataframe(
         style_table(table, money_cols=["Current", "Previous", "Change"],
                     diverging={"Change": 0.0}),
-        width="stretch", height=table_height(len(table)))
+        width="stretch", height=table_height(len(table)),
+        on_select="rerun", selection_mode="single-row", key="changes_pick")
     st.caption(f"By category: {current[0]:%-d %b} – {current[1]:%-d %b} against "
-               f"{previous[0]:%-d %b} – {previous[1]:%-d %b %Y}.")
+               f"{previous[0]:%-d %b} – {previous[1]:%-d %b %Y}. Select a row for its transactions.")
+    picked = page_nav.picked_row(event)
+    if picked is not None:
+        category = table.index[picked]
+        page_nav.open_spending(focus=_tier1_focus(spend, category),
+                               period=(current[0].isoformat(), current[1].isoformat()),
+                               period_label=f"{current[0]:%-d %b} – {current[1]:%-d %b}")
+
+
+def _tier1_focus(spend: pd.DataFrame, category: str) -> list:
+    parents = spend.loc[spend["tier1"] == category, "tier0"].dropna().unique()
+    return [parents[0], category] if len(parents) == 1 else []
 
 
 def _largest(rows, current) -> None:
@@ -147,7 +160,8 @@ def _largest(rows, current) -> None:
                & (d >= current[0].isoformat()) & (d <= current[1].isoformat())]
     top = sel.nlargest(10, "abs_amount")
     st.subheader("Largest purchases")
-    transaction_detail(top, title="Top 10 by amount, recurring bills left out", key="overview_top")
+    transaction_detail(top, title="Top 10 by amount, recurring bills left out", key="overview_top",
+                       open_row=lambda row: page_nav.open_spending(search=str(row["merchant"])))
 
 
 def _pending(rows) -> None:

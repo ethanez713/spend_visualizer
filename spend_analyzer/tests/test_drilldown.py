@@ -9,7 +9,7 @@ sector's click path selects a non-empty slice — exercised with underscore-bear
 import pandas as pd
 
 from cube import CATEGORY_LEVELS
-from views.spending import _build_hierarchy_fig, _clicked_path, _drill_filter
+from views.spending import _build_hierarchy_fig, _clicked_path, _drill_filter, _nothing_visible_under
 
 _ROWS = pd.DataFrame([
     {"tier0": "Discretionary", "tier1": "Dining Out", "tier2": "Coffee",
@@ -40,3 +40,9 @@ def test_atom_sector_labels_are_humanized_even_though_state_is_raw():
     labels = list(fig.data[0].labels)
     assert "Food and drink coffee" in labels
     assert "FOOD_AND_DRINK_COFFEE" not in labels
+
+
+def test_given_a_focus_when_everything_under_it_is_hidden_or_gone_then_nothing_is_visible():
+    rows = pd.DataFrame({CATEGORY_LEVELS[0]: ["a", "a", "b"], "hidden": [True, True, False]})
+    assert _nothing_visible_under(rows, ["a"]) and _nothing_visible_under(rows, ["z"])
+    assert not _nothing_visible_under(rows, ["b"])

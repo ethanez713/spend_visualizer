@@ -7,6 +7,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+import page_nav
 import theme
 from cube import Cube, GroupingSpec
 from periods import add_months, month_end
@@ -132,11 +133,18 @@ def _over_time(p: pd.DataFrame, timeframe: str, earliest: date, anchor: date) ->
     table = p.assign(period=labels)[["period", "income", "spend", "net", "rate", "cumulative"]].rename(columns={
         "period": timeframe, "income": "Income", "spend": "Spending", "net": "Net",
         "rate": "Saved", "cumulative": "Cumulative net"}).set_index(timeframe)
-    st.dataframe(
+    event = st.dataframe(
         style_table(table, money_cols=["Income", "Spending", "Net", "Cumulative net"],
                     pct_cols=["Saved"], diverging={"Net": 0.0}, higher_is_better=["Net"],
                     grey_rows=pd.Series(partial.values, index=table.index)),
-        width="stretch", height=table_height(len(table)))
+        width="stretch", height=table_height(len(table)),
+        on_select="rerun", selection_mode="single-row", key="cash_pick")
+    st.caption("Select a row for its transactions.")
+    picked = page_nav.picked_row(event)
+    if picked is not None:
+        first, last = _period_bounds(p.iloc[picked], timeframe)
+        page_nav.open_spending(period=(max(first, earliest).isoformat(), min(last, anchor).isoformat()),
+                               period_label=str(p["period"].iloc[picked]))
 
 
 def _sankey(cube: Cube, base: dict, income: float, spend: float) -> None:
