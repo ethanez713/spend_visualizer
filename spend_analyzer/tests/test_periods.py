@@ -54,3 +54,9 @@ def test_complete_months_leave_out_a_clipped_first_month_but_keep_a_nearly_done_
     assert complete_months(date(2026, 9, 1), date(2026, 9, 12)) == []
     # no complete month in range: fall back to the months present
     assert averaging_months("2026-09-01", "2026-09-12", ["2026-09"]) == ["2026-09"]
+
+
+def test_given_months_in_one_or_two_years_when_spanned_then_year_appears_only_when_they_differ():
+    from periods import month_span
+    assert month_span(["2026-04", "2026-09"]) == "Apr–Sep"
+    assert month_span(["2025-11", "2026-03"]) == "Nov 2025–Mar 2026"

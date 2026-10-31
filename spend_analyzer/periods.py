@@ -94,3 +94,11 @@ def averaging_months(date_from: str, date_to: str, present: list[str]) -> list[s
     its own figure)."""
     complete = complete_months(date.fromisoformat(date_from), date.fromisoformat(date_to))
     return complete or sorted(present)
+
+
+def month_span(months: list[str]) -> str:
+    """``Apr–Sep`` for ``YYYY-MM`` months in one year, ``Nov 2025–Mar 2026`` across two."""
+    first, last = (date.fromisoformat(f"{m}-01") for m in (months[0], months[-1]))
+    if first.year == last.year:
+        return f"{first:%b}–{last:%b}"
+    return f"{first:%b %Y}–{last:%b %Y}"

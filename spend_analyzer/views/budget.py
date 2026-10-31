@@ -300,6 +300,7 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
     ytd = _ytd_avg(averaged)
     year = int(spec.date_to[:4])
     avg_col = f"{window}mo Avg"
+    year_col = f"{max([m[:4] for m in averaged.columns], default=year)} avg"
     cats = sorted(set(avg.index) | set(budget.goal_categories()))
 
     rows = []
@@ -309,7 +310,7 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
         g = budget.goal(cat, year)
         rows.append({
             "Category": cat,
-            "YTD Avg": y,
+            year_col: y,
             avg_col: a,
             "Goal": g if g is not None else float("nan"),
             "% of Goal": (a / g * 100.0) if g else float("nan"),
@@ -317,14 +318,14 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
             "_hidden": state.is_hidden("tier1", cat),
         })
     table = pd.DataFrame(rows)
-    table = table[(table[avg_col] > 0) | (table["YTD Avg"] > 0)
+    table = table[(table[avg_col] > 0) | (table[year_col] > 0)
                   | table["Goal"].notna()].reset_index(drop=True)
 
     indexed = table.drop(columns="_hidden").set_index("Category")
     grey_rows = pd.Series(table["_hidden"].values, index=indexed.index)
     styler = style_table(
         indexed,
-        money_cols=["YTD Avg", avg_col, "Goal", "Budget Diff"],
+        money_cols=[year_col, avg_col, "Goal", "Budget Diff"],
         pct_cols=["% of Goal"],
         diverging={"% of Goal": 100.0, "Budget Diff": 0.0},
         grey_rows=grey_rows,

@@ -24,7 +24,7 @@ from streamlit_plotly_events import plotly_events
 import state
 from cube import Cube, GroupingSpec, CATEGORY_LEVELS, CATEGORY_LEVEL_BY_NAME
 import theme
-from periods import averaging_months, month_start, previous_period
+from periods import averaging_months, month_span, month_start, previous_period
 from viz import humanize_atom, money, style_table, table_height
 from views._widgets import correction_form, hide_button, transaction_detail
 
@@ -97,7 +97,7 @@ def _spend_table(cube, spec, level_col, level_name, table, raw_vals, hidden_flag
     avg3 = _trailing_avg(cube, spec, level_col, months[-3:])
     label = _LEVEL_LABELS[level_name]
     names = [_disp(level_col, v) for v in raw_vals]
-    avg_col = f"Avg/mo ({n_months}m)"
+    avg_col = f"Avg/mo, {month_span(months)}" if months else "Avg/mo"
     cols = {label: names, "Actual": table["spend"].values}
     money_cols, heat_cols, diverging = ["Actual"], ["Actual"], {}
     if n_months > 1:

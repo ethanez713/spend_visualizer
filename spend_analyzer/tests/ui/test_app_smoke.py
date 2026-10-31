@@ -36,3 +36,12 @@ def test_given_missing_archive_when_app_boots_then_friendly_error_not_crash(monk
     at.run()
     assert not at.exception, [str(e.value) for e in at.exception]
     assert "Archive not found" in at.error[0].value
+
+
+def test_given_drilldown_and_budget_when_opened_then_averages_name_their_period(boot_app):
+    import re
+    drill = boot_app("Drilldown")
+    assert any(re.fullmatch(r"Avg/mo, [A-Z][a-z]{2}.*–[A-Z][a-z]{2}.*", str(c))
+               for d in drill.dataframe for c in d.value.columns)
+    budget = boot_app("Budget")
+    assert any(re.fullmatch(r"\d{4} avg", str(c)) for d in budget.dataframe for c in d.value.columns)
