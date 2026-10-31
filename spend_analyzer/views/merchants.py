@@ -7,6 +7,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+import manual_edits
+import merchant_merge
 import recurring
 import state
 import theme
@@ -35,6 +37,56 @@ def _merchant_table(rows: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _possible_duplicates(df: pd.DataFrame) -> None:
+    pairs = merchant_merge.candidates(df, merchant_merge.rejected_pairs(merchant_merge.load_entries()))
+    if not pairs:
+        return
+    with st.expander(f"Possible duplicates · {len(pairs)}"):
+        st.caption("Names that look like one merchant, over all your history. A merge groups "
+                   "them everywhere; categories and raw records stay as they are.")
+        for pair in pairs:
+            kept, absorbed = pair["kept"], pair["absorbed"]
+            c = st.columns([5, 2, 2])
+            c[0].markdown(f"**{md_text(absorbed['name'])}** ({plural(absorbed['visits'], 'visit')}, "
+                          f"{money_md(absorbed['total'])}) and **{md_text(kept['name'])}** "
+                          f"({plural(kept['visits'], 'visit')}, {money_md(kept['total'])}) · "
+                          f"{md_text(kept['category'])}")
+            pair_key = f"{absorbed['merchant_id']}_{kept['merchant_id']}"
+            if c[1].button(f"Merge into {kept['name']}", key=f"mm_merge_{pair_key}", width="stretch"):
+                _merge(absorbed["merchant_id"], kept)
+            if c[2].button("Not the same", key=f"mm_distinct_{pair_key}", width="stretch"):
+                _save_decision(lambda: manual_edits.mark_merchants_distinct(
+                    absorbed["merchant_id"], kept["merchant_id"]))
+
+
+def _merge(absorbed_id: str, kept: dict) -> None:
+    _save_decision(lambda: manual_edits.merge_merchants(absorbed_id, kept["merchant_id"], kept["name"]))
+
+
+def _save_decision(write) -> None:
+    try:
+        write()
+    except (ValueError, OSError) as e:
+        st.error(f"Could not save: {e}")
+        return
+    st.rerun()
+
+
+def _manual_merge(df: pd.DataFrame, merchant_id: str) -> None:
+    merchants = merchant_merge.merchants(df)
+    others = merchants[merchants["merchant_id"] != merchant_id].sort_values("name")
+    names = dict(zip(others["merchant_id"], others["name"]))
+    with st.expander("Merge with another merchant…"):
+        st.caption("The merchant with more transactions keeps its name.")
+        other = st.selectbox("Merchant", list(names), format_func=names.get, index=None,
+                             key=f"mm_pick_{merchant_id}", placeholder=f"Search {len(names)} merchants",
+                             label_visibility="collapsed")
+        if st.button("Merge", key=f"mm_manual_{merchant_id}", disabled=other is None):
+            pair = merchants[merchants["merchant_id"].isin([merchant_id, other])].to_dict("records")
+            kept, absorbed = merchant_merge.kept_first(*pair)
+            _merge(absorbed["merchant_id"], kept)
+
+
 def render(cube: Cube, spec: GroupingSpec, anchor: date) -> None:
     rows = cube.filtered(GroupingSpec(filters={**spec.filters, "flow": "spend"},
                                       date_from=spec.date_from, date_to=spec.date_to,
@@ -43,6 +95,8 @@ def render(cube: Cube, spec: GroupingSpec, anchor: date) -> None:
         st.info("No spend matches the current filters.")
         return
 
+    if manual_edits.status() is None:
+        _possible_duplicates(cube.df)
     st.subheader("Top merchants")
     table = _merchant_table(rows).head(_TOP_MERCHANTS).reset_index(drop=True)
     table["_hidden"] = table["_mid"].map(lambda m: state.is_hidden("merchant_id", m))
@@ -71,12 +125,12 @@ def render(cube: Cube, spec: GroupingSpec, anchor: date) -> None:
         st.session_state["_merchant_last"] = (row_pick, searched)
     shown = st.session_state.get("_merchant_shown")
     if shown in everyone:
-        _merchant_detail(rows, shown)
+        _merchant_detail(rows, shown, cube.df)
 
     _recurring(rows, anchor)
 
 
-def _merchant_detail(rows: pd.DataFrame, pick: str) -> None:
+def _merchant_detail(rows: pd.DataFrame, pick: str, all_rows: pd.DataFrame) -> None:
     sub = rows[rows["merchant"] == pick]
     mid = sub["merchant_id"].iloc[0]
     st.subheader(md_text(pick))
@@ -101,6 +155,8 @@ def _merchant_detail(rows: pd.DataFrame, pick: str) -> None:
         # "every transaction of this merchant", current and future.
         fix_categorization(row=sub.iloc[0], label=pick, key=f"merch_{mid}",
                            default_scope="merchant")
+    if manual_edits.status() is None:
+        _manual_merge(all_rows, mid)
 
 
 def _recurring(rows: pd.DataFrame, anchor: date) -> None:

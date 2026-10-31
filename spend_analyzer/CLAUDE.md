@@ -34,6 +34,9 @@ it never edits records — category fixes append INTENTS to the transformer's lo
 - Budget offsets apply under either actuals source: the converter ledger has no source
   rows (it drops transfers), so it borrows them from the archive. Toggled off, the
   source rows are left out of both.
+- Merchant merges are `merchant_alias` intents in the same log (`merchant_merge.py`), applied in
+  `enrich` before recurrence detection. They only group rows; raw records and category overrides
+  never change.
 - Review sign-offs are `budget_review` intents in the same log (`signoff.py`): each
   records the budget category every row had when confirmed. A row needs review until a
   live sign-off covers it with its current category, so a rule change or re-audit that

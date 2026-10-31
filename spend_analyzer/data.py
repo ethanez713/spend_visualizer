@@ -16,6 +16,7 @@ import budget_edits
 from budget_model import BudgetModel, annotate, load_budget_model
 from cube import Cube
 import manual_edits
+import merchant_merge
 from enrich import enrich
 from ingest import ingest
 from ingest.live import load_live_ids
@@ -74,7 +75,8 @@ def build_cube(
     res = ingest(app.resolved_archive_paths, overlay=manual_edits.overlay,
                  live_ids=load_live_ids(mirror_csv))
     overrides = budget_edits.overrides_for([t.raw for t in res.transactions if t.raw])
-    df = annotate(enrich(res.transactions, taxonomy, accounts),
+    aliases = merchant_merge.resolve(merchant_merge.load_entries()) if manual_edits.status() is None else {}
+    df = annotate(enrich(res.transactions, taxonomy, accounts, aliases),
                   budget_model or load_budget_model(), overrides)
     qc = _qc(df, taxonomy, res.qc)
     return BuildResult(cube=Cube(df), df=df, qc=qc)

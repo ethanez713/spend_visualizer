@@ -17,6 +17,7 @@ import streamlit as st
 import budget_edits
 import corrections as corr
 import manual_edits
+import merchant_merge
 from viz import category_pair, money_cents, plural, sanitize_for_csv, table_height
 from views._widgets import all_raw_records, raw_record
 
@@ -25,6 +26,8 @@ def render() -> None:
     _render_overrides()
     st.divider()
     _render_budget_edits()
+    st.divider()
+    _render_merchant_merges()
     st.divider()
     _render_triage_notes()
 
@@ -119,6 +122,26 @@ def _render_budget_edits() -> None:
             if c2.button("Revoke", key=f"revoke_budget_{e['id']}"):
                 manual_edits.revoke(e["id"])
                 st.rerun()
+
+
+def _render_merchant_merges() -> None:
+    st.subheader("Merchant merges")
+    if manual_edits.status():
+        st.caption("Intent log unavailable.")
+        return
+    entries = merchant_merge.live(merchant_merge.load_entries())
+    if not entries:
+        st.info("No merges yet. Merchants suggests likely duplicates.")
+        return
+    st.caption("Merges only group rows; revoking one splits them apart again at once.")
+    for e in reversed(entries):
+        absorbed, chosen = e["match"]["merchant_id"], e["set"]
+        c1, c2 = st.columns([5, 1])
+        c1.write(f"`{absorbed}` merged into **{chosen['name']}**" if "into" in chosen
+                 else f"`{absorbed}` and `{chosen['distinct']}` are not the same")
+        if c2.button("Revoke", key=f"revoke_merge_{e['id']}"):
+            manual_edits.revoke(e["id"])
+            st.rerun()
 
 
 def _target(it: dict) -> str:

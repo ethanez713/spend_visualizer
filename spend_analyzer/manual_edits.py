@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import sys
 import os
+import uuid
+from datetime import datetime
 from pathlib import Path
 
 from config_io import DATA_ROOT, load_app_config
@@ -94,6 +96,30 @@ def dismiss(raw_record: dict, *, note: str = "", path: str | None = None,
     manual, _ = _import()
     return manual.append_intent(
         path or edits_path(), manual.build_dismissal(raw_record, note=note, source=source))
+
+
+def _alias_intent(merchant_id: str, chosen: dict, other: str, note: str, source: str) -> dict:
+    if not merchant_id or not other or merchant_id == other:
+        raise ValueError("a merchant merge needs two different merchants")
+    return {"id": uuid.uuid4().hex[:8], "created_at": datetime.now().isoformat(timespec="seconds"),
+            "action": "merchant_alias", "source": source, "match": {"merchant_id": merchant_id},
+            "set": chosen, "note": note}
+
+
+def merge_merchants(absorbed: str, into: str, name: str, *, note: str = "",
+                    path: str | None = None, source: str = "ui") -> dict:
+    """Group ``absorbed``'s rows under ``into``, shown as ``name``. Raises ValueError on bad input."""
+    manual, _ = _import()
+    return manual.append_intent(path or edits_path(), _alias_intent(
+        absorbed, {"into": into, "name": name}, into, note, source))
+
+
+def mark_merchants_distinct(merchant_id: str, other: str, *, note: str = "",
+                            path: str | None = None, source: str = "ui") -> dict:
+    """Never suggest this pair again. Raises ValueError on bad input."""
+    manual, _ = _import()
+    return manual.append_intent(path or edits_path(), _alias_intent(
+        merchant_id, {"distinct": other}, other, note, source))
 
 
 def intents(path: str | None = None) -> list[dict]:

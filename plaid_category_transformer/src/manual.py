@@ -59,9 +59,9 @@ _KNOWN_MATCH_KEYS = {
     "description": {"description_contains"},
 }
 
-# Actions the spend analyzer writes into this log for its budget view. They share the
+# Actions the spend analyzer writes into this log for its own views. They share the
 # log (and its Drive sync) but never change a PFC category, so replay ignores them.
-ANALYZER_ACTIONS = frozenset({"budget_edit", "budget_adjust", "budget_review"})
+ANALYZER_ACTIONS = frozenset({"budget_edit", "budget_adjust", "budget_review", "merchant_alias"})
 
 # A phrase shorter than this, once normalized, matches too much to be a rule.
 MIN_PHRASE_CHARS = 4

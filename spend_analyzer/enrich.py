@@ -137,10 +137,22 @@ def _detect_recurrence(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _apply_merchant_aliases(df: pd.DataFrame, aliases: dict[str, tuple[str, str]]) -> None:
+    absorbed = df["merchant_id"].isin(aliases)
+    if not absorbed.any():
+        return
+    kept = df.loc[absorbed, "merchant_id"].map(aliases)
+    df.loc[absorbed, "merchant_id"] = kept.str[0]
+    df.loc[absorbed, "merchant"] = kept.str[1]
+    df.loc[absorbed, "category_path"] = df.loc[absorbed].apply(
+        lambda row: row["category_path"][:-1] + [row["merchant"]], axis=1)
+
+
 def enrich(
     txns: list[CanonicalTransaction],
     taxonomy: Taxonomy,
     accounts: dict[str, dict] | None = None,
+    merchant_aliases: dict[str, tuple[str, str]] | None = None,
 ) -> pd.DataFrame:
     accounts = accounts or {}
     records: list[dict] = []
@@ -241,5 +253,6 @@ def enrich(
     df = pd.DataFrame.from_records(records)
     if df.empty:
         return df
+    _apply_merchant_aliases(df, merchant_aliases or {})
     df[["recurrence", "recurrence_amount"]] = _detect_recurrence(df)
     return df
