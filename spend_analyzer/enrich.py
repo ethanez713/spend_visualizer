@@ -8,7 +8,8 @@ columns (tree walking / top-K) per PLAN.md §7.4.
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import date, datetime
+from fnmatch import fnmatchcase
 from statistics import median
 
 import pandas as pd
@@ -83,39 +84,57 @@ def _merchant_dims(t: CanonicalTransaction) -> dict:
     return dict(id=mid, name=label, brand=brand or name)
 
 
-def _detect_recurrence(df: pd.DataFrame) -> pd.Series:
-    """Flag recurring merchants: >=3 hits, regular cadence, similar amounts.
+_BILL_ATOMS = ("RENT_AND_UTILITIES_*", "LOAN_PAYMENTS_*", "GENERAL_SERVICES_INSURANCE")
+_PERIODS = ((7, 3), (14, 4), (30, 6), (90, 12))
+_MIN_GAPS_ON_CADENCE = 0.7
+# A bill is paid when the payer gets to it, so its dates wander more than a subscription's.
+_MIN_GAPS_ON_CADENCE_BILL = 0.5
+_FIXED_MAX_DEVIATION = 0.15
 
-    Heuristic, per-merchant (PLAN.md §8). Cadence regular if the median gap is
-    near a weekly/biweekly/monthly period and gaps are low-variance; amounts
-    similar if coefficient of variation is small.
-    """
-    rec = pd.Series("one-off", index=df.index, dtype="object")
+
+def _regular_cadence(days: list[date], min_on_cadence: float) -> bool:
+    """A median gap near a billing period, tolerating a stray payment that splits one gap."""
+    gaps = [(b - a).days for a, b in zip(days, days[1:])]
+    if len(gaps) < 2:
+        return False
+    med = median(gaps)
+    tolerance = next((tol for period, tol in _PERIODS if abs(med - period) <= tol), None)
+    if tolerance is None:
+        return False
+    return sum(abs(g - med) <= tolerance for g in gaps) / len(gaps) >= min_on_cadence
+
+
+def _fixed_amount(charges: list[float]) -> bool:
+    """Similar charges, ignoring the largest of four or more: a setup fee is not the bill."""
+    kept = sorted(charges)[:-1] if len(charges) >= 4 else charges
+    mid = median(kept)
+    return bool(mid) and median(abs(c - mid) for c in kept) / mid < _FIXED_MAX_DEVIATION
+
+
+def _detect_recurrence(df: pd.DataFrame) -> pd.DataFrame:
+    """``recurrence`` (recurring / one-off) and ``recurrence_amount`` (fixed / variable,
+    empty for one-off) per row. A varying amount only counts on a bill: a restaurant
+    visited monthly is not a subscription."""
+    out = pd.DataFrame({"recurrence": "one-off", "recurrence_amount": ""}, index=df.index, dtype="object")
     spend = df[(df["flow"] == "spend") & ~df["refund"]]
     for mid, grp in spend.groupby("merchant_id"):
-        if mid in ("", "unknown") or len(grp) < 3:
+        if mid in ("", "unknown"):
             continue
-        g = grp.sort_values("date_resolved")
-        dates = [
-            datetime.strptime(d[:10], "%Y-%m-%d").date()
-            for d in g["date_resolved"].dropna()
-        ]
-        if len(dates) < 3:
+        by_day = grp.dropna(subset=["date_resolved"]).assign(
+            _day=lambda g: g["date_resolved"].str[:10]).groupby("_day")["abs_amount"].sum().sort_index()
+        days = [datetime.strptime(d, "%Y-%m-%d").date() for d in by_day.index]
+        is_bill = any(fnmatchcase(str(grp["atom"].mode().iat[0]), pattern) for pattern in _BILL_ATOMS)
+        if not _regular_cadence(days, _MIN_GAPS_ON_CADENCE_BILL if is_bill else _MIN_GAPS_ON_CADENCE):
             continue
-        gaps = [(b - a).days for a, b in zip(dates, dates[1:]) if (b - a).days > 0]
-        if len(gaps) < 2:
+        if _fixed_amount(by_day.tolist()):
+            kind = "fixed"
+        elif is_bill:
+            kind = "variable"
+        else:
             continue
-        med = median(gaps)
-        if med <= 0:
-            continue
-        spread = max(gaps) - min(gaps)
-        near_period = any(abs(med - p) <= tol for p, tol in ((7, 3), (14, 4), (30, 6), (90, 12)))
-        amounts = g["abs_amount"].tolist()
-        mean_amt = sum(amounts) / len(amounts)
-        cv = (pd.Series(amounts).std() / mean_amt) if mean_amt else 1.0
-        if near_period and spread <= med and cv < 0.35:
-            rec.loc[g.index] = "recurring"
-    return rec
+        out.loc[grp.index, "recurrence"] = "recurring"
+        out.loc[grp.index, "recurrence_amount"] = kind
+    return out
 
 
 def enrich(
@@ -222,5 +241,5 @@ def enrich(
     df = pd.DataFrame.from_records(records)
     if df.empty:
         return df
-    df["recurrence"] = _detect_recurrence(df)
+    df[["recurrence", "recurrence_amount"]] = _detect_recurrence(df)
     return df

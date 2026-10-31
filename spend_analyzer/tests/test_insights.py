@@ -13,7 +13,7 @@ def _rows(items):
     """items: (iso date, spend, merchant[, tier1])"""
     df = pd.DataFrame([{"date_resolved": d, "spend": s, "merchant": m, "merchant_id": m,
                         "tier1": (rest[0] if rest else "Cat"), "name": m.upper(),
-                        "month": d[:7]} for d, s, m, *rest in items])
+                        "month": d[:7], "recurrence_amount": "fixed"} for d, s, m, *rest in items])
     return df
 
 
@@ -46,6 +46,14 @@ def test_monthly_merchant_gets_cadence_monthly_cost_and_next_date():
     assert (r["Cadence"], r["Monthly"], r["Next expected"]) == ("monthly", 12.0, "2026-09-14")
     assert not r["Overdue"]
     assert recurring.schedule(rows, as_of=date(2026, 10, 20)).iloc[0]["Overdue"]
+
+
+def test_variable_bill_costs_its_mean_monthly_total_and_is_labelled_as_varying():
+    rows = _rows([("2026-05-15", 20.0, "gas"), ("2026-06-15", 100.0, "gas"), ("2026-07-15", 30.0, "gas")])
+    rows["recurrence_amount"] = "variable"
+    r = recurring.schedule(rows, as_of=date(2026, 7, 20)).iloc[0]
+    assert (r["Amount"], r["Typical charge"], r["Monthly"]) == ("varies", 30.0, 50.0)
+    assert r["Next expected"] == "2026-08-14"
 
 
 def test_yearly_charge_costs_a_twelfth_per_month_not_its_full_amount():

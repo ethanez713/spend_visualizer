@@ -30,7 +30,7 @@ def schedule(rows: pd.DataFrame, as_of: date) -> pd.DataFrame:
     Same-day charges count as one occurrence, since a merchant billing two line
     items on one day is one billing event. ``Monthly`` is the typical charge
     times the cadence's charges per month; an irregular merchant falls back to
-    its mean spend per active month. A next date already in the past stays in
+    its mean spend per active month, and so does a bill whose amount varies. A next date already in the past stays in
     the past: an overdue charge is the signal that a subscription has ended.
     """
     out = []
@@ -40,17 +40,18 @@ def schedule(rows: pd.DataFrame, as_of: date) -> pd.DataFrame:
         gaps = [(b - a).days for a, b in zip(days, days[1:])]
         typical = float(median(by_day.values))
         label, nominal, per_month = cadence(median(gaps)) if gaps else (IRREGULAR, None, None)
-        if per_month is not None:
+        varies = (g["recurrence_amount"] == "variable").any()
+        next_due = days[-1] + timedelta(days=round(nominal)) if nominal is not None else None
+        if per_month is not None and not varies:
             monthly = typical * per_month
-            next_due = days[-1] + timedelta(days=round(nominal))
         else:
             monthly = float(g.groupby("month")["spend"].sum().mean())
-            next_due = None
         out.append({
             "merchant_id": mid,
             "Merchant": g["merchant"].iloc[0],
             "Category": g["tier1"].iloc[0],
             "Cadence": label,
+            "Amount": "varies" if varies else "fixed",
             "Typical charge": typical,
             "Monthly": round(monthly, 2),
             "Charges": len(days),
@@ -58,7 +59,7 @@ def schedule(rows: pd.DataFrame, as_of: date) -> pd.DataFrame:
             "Next expected": next_due.isoformat() if next_due else None,
             "Overdue": bool(next_due and next_due < as_of),
         })
-    cols = ["merchant_id", "Merchant", "Category", "Cadence", "Typical charge", "Monthly",
+    cols = ["merchant_id", "Merchant", "Category", "Cadence", "Amount", "Typical charge", "Monthly",
             "Charges", "Last", "Next expected", "Overdue"]
     return (pd.DataFrame(out, columns=cols)
             .sort_values("Monthly", ascending=False).reset_index(drop=True))
