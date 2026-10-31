@@ -6,7 +6,7 @@ import insights
 from enrich import _merchant_dims
 from models import CanonicalTransaction
 import recurring
-from views.transactions import search
+from views.spending import search
 
 
 def _rows(items):

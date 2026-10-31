@@ -13,7 +13,6 @@ from tests.ui._harness import widget, APP, VIEWS, go, metric, metrics, money_to_
 @pytest.mark.parametrize("view", VIEWS)
 def test_given_real_archive_when_view_opened_then_it_renders_without_exception(at, view):
     go(at, view)
-    assert at.radio(key="view").value == view
 
 
 def test_given_default_filters_when_booted_then_totals_tie_out_across_views(at):
@@ -40,7 +39,7 @@ def test_given_missing_archive_when_app_boots_then_friendly_error_not_crash(monk
 
 def test_given_drilldown_and_budget_when_opened_then_averages_name_their_period(boot_app):
     import re
-    drill = boot_app("Drilldown")
+    drill = boot_app("Spending")
     assert any(re.fullmatch(r"Avg/mo, [A-Z][a-z]{2}.*–[A-Z][a-z]{2}.*", str(c))
                for d in drill.dataframe for c in d.value.columns)
     budget = boot_app("Budget")
@@ -48,7 +47,7 @@ def test_given_drilldown_and_budget_when_opened_then_averages_name_their_period(
 
 
 def test_given_two_annualized_figures_when_opened_then_each_says_what_it_measures(boot_app):
-    drill = boot_app("Drilldown")
+    drill = boot_app("Spending")
     assert any("Every spending category" in (m.proto.help or "") for m in drill.metric)
     budget = boot_app("Budget")
     assert any("Budget categories only" in c.value for c in budget.caption)
@@ -63,3 +62,18 @@ def test_given_a_month_in_progress_when_cash_flow_opens_then_it_is_labelled_part
         assert not at.exception
         assert any(" to " in str(label) or "(to " in str(label)
                    for d in at.dataframe for label in d.value.index)
+
+
+@pytest.mark.parametrize("old, caption", [("Drilldown", "All transactions"), ("Transactions", "All transactions")])
+def test_given_an_old_view_link_when_opened_then_it_lands_on_the_page_that_replaced_it(old, caption):
+    at = AppTest.from_file(APP, default_timeout=60)
+    at.query_params["view"] = old
+    at.run()
+    assert not at.exception, [str(e.value) for e in at.exception]
+    assert any(caption in c.value for c in at.caption)
+
+
+def test_given_work_waiting_when_overview_opens_then_it_links_to_review_and_suggestions(boot_app):
+    at = boot_app("Overview")
+    labels = [link.proto.label for link in at.get("page_link")]
+    assert any("to review" in label for label in labels)

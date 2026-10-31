@@ -17,9 +17,10 @@ from config_io import CONFIG_DIR, PERSONAL_CONFIG_DIR, load_app_config, load_bud
 from cube import Cube, GroupingSpec
 from data import MIRROR_CSV, build_cube
 from ingest.load import stat_source
+from viz import plural
 from views import budget as budget_view
 from periods import CUSTOM, DEFAULT_PRESET, PRESETS, preset_range
-from views import cashflow, drilldown, merchants, overview, suggestions, transactions
+from views import cashflow, merchants, overview, spending, suggestions
 from views import signoff as signoff_view
 from views import corrections_view, rules_view
 from views import qc as qc_view
@@ -82,39 +83,54 @@ def main() -> None:
     spec, earliest, anchor = _sidebar_filters(cube, df)
     to_review = signoff_view.queue(df)
 
-    views = {
-        "Overview": lambda: overview.render(cube, spec, earliest, anchor),
-        "Drilldown": lambda: drilldown.render(cube, spec, earliest),
-        "Transactions": lambda: transactions.render(cube, spec, budget),
-        "Budget": lambda: budget_view.render(cube, spec, budget, app.trailing_avg_months),
-        "Merchants": lambda: merchants.render(cube, spec, anchor),
-        "Cash flow": lambda: cashflow.render(cube, spec, earliest, anchor),
-        "Review": lambda: signoff_view.render(df, to_review, budget),
-        "Suggestions": lambda: suggestions.render(df),
-        "Overrides": corrections_view.render,
-        "Rules": lambda: rules_view.render(df),
-        "Checks": lambda: qc_view.render(cube, qc, spec),
+    n_review, n_suggestions = len(to_review), len(suggestions.pending(df))
+    maintain = {
+        "Review": st.Page(lambda: signoff_view.render(df, to_review, budget), url_path="review",
+                          title=_counted("Review", n_review)),
+        "Suggestions": st.Page(lambda: suggestions.render(df), url_path="suggestions",
+                               title=_counted("Suggestions", n_suggestions)),
+        "Overrides": st.Page(corrections_view.render, title="Overrides", url_path="overrides"),
+        "Rules": st.Page(lambda: rules_view.render(df), title="Rules", url_path="rules"),
+        "Checks": st.Page(lambda: qc_view.render(cube, qc, spec), title="Checks", url_path="checks"),
     }
-    views[_current_view(list(views), {"Review": len(to_review),
-                                      "Suggestions": len(suggestions.pending(df))})]()
+    todo = [(maintain["Review"], plural(n_review, "transaction") + " to review") if n_review else None,
+            (maintain["Suggestions"], plural(n_suggestions, "suggestion")) if n_suggestions else None]
+    analyze = {
+        "Overview": st.Page(lambda: overview.render(cube, spec, earliest, anchor, [t for t in todo if t]),
+                            title="Overview", url_path="overview", default=True),
+        "Spending": st.Page(lambda: spending.render(cube, spec, earliest, budget),
+                            title="Spending", url_path="spending"),
+        "Budget": st.Page(lambda: budget_view.render(cube, spec, budget, app.trailing_avg_months),
+                          title="Budget", url_path="budget"),
+        "Merchants": st.Page(lambda: merchants.render(cube, spec, anchor),
+                             title="Merchants", url_path="merchants"),
+        "Cash flow": st.Page(lambda: cashflow.render(cube, spec, earliest, anchor),
+                             title="Cash flow", url_path="cash-flow"),
+    }
+    page = st.navigation({"": list(analyze.values()),
+                          _counted("Maintain", n_review + n_suggestions): list(maintain.values())},
+                         position="top")
+    _follow_old_view_link({**analyze, **maintain})
+    page.run()
+
+
+def _counted(name: str, n: int) -> str:
+    return f"{name} · {n}" if n else name
 
 
 VIEW_KEY = "view"
+# Views that became part of another page, for bookmarks made before they did.
+_OLD_VIEWS = {"Drilldown": "Spending", "Transactions": "Spending"}
 
 
-def _current_view(names: list[str], counts: dict[str, int]) -> str:
-    """The view switcher. Only the chosen view runs: a chart mounted inside a
-    hidden st.tabs panel measures a zero-width container and drops its labels.
-    `counts` adds a pending-work count to a view's label.
-    The choice is mirrored into the URL so a reload or bookmark returns to it."""
-    if VIEW_KEY not in st.session_state:
-        asked = st.query_params.get(VIEW_KEY)
-        st.session_state[VIEW_KEY] = asked if asked in names else names[0]
-    view = st.radio("View", names, horizontal=True, key=VIEW_KEY,
-                    label_visibility="collapsed",
-                    format_func=lambda n: f"{n} · {counts[n]}" if counts.get(n) else n)
-    st.query_params[VIEW_KEY] = view
-    return view
+def _follow_old_view_link(pages: dict) -> None:
+    asked = st.query_params.get(VIEW_KEY)
+    if asked is None:
+        return
+    del st.query_params[VIEW_KEY]
+    target = pages.get(_OLD_VIEWS.get(asked, asked))
+    if target is not None:
+        st.switch_page(target)
 
 
 _FLOW_LABELS = {"spend": "Spending", "income": "Income", "All": "All"}
@@ -165,7 +181,7 @@ def _hidden_manager(sb) -> None:
     rules = state.hidden_rules()
     theme.eyebrow_in(sb, "Hidden")
     if not rules:
-        sb.caption("Nothing hidden. Use Hide in Drilldown or Merchants.")
+        sb.caption("Nothing hidden. Use Hide in Spending or Merchants.")
         return
     for r in list(rules):
         c1, c2 = sb.columns([4, 1])

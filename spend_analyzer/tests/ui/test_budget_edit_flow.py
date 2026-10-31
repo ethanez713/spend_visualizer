@@ -24,7 +24,7 @@ def _few_row_merchant(cube_df, *, with_entity_id=False):
 
 
 def _search(boot_app, term):
-    at = boot_app("Transactions")
+    at = boot_app("Spending")
     widget(at.text_input, key="txn_search").set_value(term)
     at.run()
     assert not at.exception, [str(e.value) for e in at.exception]
@@ -88,7 +88,7 @@ def test_given_only_a_note_when_applied_then_the_edit_carries_no_category(
 
 
 def test_given_the_transfers_toggle_when_on_then_the_view_renders_without_error(boot_app):
-    at = boot_app("Transactions")
+    at = boot_app("Spending")
 
     widget(at.toggle, key="txn_transfers").set_value(True)
     at.run()
@@ -201,7 +201,7 @@ def test_given_an_adjustment_when_revoked_then_a_tombstone_is_logged(boot_app, i
 
 
 def test_given_no_filter_when_transactions_opened_then_bulk_edit_waits_for_one(boot_app):
-    at = boot_app("Transactions")
+    at = boot_app("Spending")
     assert not any("Set the budget category" in e.label for e in at.expander)
     assert any("to set a budget category in bulk" in c.value for c in at.caption)
 

@@ -60,9 +60,10 @@ def test_given_drilled_chart_when_zoomed_out_then_pops_one_level_and_stays(app):
     app.get_by_role("button", name="Zoom out").click()
     wait_idle(app)
     assert breadcrumbs(app) == drilled[:-1]
-    app.get_by_text("Income", exact=True).click()     # unrelated reruns
+    sidebar = app.get_by_test_id("stSidebarUserContent")
+    sidebar.get_by_text("Income", exact=True).click()     # unrelated reruns
     wait_idle(app)
-    app.get_by_text("Spending", exact=True).click()
+    sidebar.get_by_text("Spending", exact=True).click()
     wait_idle(app)
     assert breadcrumbs(app) == drilled[:-1], "stale click re-fired after a rerun"
 

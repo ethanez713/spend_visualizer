@@ -49,19 +49,9 @@ _READY_JS = """
   if (document.querySelector('[data-testid="stSpinner"]')) return fail('spinner');
   if (document.querySelector('[data-testid="stException"]')) return fail('exception');
 
-  const group = document.querySelector('.st-key-view');
-  let selected = '';
-  const input = group && group.querySelector('input:checked');
-  if (input) {
-    const label = input.closest('label');
-    selected = label ? label.innerText : '';
-  } else if (group) {
-    const aria = group.querySelector('[role="radio"][aria-checked="true"]');
-    selected = aria ? aria.innerText : '';
-  }
-  // A view with pending work is labelled "Review · 900"; match the name only.
-  selected = selected.replace(/\\s+/g, ' ').trim().split(' · ')[0];
-  if (selected !== spec.view) return fail('view:' + selected);
+  const slug = spec.view === 'Overview' ? '' : spec.view.toLowerCase().replace(/ /g, '-');
+  const opened = location.pathname.split('/').pop();
+  if (opened !== slug) return fail('view:' + opened);
 
   // innerText applies CSS text-transform, so metric labels arrive uppercase.
   const text = (document.body.innerText || '').toLowerCase();
@@ -127,9 +117,9 @@ _VIEWS = [
         "frames": 2,
     },
     {
-        "view": "Drilldown",
+        "view": "Spending",
         "file": "drilldown.png",
-        "text": ["Spend by Category", "Hierarchy"],
+        "text": ["Spend by", "Wheel"],
         "charts": 0,
         "frames": 1,
         "iframe_chart": True,
@@ -302,8 +292,7 @@ def _dump(page) -> None:
           why: window.__shot || '',
           fonts: document.fonts ? document.fonts.status : '',
           state: document.querySelector('.stApp')?.getAttribute('data-test-script-state') || '',
-          checked: (document.querySelector('.st-key-view input:checked')
-                    ?.closest('label')?.innerText || '').trim(),
+          opened: location.pathname,
           charts: document.querySelectorAll('[data-testid="stPlotlyChart"]').length,
           frames: document.querySelectorAll('[data-testid="stDataFrame"]').length,
           exc: (document.querySelector('[data-testid="stException"]')?.innerText || '').slice(0, 600),

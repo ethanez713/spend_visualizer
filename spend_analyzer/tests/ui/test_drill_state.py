@@ -6,7 +6,7 @@ tests/test_drilldown.py. Here we set ``wheel_root`` directly, which is exactly
 the state a click produces, and test everything downstream of it.
 """
 from cube import CATEGORY_LEVELS
-from views.drilldown import ROOT_KEY
+from views.spending import ROOT_KEY
 
 from tests.ui._harness import texts, widget
 
@@ -55,3 +55,40 @@ def test_given_stale_root_when_rendered_then_root_resets_to_top(at):
     at.run()
     assert not at.exception, [str(e.value) for e in at.exception]
     assert at.session_state[ROOT_KEY] == []
+
+
+def _list_caption(at) -> str:
+    return next(t for t in texts(at) if " transactions · " in t or " transaction · " in t)
+
+
+def test_given_a_focus_and_a_search_when_rendered_then_the_list_is_their_intersection(at, cube_df):
+    path = _top_full_path(cube_df)[:2]
+    in_focus = cube_df[(cube_df["flow"] == "spend") & (cube_df[CATEGORY_LEVELS[0]] == path[0])
+                       & (cube_df[CATEGORY_LEVELS[1]] == path[1])]
+    merchant = in_focus["merchant"].mode().iat[0]
+    at.session_state[ROOT_KEY] = path
+    at.run()
+
+    widget(at.text_input, key="txn_search").set_value(merchant).run()
+
+    assert not at.exception, [str(e.value) for e in at.exception]
+    assert f"{path[0]} › {path[1]}" in _list_caption(at)
+    assert "chip_txn_search" in [b.key for b in at.button]
+    plain_list = [t for t in texts(at) if " — " in t and " transaction" in t][0]
+    with_filter = int(plain_list.split(" — ")[1].split(" ")[0].replace(",", ""))
+    widget(at.text_input, key="txn_search").set_value("").run()
+    without_filter = int(_list_caption(at).split(" — ")[1].split(" ")[0].replace(",", ""))
+    assert 0 < with_filter <= without_filter
+
+
+def test_given_a_search_chip_when_pressed_then_the_search_clears_and_the_focus_stays(at, cube_df):
+    path = _top_full_path(cube_df)[:2]
+    at.session_state[ROOT_KEY] = path
+    at.run()
+    widget(at.text_input, key="txn_search").set_value("a").run()
+
+    widget(at.button, key="chip_txn_search").click()
+    at.run()
+
+    assert widget(at.text_input, key="txn_search").value == ""
+    assert at.session_state[ROOT_KEY] == path

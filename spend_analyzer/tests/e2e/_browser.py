@@ -1,6 +1,8 @@
 """Playwright helpers: Streamlit idle-waits, plotly-iframe access, canvas clicks."""
 from __future__ import annotations
 
+import re
+
 from playwright.sync_api import FrameLocator, Page, expect
 
 CHART_IFRAME = 'iframe[title="streamlit_plotly_events.plotly_events"]'
@@ -35,8 +37,12 @@ def wait_idle(page: Page, runs: int = 4) -> None:
 
 
 def go(page: Page, view: str) -> None:
-    """Switch view through the switcher row."""
-    page.locator(".st-key-view").get_by_text(view, exact=True).click()
+    """Switch view through the header, opening the Maintain menu for a page inside it."""
+    name = re.compile(rf"^{re.escape(view)}( · \d+)?$")
+    links = page.get_by_test_id("stTopNavLink").or_(page.get_by_test_id("stTopNavDropdownLink"))
+    if not links.filter(has_text=name).first.is_visible():
+        page.get_by_test_id("stTopNavSection").first.click()
+    links.filter(has_text=name).first.click()
     wait_idle(page)
 
 
@@ -96,7 +102,11 @@ def grid_canvas(page: Page, index: int = 0):
 
 def click_grid_cell(page: Page, grid, row: int, col_center_x: float) -> None:
     """Click inside a grid cell by geometry (the grid is a canvas — no DOM cells)."""
-    grid.scroll_into_view_if_needed()
+    # A grid taller than the viewport would otherwise scroll its first rows under the header.
+    grid.evaluate("""el => {
+      el.scrollIntoView({block: 'start'});
+      el.closest('[data-testid="stMain"]').scrollBy(0, -120);
+    }""")
     box = grid.bounding_box()
     x = box["x"] + col_center_x
     y = box["y"] + GRID_HEADER_H + GRID_ROW_H * row + GRID_ROW_H / 2

@@ -5,10 +5,9 @@ from tests.ui._harness import metric, money_to_f, spend_table, texts, widget
 
 
 def test_given_merchant_granularity_when_selected_then_table_groups_by_merchant(at):
-    widget(at.radio, label="Table granularity").set_value("merchant")
+    widget(at.selectbox, label="Spend by").set_value("merchant")
     at.run()
     assert not at.exception, [str(e.value) for e in at.exception]
-    assert "**Spend by Merchant**" in texts(at)
     assert spend_table(at).index.name == "Merchant"
 
 

@@ -70,3 +70,9 @@ def test_given_merchant_picked_in_dropdown_then_detail_follows(app):
     expect(app.get_by_text(
         re.compile(rf"{re.escape(picked)} — \d+ transactions?")).first).to_be_visible()
     assert_no_exception(app)
+
+
+def test_given_a_page_in_the_maintain_menu_when_chosen_then_it_opens(app):
+    go(app, "Rules")
+    assert_no_exception(app)
+    assert "/rules" in app.url

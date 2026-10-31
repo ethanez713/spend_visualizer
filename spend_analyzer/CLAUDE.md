@@ -56,8 +56,8 @@ it never edits records — category fixes append INTENTS to the transformer's lo
   take colours and chart styling from it as `theme.<TOKEN>`, which resolves against
   the viewer's active theme (light or dark) — never a hex, never a theme branch. Sentence case, no emoji, Markdown money via
   `viz.money_md` (two bare `$` in one caption render as LaTeX).
-- Only the active view renders (`app._current_view`), so a UI test opens the view it
-  asserts on (`tests/ui/_harness.go`). Don't move views back into `st.tabs`: the
+- Only the open page renders (`st.navigation`), so a UI test opens the page it asserts on
+  (`tests/ui/_harness.go`). Don't move views into `st.tabs`: the
   hierarchy chart drops its labels when mounted inside a hidden tab panel.
 - The Budget tab merges imported sheet history (`legacy.py`; files written by
   `finance_pipeline/tools/import_sheet_history.py`) for dates before the archive's first

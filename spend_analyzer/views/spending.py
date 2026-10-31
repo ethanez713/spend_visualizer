@@ -1,15 +1,13 @@
-"""Drilldown core: granularity (table only), spend table, an interactive
-hierarchy chart (wheel/treemap) and a transaction-detail table that
-*follows the chart*.
+"""Spending: one transaction list that the spend table, the hierarchy chart and a search
+all narrow.
 
 Interaction model:
-  • The top **Granularity** radio controls ONLY the "Spend by X" table.
-  • The hierarchy chart has its own **Chart detail** control and starts at the
-    deepest level by default. Click a slice to zoom in (captured via the
-    streamlit-plotly-events component); the breadcrumb and Zoom-out navigate
-    back. The chart focus and the transaction-detail table share one
-    `wheel_root` so they stay in lock-step.
-  • Hidden categories are dropped from the charts entirely (shown only as a note
+  • ``wheel_root`` is the single focus: a chart click, a table row or a breadcrumb sets it.
+  • The search, category and amount filters stack on the focus and narrow only the list;
+    the table and chart keep showing the whole of the sidebar's period.
+  • "Spend by" controls only the table. The chart always renders to the deepest level.
+    Click a slice to zoom in (captured via the streamlit-plotly-events component).
+  • Hidden categories are dropped from the chart entirely (shown only as a note
     underneath) so they never blow a big empty wedge into the diagram.
 """
 from __future__ import annotations
@@ -22,10 +20,13 @@ import streamlit as st
 from streamlit_plotly_events import plotly_events
 
 import state
+from budget_table import known_categories
+from config_io import Budget
 from cube import Cube, GroupingSpec, CATEGORY_LEVELS, CATEGORY_LEVEL_BY_NAME
 import theme
 from periods import averaging_months, month_span, month_start, previous_period
-from viz import humanize_atom, money, style_table, table_height
+from viz import humanize_atom, money, plural, sanitize_for_csv, style_table, table_height
+from views._budget_edit import bulk_panel
 from views._widgets import correction_form, hide_button, transaction_detail
 
 _LEVEL_LABELS = {
@@ -33,44 +34,96 @@ _LEVEL_LABELS = {
     "atom": "Atom", "merchant": "Merchant",
 }
 ROOT_KEY = "wheel_root"
+_SORTS = {"Newest": ("date_resolved", False), "Oldest": ("date_resolved", True),
+          "Largest": ("abs_amount", False), "Smallest": ("abs_amount", True)}
+_EXPORT_COLS = ["date_resolved", "name", "merchant", "tier1", "tier2", "atom", "flow",
+                "display_amount", "person", "account_name"]
+
+
+def search(rows: pd.DataFrame, text: str) -> pd.DataFrame:
+    """Rows whose description or merchant contains every whitespace-separated term."""
+    hay = (rows["name"].fillna("") + " " + rows["merchant"].fillna("")).str.lower()
+    mask = pd.Series(True, index=rows.index)
+    for term in text.lower().split():
+        mask &= hay.str.contains(term, regex=False)
+    return rows[mask]
+
+
+def unclassified_transfers(rows: pd.DataFrame) -> pd.DataFrame:
+    """Transfers the budget ignores and nobody has decided about yet: a Venmo paid back,
+    a group booking split, money moved between accounts."""
+    return rows[(rows["flow"] == "excluded") & rows["atom"].str.startswith("TRANSFER_")
+                & (rows["budget_edit_id"] == "")]
 
 
 def _disp(col: str, v) -> str:
     return humanize_atom(v).capitalize() if col == "atom" else str(v)
 
 
-def granularity_control(cube: Cube, spec: GroupingSpec) -> tuple[str, str]:
+def _level_control() -> tuple[str, str]:
     options = list(CATEGORY_LEVEL_BY_NAME.keys())
-    level_name = st.radio(
-        "Table granularity", options,
-        index=options.index(st.session_state.get("_level_name", "tier1")),
-        horizontal=True, format_func=lambda n: _LEVEL_LABELS[n],
-    )
+    level_name = st.selectbox("Spend by", options,
+                              index=options.index(st.session_state.get("_level_name", "tier1")),
+                              format_func=lambda n: _LEVEL_LABELS[n], key="spend_level")
     st.session_state["_level_name"] = level_name
     return level_name, CATEGORY_LEVEL_BY_NAME[level_name]
 
 
-def render(cube: Cube, spec: GroupingSpec, earliest: date) -> None:
-    level_name, level_col = granularity_control(cube, spec)
+def render(cube: Cube, spec: GroupingSpec, earliest: date, budget: Budget) -> None:
+    list_rows, narrowing = _list_controls(cube, spec)
+    _kpis(cube, spec)
+    period_rows = cube.filtered(GroupingSpec(filters={**spec.filters, "flow": "spend"},
+                                             date_from=spec.date_from, date_to=spec.date_to,
+                                             include_hidden=True))
+    with st.container(key="spend_split"):
+        left, right = st.columns(2)
+        with left:
+            _table_section(cube, spec, earliest)
+        with right:
+            root = _hierarchy(period_rows)
+    _transaction_list(cube, budget, list_rows, root, narrowing)
 
-    table = cube.rollup(GroupingSpec(group_by=[level_col], filters=spec.filters,
-                                     date_from=spec.date_from, date_to=spec.date_to,
-                                     measures=["spend", "count"], order_by="spend",
-                                     include_hidden=True))
-    if table.empty:
-        st.info("No spend matches the current filters.")
-        return
-    raw_vals = table[level_col].tolist()
-    hidden_flags = [state.is_hidden(level_col, v) for v in raw_vals]
 
-    st.markdown(f"**Spend by {_LEVEL_LABELS[level_name]}**")
-    st.caption("Tick rows to select, then Hide or Flag them in bulk. "
-               "(Manage hidden categories from the sidebar.)")
-    _spend_table(cube, spec, level_col, level_name, table, raw_vals, hidden_flags, earliest)
+def _list_controls(cube: Cube, spec: GroupingSpec) -> tuple[pd.DataFrame, dict]:
+    """The filters above the page. Returns the rows they leave, before the focus applies,
+    and what each filter is set to."""
+    c = st.columns([4, 3, 2, 2])
+    transfers_only = st.session_state.get("txn_transfers", False)
+    filters = {k: v for k, v in spec.filters.items() if not (transfers_only and k == "flow")}
+    rows = cube.filtered(GroupingSpec(filters=filters, date_from=spec.date_from,
+                                      date_to=spec.date_to, include_hidden=True))
+    if transfers_only:
+        rows = unclassified_transfers(rows)
+    text = c[0].text_input("Search", key="txn_search", placeholder="Description or merchant")
+    cats = c[1].multiselect("Category", sorted(rows["tier1"].dropna().unique()),
+                            key="txn_cats", placeholder="All")
+    min_amount = c[2].number_input("Minimum amount", min_value=0.0, value=0.0, step=50.0,
+                                   key="txn_min")
+    sort = c[3].selectbox("Sort", list(_SORTS), key="txn_sort")
+    t = st.columns(2)
+    has_pending = "review_pending" in rows.columns
+    pending_only = has_pending and t[0].toggle("Pending suggestions only", key="txn_pending")
+    t[1].toggle("Transfers nobody has classified (ignores the Flow filter)", key="txn_transfers",
+                help="Transfers are left out of the budget until you say what they were: spending, "
+                     "money back, or not budget spending at all.")
 
-    visible_total = float(table.loc[[not h for h in hidden_flags], "spend"].sum())
+    out = search(rows, text) if text else rows
+    if cats:
+        out = out[out["tier1"].isin(cats)]
+    if min_amount:
+        out = out[out["abs_amount"] >= min_amount]
+    if pending_only:
+        out = out[out["review_pending"].fillna(False).astype(bool)]
+    return out, {"text": text, "cats": cats, "min_amount": min_amount, "sort": sort,
+                 "transfers_only": transfers_only}
+
+
+def _kpis(cube: Cube, spec: GroupingSpec) -> None:
     months = _averaging_months(cube, spec)
     monthly = _monthly_visible_spend(cube, spec).reindex(months, fill_value=0.0)
+    visible = cube.rollup(GroupingSpec(group_by=["tier1"], filters=spec.filters, date_from=spec.date_from,
+                                       date_to=spec.date_to, measures=["spend"], order_by=None))
+    visible_total = float(visible["spend"].sum()) if not visible.empty else 0.0
     mortgage = _tier1_spend(cube, spec, "Mortgage")
     house = _tier1_spend(cube, spec, "House")
     d = st.columns(4)
@@ -81,11 +134,67 @@ def render(cube: Cube, spec: GroupingSpec, earliest: date) -> None:
     d[2].metric("Less Mortgage", money(visible_total - mortgage))
     d[3].metric("Less Mortgage & Home", money(visible_total - mortgage - house))
 
-    rows = cube.filtered(GroupingSpec(filters={**spec.filters, "flow": "spend"},
-                                      date_from=spec.date_from, date_to=spec.date_to,
-                                      include_hidden=True))
-    root = _hierarchy(rows)
-    _detail_section(rows, root)
+
+def _table_section(cube: Cube, spec: GroupingSpec, earliest: date) -> None:
+    level_name, level_col = _level_control()
+    table = cube.rollup(GroupingSpec(group_by=[level_col], filters=spec.filters,
+                                     date_from=spec.date_from, date_to=spec.date_to,
+                                     measures=["spend", "count"], order_by="spend",
+                                     include_hidden=True))
+    if table.empty:
+        st.info("No spend matches the current filters.")
+        return
+    raw_vals = table[level_col].tolist()
+    hidden_flags = [state.is_hidden(level_col, v) for v in raw_vals]
+    st.caption("Tick rows to select, then Hide or Flag them in bulk.")
+    _spend_table(cube, spec, level_col, level_name, table, raw_vals, hidden_flags, earliest)
+
+
+def _clear_filter(key: str, empty) -> None:
+    st.session_state[key] = empty
+
+
+def _showing(root: list, narrowing: dict) -> None:
+    """The narrowing in force, each part with its own ×."""
+    chips = []
+    if root:
+        chips.append((" › ".join(_disp(CATEGORY_LEVELS[i], v) for i, v in enumerate(root)), ROOT_KEY, []))
+    if narrowing["text"]:
+        chips.append((f"search “{narrowing['text']}”", "txn_search", ""))
+    if narrowing["cats"]:
+        chips.append((", ".join(narrowing["cats"]), "txn_cats", []))
+    if narrowing["min_amount"]:
+        chips.append((f"at least {money(narrowing['min_amount'])}", "txn_min", 0.0))
+    if not chips:
+        return
+    with st.container(horizontal=True, gap="small", vertical_alignment="center"):
+        st.caption("Showing:")
+        for label, key, empty in chips:
+            st.button(f"{label} ×", key=f"chip_{key}", on_click=_clear_filter, args=(key, empty))
+
+
+def _transaction_list(cube: Cube, budget: Budget, rows: pd.DataFrame, root: list, narrowing: dict) -> None:
+    out = _drill_filter(rows, root)
+    _showing(root, narrowing)
+    if out.empty:
+        st.info("No transactions match. Widen the period in the sidebar or clear a filter.")
+        return
+    if root:
+        dim, val = CATEGORY_LEVELS[len(root) - 1], root[-1]
+        hide_button(dim, val, _disp(dim, val), key=f"hide_drill_{dim}_{val}")
+    crumb = " › ".join(_disp(CATEGORY_LEVELS[i], v) for i, v in enumerate(root)) or "All transactions"
+    col, ascending = _SORTS[narrowing["sort"]]
+    transaction_detail(out, title=crumb, key=f"list_{'_'.join(map(str, root))}", sort=col,
+                       ascending=ascending, max_rows=40)
+    if root or narrowing["text"] or narrowing["cats"] or narrowing["min_amount"] or narrowing["transfers_only"]:
+        bulk_panel(out, search=narrowing["text"], key="txn_budget",
+                   categories=known_categories(budget, cube.df["budget_cat"].dropna().unique()))
+    else:
+        st.caption("Filter the rows above to set a budget category in bulk.")
+    export = out[[c for c in _EXPORT_COLS if c in out.columns]]
+    st.download_button(f"Download {plural(len(out), 'row')} as CSV · {money(out['display_amount'].sum())}",
+                       sanitize_for_csv(export).to_csv(index=False),
+                       file_name="transactions.csv", mime="text/csv")
 
 
 def _spend_table(cube, spec, level_col, level_name, table, raw_vals, hidden_flags,
@@ -192,7 +301,6 @@ def _flag_category(cube, spec, level_col, value) -> None:
 
 
 def _hierarchy(rows: pd.DataFrame) -> list:
-    st.subheader("Hierarchy")
     root: list = st.session_state.setdefault(ROOT_KEY, [])
     if root and _drill_filter(rows, root).empty:
         root = st.session_state[ROOT_KEY] = []
@@ -342,18 +450,6 @@ def _build_hierarchy_fig(vis, levels, root, treemap: bool):
         margin=dict(t=6, l=6, r=6, b=6), height=560,
     )
     return fig, abs_nodes
-
-
-def _detail_section(rows: pd.DataFrame, root: list) -> None:
-    st.subheader("Transaction detail")
-    sub = _drill_filter(rows, root)
-    if not root:
-        st.caption("Click into the hierarchy above to focus these transactions on a node.")
-    crumb = " › ".join(_disp(CATEGORY_LEVELS[i], v) for i, v in enumerate(root)) or "All spend"
-    if root and not sub.empty:
-        dim, val = CATEGORY_LEVELS[len(root) - 1], root[-1]
-        hide_button(dim, val, _disp(dim, val), key=f"hide_drill_{dim}_{val}")
-    transaction_detail(sub, title=crumb, key=f"drill_{len(root)}_{'_'.join(map(str, root))}")
 
 
 def _trailing_avg(cube, spec, level_col, months: list[str]) -> pd.Series:

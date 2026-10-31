@@ -9,7 +9,7 @@ sector's click path selects a non-empty slice — exercised with underscore-bear
 import pandas as pd
 
 from cube import CATEGORY_LEVELS
-from views.drilldown import _build_hierarchy_fig, _clicked_path, _drill_filter
+from views.spending import _build_hierarchy_fig, _clicked_path, _drill_filter
 
 _ROWS = pd.DataFrame([
     {"tier0": "Discretionary", "tier1": "Dining Out", "tier2": "Coffee",

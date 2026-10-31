@@ -16,19 +16,22 @@ ROOT = Path(__file__).resolve().parents[2]
 APP = str(ROOT / "app.py")
 
 
-VIEWS = ["Overview", "Drilldown", "Transactions", "Budget", "Merchants",
+VIEWS = ["Overview", "Spending", "Budget", "Merchants",
          "Cash flow", "Review", "Suggestions", "Overrides", "Rules", "Checks"]
 
 
 def go(at: AppTest, view: str) -> AppTest:
     """Switch to a view (only the active one renders) and fail on any exception."""
-    widget(at.radio, key="view").set_value(view)
+    # A real top-nav click cannot be simulated; this is the state one leaves behind.
+    url = "" if view == "Overview" else view.lower().replace(" ", "-")
+    at._page_hash = next(page_hash for page_hash, info in at._registered_pages.items()
+                         if info.get("url_pathname") == url)
     at.run()
     assert not at.exception, [str(e.value) for e in at.exception]
     return at
 
 
-def boot(view: str = "Drilldown") -> AppTest:
+def boot(view: str = "Spending") -> AppTest:
     """Run app.py against the real archive and open `view`; fail on any uncaught
     exception."""
     from config_io import load_app_config

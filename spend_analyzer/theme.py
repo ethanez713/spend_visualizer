@@ -248,6 +248,13 @@ section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 8px; }
 }
 .marker { background: linear-gradient(transparent 62%, var(--orange-200) 62%); }
 
+@media (max-width: 1200px) {
+  .st-key-spend_split div[data-testid="stHorizontalBlock"] { flex-wrap: wrap; }
+  .st-key-spend_split div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+    min-width: 100% !important; flex: 1 1 100% !important;
+  }
+}
+
 @media (max-width: 820px) {
   div[data-testid="stHorizontalBlock"] { flex-wrap: wrap; }
   div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {

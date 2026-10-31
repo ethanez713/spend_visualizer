@@ -110,12 +110,12 @@ Ingestion lives in `finance_pipeline`, not here — this app never calls Plaid o
 imports collector code (see Architecture). Both live-run flags follow the repo's
 authorization rules (`../CLAUDE.md`, golden rule 1).
 
-Views: **Overview** (the period at a glance, this month's spending pace against a
-reference month, biggest category changes) · **Drilldown** (spend table + click-to-zoom
-hierarchy + transaction detail) · **Transactions** (search and filter individual rows) ·
+Analyze: **Overview** (the period at a glance, this month's spending pace against a
+reference month, biggest category changes) · **Spending** (spend table, click-to-zoom
+hierarchy and search all narrowing one transaction list) ·
 **Budget** (budget vs actual) · **Merchants** (top merchants, recurring
 charges with cadence and next expected date) · **Cash flow** (income vs spending by
-month, quarter or year, and a flow diagram of where income went) · **Review** (sign off new transactions one budget category at a time, fixing outliers in place; fixes become merchant rules on request) · **Suggestions** (accept, keep or re-pick each pending category suggestion) · **Overrides**
+month, quarter or year, and a flow diagram of where income went). Maintain: **Review** (sign off new transactions one budget category at a time, fixing outliers in place; fixes become merchant rules on request) · **Suggestions** (accept, keep or re-pick each pending category suggestion) · **Overrides**
 (manual overrides + the triage-note queue) · **Rules** (read-only browser over every rule table
 that can decide a category) · **Checks** (taxonomy coverage and the double-count tie-out).
 The active view is mirrored in the URL (`?view=`), so a bookmark or reload returns to it.

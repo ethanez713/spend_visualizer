@@ -53,7 +53,7 @@ def _render_overrides() -> None:
         help=f"Stored in `{manual_edits.edits_path()}` and replayed by the categorizer "
              "on every run.")
     if not items:
-        st.info("No overrides yet. Tick Flag on a transaction in Drilldown or "
+        st.info("No overrides yet. Tick Flag on a transaction in Spending or "
                 "Merchants, then use ‘Override category’.")
         return
 
@@ -103,7 +103,7 @@ def _render_budget_edits() -> None:
                "leaves it out, or only adds a note. It never changes the Plaid category, and "
                "revoking one hands the row back to the budget model at once.")
     if not items:
-        st.info("No budget edits yet. Use ‘Set the budget category…’ under the Transactions table.")
+        st.info("No budget edits yet. Use ‘Set the budget category…’ under the Spending list.")
         return
     records = all_raw_records()
     covers = {**manual_edits.affected_counts([e for e in items if e["set"]], records),

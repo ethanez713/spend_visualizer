@@ -18,7 +18,11 @@ _PACE_OPTIONS = ["Last month", "Average month", "Same month last year"]
 _AVERAGE_MONTHS = 3
 
 
-def render(cube: Cube, spec: GroupingSpec, earliest: date, anchor: date) -> None:
+def render(cube: Cube, spec: GroupingSpec, earliest: date, anchor: date, todo: list | None = None) -> None:
+    if todo:
+        with st.container(horizontal=True, gap="small", vertical_alignment="center"):
+            for page, label in todo:
+                st.page_link(page, label=label, width="content")
     # Both flows on purpose: income and savings rate are meaningless under a
     # spend-only filter, so this tab ignores the Flow control.
     filters = {k: v for k, v in spec.filters.items() if k != "flow"}

@@ -132,7 +132,7 @@ def test_given_no_imported_rows_when_added_then_pivot_unchanged():
 
 
 def test_given_transfer_rows_when_filtered_then_only_unclassified_excluded_transfers_remain():
-    from views.transactions import unclassified_transfers
+    from views.spending import unclassified_transfers
     rows = pd.DataFrame({
         "flow": ["excluded", "excluded", "excluded", "spend", "excluded"],
         "atom": ["TRANSFER_OUT_FROM_APPS", "TRANSFER_IN_FROM_APPS", "TRANSFER_OUT_FROM_APPS",

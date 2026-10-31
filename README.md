@@ -84,7 +84,7 @@ image below from that data.
 <table>
   <tr>
     <td width="50%" valign="top"><img src="docs/img/overview.png" alt="Overview"><br><b>Overview.</b> Spending, income, net and savings rate for the period, this month's pace against last month, and the categories that moved most.</td>
-    <td width="50%" valign="top"><img src="docs/img/drilldown.png" alt="Drilldown"><br><b>Drilldown.</b> Spend by necessity, category, subcategory or merchant, and a hierarchy wheel (or treemap) that zooms on click and filters the transactions below it.</td>
+    <td width="50%" valign="top"><img src="docs/img/drilldown.png" alt="Spending"><br><b>Spending.</b> Spend by necessity, category, subcategory or merchant, and a hierarchy wheel (or treemap) that zooms on click and filters the transactions below it.</td>
   </tr>
   <tr>
     <td width="50%" valign="top"><img src="docs/img/budget.png" alt="Budget"><br><b>Budget.</b> Each category against its monthly goal as a year-to-date and trailing three-month average, over a stacked monthly trend.</td>
