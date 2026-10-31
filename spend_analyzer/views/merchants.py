@@ -47,14 +47,12 @@ def render(cube: Cube, spec: GroupingSpec, anchor: date) -> None:
     table = _merchant_table(rows).head(_TOP_MERCHANTS).reset_index(drop=True)
     table["_hidden"] = table["_mid"].map(lambda m: state.is_hidden("merchant_id", m))
     show = table[["Logo", "Merchant", "Category", "Total", "Visits", "Avg", "First", "Last"]]
-    indexed = show.set_index("Merchant")
-    grey = pd.Series(table["_hidden"].values, index=indexed.index)
     st.caption(f"The {len(table)} largest by spend. Select a row to open that merchant, "
                "or search every merchant below.")
     event = st.dataframe(
-        style_table(indexed, money_cols=["Total", "Avg"], int_cols=["Visits"],
-                    heat_cols=["Total"], grey_rows=grey),
-        width="stretch", height=table_height(len(indexed), 12),
+        style_table(show, money_cols=["Total", "Avg"], int_cols=["Visits"],
+                    heat_cols=["Total"], grey_rows=table["_hidden"]),
+        width="stretch", height=table_height(len(show), 12), hide_index=True,
         on_select="rerun", selection_mode="single-row", key="merchant_pick",
         column_config={"Logo": st.column_config.ImageColumn("", width="small")},
     )
