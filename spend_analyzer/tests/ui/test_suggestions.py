@@ -57,3 +57,8 @@ def test_given_pending_row_when_accepted_then_suggestion_becomes_the_category(
     assert (it["set"]["primary"], it["set"]["detailed"]) == (
         row["review_primary"], row["review_detailed"])
     assert f"rv_keep_{tid}" not in _queue(review)
+
+
+def test_given_a_suggestion_with_a_merchant_when_shown_then_merchant_scope_starts_off(review):
+    scopes = [c for c in review.checkbox if (c.key or "").startswith("rv_scope_")]
+    assert scopes and not any(c.value for c in scopes)

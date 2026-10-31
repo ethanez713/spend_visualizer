@@ -65,7 +65,7 @@ def _card(row) -> None:
         has_merchant = bool(raw.get("merchant_entity_id") or raw.get("merchant_name"))
         whole_merchant = has_merchant and st.checkbox(
             f"Apply to every transaction from “{raw.get('merchant_name') or row['merchant']}”",
-            value=True, key=f"rv_scope_{tid}")
+            value=False, key=f"rv_scope_{tid}")
         c = st.columns([2, 2, 5])
         if c[0].button("Accept suggestion", key=f"rv_accept_{tid}", type="primary",
                        width="stretch"):
