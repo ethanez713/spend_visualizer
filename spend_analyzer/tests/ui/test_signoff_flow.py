@@ -37,6 +37,27 @@ def test_given_no_signoffs_when_baseline_pressed_then_one_signoff_of_the_sheet_r
     assert written[0]["set"]["reviewed"] == expected
 
 
+def _sign_off_dining(at) -> None:
+    checked = [c for c in at.checkbox if c.key == "so_dining_out_0_checked"]
+    if checked:
+        checked[0].set_value(True).run()
+    widget(at.button, key="so_dining_out_0_sign").click()
+    at.run()
+
+
+def test_given_more_rows_than_the_grid_shows_when_signing_then_a_confirm_enables_the_button(
+        boot_app, isolate_writes, app_df):
+    if (app_df["budget_cat"] == "Dining Out").sum() <= 20:
+        pytest.skip("no group larger than the grid in the archive")
+    at = boot_app("Review")
+
+    sign = widget(at.button, key="so_dining_out_0_sign")
+    assert sign.disabled and "not shown" in sign.label
+
+    widget(at.checkbox, key="so_dining_out_0_checked").set_value(True).run()
+    assert not widget(at.button, key="so_dining_out_0_sign").disabled
+
+
 def test_given_a_category_group_when_signed_off_then_one_signoff_of_exactly_its_rows(
         boot_app, isolate_writes, app_df):
     dining = set(app_df.loc[app_df["budget_cat"] == "Dining Out", "transaction_id"])
@@ -44,8 +65,7 @@ def test_given_a_category_group_when_signed_off_then_one_signoff_of_exactly_its_
         pytest.skip("no Dining Out rows in the archive")
     at = boot_app("Review")
 
-    widget(at.button, key="so_dining_out_0_sign").click()
-    at.run()
+    _sign_off_dining(at)
 
     written = _signoffs(isolate_writes)
     assert not at.exception and len(written) == 1
@@ -59,8 +79,7 @@ def test_given_a_signoff_when_undone_then_revoked_and_the_group_returns(
     if not (app_df["budget_cat"] == "Dining Out").any():
         pytest.skip("no Dining Out rows in the archive")
     at = boot_app("Review")
-    widget(at.button, key="so_dining_out_0_sign").click()
-    at.run()
+    _sign_off_dining(at)
     sign_id = _signoffs(isolate_writes)[0]["id"]
 
     widget(at.button, key=f"so_undo_{sign_id}").click()

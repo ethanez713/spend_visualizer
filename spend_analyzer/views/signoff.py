@@ -27,6 +27,7 @@ DECIDE_GROUP = "Needs a budget decision"
 GEN_KEY = "so_gen"
 OFFERS_KEY = "so_offers"
 _EDITABLE = ["category", "note"]
+GRID_ROWS = 20
 
 
 def queue(df: pd.DataFrame) -> pd.DataFrame:
@@ -147,7 +148,7 @@ def _block(label: str, rows: pd.DataFrame, df: pd.DataFrame, history: dict,
                    "account"]
         edited = st.data_editor(
             grid, key=key, hide_index=True, width="stretch", column_order=columns,
-            height=table_height(len(grid), 20),
+            height=table_height(len(grid), GRID_ROWS),
             disabled=[c for c in grid.columns if c not in _EDITABLE],
             column_config={
                 "person": "Person", "date": "Date", "account": "Account",
@@ -169,8 +170,12 @@ def _block(label: str, rows: pd.DataFrame, df: pd.DataFrame, history: dict,
         if c[0].button(f"Save {changed} change{'s' if changed != 1 else ''}", key=f"{key}_save",
                        disabled=not changed, width="stretch"):
             _save(grid, edited, sign=False)
-        if c[1].button(f"Save and sign off {plural(len(grid), 'row')}", key=f"{key}_sign", type="primary",
-                       width="stretch"):
+        unseen = len(grid) - GRID_ROWS
+        checked = unseen <= 0 or c[2].checkbox(f"I have checked all {len(grid)}", key=f"{key}_checked")
+        sign_label = (f"Sign off all {len(grid)} rows ({unseen} not shown)…" if unseen > 0
+                      else f"Save and sign off {plural(len(grid), 'row')}")
+        if c[1].button(sign_label, key=f"{key}_sign", type="primary", width="stretch",
+                       disabled=not checked):
             _save(grid, edited, sign=True)
         _merchant_lookup(rows, df, key)
 
