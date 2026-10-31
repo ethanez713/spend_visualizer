@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from budget_model import BudgetModel, annotate, load_budget_model
+from budget_model import BudgetModel, annotate, explain, load_budget_model
 from config_io import CONFIG_DIR
 
 GENERIC = CONFIG_DIR / "budget_model.yaml"
@@ -182,3 +182,16 @@ def test_given_shipped_decide_atoms_when_loaded_then_card_payments_and_own_trans
     for atom in ("LOAN_PAYMENTS_CREDIT_CARD_PAYMENT", "TRANSFER_OUT_ACCOUNT_TRANSFER",
                  "TRANSFER_IN_DEPOSIT", "TRANSFER_OUT_INVESTMENT_AND_RETIREMENT_FUNDS"):
         assert not model.needs_decision(atom)
+
+
+def test_given_a_model_when_explained_then_each_rule_kind_is_named_with_its_count():
+    model = BudgetModel(fold={"A": "B", "C": "D", "E": "F"}, atoms={"X": "Y", "Z": "W"},
+                        drop_atoms=("P", "Q", "R", "S"),
+                        pinned=(("House", ("one", "two", "three", "four", "five")),),
+                        transfer_categories={"T": "U"}, decide_atoms=("V", "W", "M", "N", "O", "G"))
+
+    text = explain(model)
+
+    for phrase in ("4 dropped codes", "5 pinned merchant phrases", "2 atom exceptions",
+                   "3 folded categories", "1 transfer categories", "6 payment-app codes"):
+        assert phrase in text

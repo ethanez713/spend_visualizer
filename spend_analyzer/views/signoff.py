@@ -16,7 +16,7 @@ import streamlit as st
 import budget_edits
 import manual_edits
 import signoff
-from budget_model import load_budget_model
+from budget_model import explain as explain_budget_model, load_budget_model
 from budget_table import known_categories
 from config_io import Budget
 from viz import md_text, money_cents, money_md, plural, provenance_why, table_height
@@ -160,7 +160,8 @@ def _block(label: str, rows: pd.DataFrame, df: pd.DataFrame, history: dict,
                 "was": "Was",
                 "history": st.column_config.TextColumn(
                     "History", help="Budget categories of this merchant's other transactions."),
-                "why": st.column_config.TextColumn("Why", help="What chose the category."),
+                "why": st.column_config.TextColumn(
+                    "Why", help=f"What chose the category.\n\n{explain_budget_model()}"),
                 "flags": "Check",
             })
         changed = int((edited[_EDITABLE] != grid[_EDITABLE]).any(axis=1).sum())

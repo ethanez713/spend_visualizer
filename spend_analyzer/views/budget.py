@@ -26,6 +26,7 @@ import legacy
 import manual_edits
 import state
 import theme
+from budget_model import explain as explain_budget_model
 from budget_table import (apply_offsets, historic_detail, historic_summary, known_categories,
                           monthly_grid, split_projects, yearly_averages)
 from config_io import COMPLETE_MONTHS, MONTHS_WITH_DATA, Budget, Offset
@@ -242,7 +243,7 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
                    "using the budget model. Run the pipeline to (re)generate it.")
     use_ledger = ledger_present and st.radio(
         "Actuals from", [LEDGER_SOURCE, MODEL_SOURCE], horizontal=True,
-        key="budget_source") == LEDGER_SOURCE
+        key="budget_source", help=explain_budget_model()) == LEDGER_SOURCE
     averaging = st.radio(
         "Average over", list(AVERAGING_LABELS), horizontal=True,
         index=list(AVERAGING_LABELS).index(budget.averaging),

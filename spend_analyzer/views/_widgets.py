@@ -4,6 +4,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from budget_model import explain as explain_budget_model
 import corrections as corr
 import manual_edits
 import rules_bridge
@@ -60,7 +61,7 @@ def transaction_detail(rows: pd.DataFrame, title: str = "Transactions",
             "atom_display": "Atom",
             "budget_cat": st.column_config.TextColumn(
                 "Budget", help="The category the Budget tab counts this under; blank means "
-                               "it is not budget spending."),
+                               f"it is not budget spending.\n\n{explain_budget_model()}"),
             "budget_note": st.column_config.TextColumn("Note"),
             "display_amount": st.column_config.NumberColumn(
                 "Amount", help="A negative amount is a refund."),

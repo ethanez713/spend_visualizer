@@ -98,6 +98,24 @@ def _str_map(entries) -> dict[str, str]:
     return {str(k): str(v) for k, v in entries.items() if str(v).strip()}
 
 
+def explain(model: BudgetModel | None = None) -> str:
+    """The model's rules as Markdown, in the order ``annotate`` applies them."""
+    m = model or load_budget_model()
+    pinned = sum(len(phrases) for _, phrases in m.pinned)
+    return "\n".join([
+        "**How the budget model picks a category** (first match wins):",
+        "1. Your budget edits beat every rule.",
+        f"2. {len(m.drop_atoms)} dropped codes are never budget spending, whatever the merchant.",
+        f"3. {pinned} pinned merchant phrases set their own category.",
+        f"4. {len(m.atoms)} atom exceptions give one Plaid code its own category.",
+        f"5. {len(m.fold)} folded categories merge into another; every other spending "
+        "category is its own budget category.",
+        "",
+        f"Outside spending, {len(m.transfer_categories)} transfer categories count anyway, and "
+        f"{len(m.decide_atoms)} payment-app codes wait in Review for you to decide.",
+    ])
+
+
 def annotate(df: pd.DataFrame, model: BudgetModel, overrides: dict[str, dict] | None = None) -> pd.DataFrame:
     """``df`` plus the budget columns: ``budget_cat`` (``None`` when the row is not budget
     spending), ``budget_amount`` (its signed amount, 0 when not counted), ``budget_note``,
