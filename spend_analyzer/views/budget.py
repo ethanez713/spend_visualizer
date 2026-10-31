@@ -28,7 +28,7 @@ import state
 import theme
 from budget_table import (apply_offsets, historic_detail, historic_summary, known_categories,
                           monthly_grid, split_projects, yearly_averages)
-from config_io import COMPLETE_MONTHS, MONTHS_WITH_DATA, Budget
+from config_io import COMPLETE_MONTHS, MONTHS_WITH_DATA, Budget, Offset
 from cube import Cube, GroupingSpec
 from periods import CUSTOM, averaging_months, preset_range
 from ledger import load_ledger, monthly_pivot as ledger_monthly_pivot
@@ -54,6 +54,26 @@ def _model_pivot(cube: Cube, spec: GroupingSpec) -> pd.DataFrame:
         return pd.DataFrame()
     return monthly.pivot_table(index="budget_cat", columns="month", values="budget_amount",
                                aggfunc="sum").fillna(0.0)
+
+
+def offset_source_pivot(cube: Cube, spec: GroupingSpec, sources: list[str]) -> pd.DataFrame:
+    """The offset source rows from the archive, with the filters a ledger honours, for a
+    ledger that has no such rows of its own."""
+    person_only = {k: v for k, v in spec.filters.items() if k == "person"}
+    pivot = _model_pivot(cube, replace(spec, filters=person_only))
+    return pivot.loc[pivot.index.intersection(sources)] if not pivot.empty else pivot
+
+
+def add_pivots(a: pd.DataFrame, b: pd.DataFrame) -> pd.DataFrame:
+    return a.add(b, fill_value=0.0).fillna(0.0)
+
+
+def without_sources(pivot: pd.DataFrame, offsets: list[Offset]) -> pd.DataFrame:
+    return pivot.drop(index=[o.source for o in offsets], errors="ignore")
+
+
+def _offset_targets(offsets: list[Offset]) -> str:
+    return " and ".join(dict.fromkeys(target for o in offsets for target in o.spread))
 
 
 def compare_averages(model: pd.DataFrame, ledger: pd.DataFrame, months: list[str],
@@ -186,10 +206,11 @@ def _goals_by_year(budget: Budget, years: list[str]) -> dict[str, dict[str, floa
     return goals
 
 
-def _history(cube: Cube, spec: GroupingSpec, budget: Budget, rows: pd.DataFrame) -> None:
+def _history(cube: Cube, spec: GroupingSpec, budget: Budget, rows: pd.DataFrame,
+             net_offsets: bool) -> None:
     everything = replace(spec, date_from=None, date_to=None)
     full = _add_legacy(_model_pivot(cube, everything), rows, everything)
-    full, _ = apply_offsets(full, budget.offsets)
+    full = apply_offsets(full, budget.offsets)[0] if net_offsets else without_sources(full, budget.offsets)
     full, _ = split_projects(full, budget.projects)
     yearly = yearly_averages(full)
     if yearly.shape[1] < 2:
@@ -226,6 +247,13 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
         "Average over", list(AVERAGING_LABELS), horizontal=True,
         index=list(AVERAGING_LABELS).index(budget.averaging),
         format_func=AVERAGING_LABELS.get, key="budget_averaging")
+    net_offsets = False
+    if budget.offsets:
+        targets = _offset_targets(budget.offsets)
+        net_offsets = st.toggle(f"Net payment-app income against {targets}",
+                                value=budget.offsets_enabled, key="budget_offsets")
+        st.caption(f"Money received through payment apps is spread over {targets}, "
+                   "as the manual Sheet does.")
     imported = _legacy_rows(cube)
     adjusted = pd.DataFrame() if use_ledger else budget_edits.adjustment_rows()
     present = [frame for frame in (imported, adjusted) if not frame.empty]
@@ -247,10 +275,15 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
                        "included, to which only the date and person filters apply.")
         spec = shown
 
-    pivot, missing_offsets = apply_offsets(pivot, budget.offsets)
-    for source in missing_offsets:
-        st.info(f"No “{source}” rows in this period, so it is not netted against "
-                "the categories it offsets.")
+    if net_offsets:
+        if use_ledger:
+            pivot = add_pivots(pivot, offset_source_pivot(cube, spec, [o.source for o in budget.offsets]))
+        pivot, missing_offsets = apply_offsets(pivot, budget.offsets)
+        for source in [] if use_ledger else missing_offsets:
+            st.info(f"No “{source}” rows in this period, so it is not netted against "
+                    "the categories it offsets.")
+    else:
+        pivot = without_sources(pivot, budget.offsets)
     pivot, projects = split_projects(pivot, budget.projects)
 
     if averaging == COMPLETE_MONTHS:
@@ -338,15 +371,18 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
                          height=table_height(len(grid)))
     if not use_ledger:
         _adjustments_panel(cube, spec, known_categories(budget, pivot.index))
-    _history(cube, spec, budget, extras)
+    _history(cube, spec, budget, extras, net_offsets)
     if ledger_present:
-        _compare_sources(cube, original_spec, ledger_csv, window)
+        _compare_sources(cube, original_spec, ledger_csv, window, budget.offsets)
     _trends(pivot, window)
     _export_buttons(indexed, pivot)
 
 
-def _compare_sources(cube: Cube, spec: GroupingSpec, ledger_csv: str, window: int) -> None:
-    model, ledger = _model_pivot(cube, spec), _ledger_pivot(ledger_csv, spec)
+def _compare_sources(cube: Cube, spec: GroupingSpec, ledger_csv: str, window: int,
+                     offsets: list[Offset]) -> None:
+    # The source rows are the archive's in both, so they are never a disagreement.
+    model = without_sources(_model_pivot(cube, spec), offsets)
+    ledger = without_sources(_ledger_pivot(ledger_csv, spec), offsets)
     months = averaging_months(spec.date_from, spec.date_to,
                               sorted(set(model.columns) | set(ledger.columns)))
     with st.expander("Compare the budget model with the converter ledger"):

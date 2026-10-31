@@ -2,7 +2,10 @@
 import pandas as pd
 
 from cube import Cube, GroupingSpec
-from views.budget import LEDGER_SOURCE, MODEL_SOURCE, _model_pivot, compare_averages
+from budget_table import apply_offsets
+from config_io import Budget, Offset, load_budget
+from views.budget import (LEDGER_SOURCE, MODEL_SOURCE, _model_pivot, add_pivots, compare_averages,
+                          offset_source_pivot, without_sources)
 
 
 def _cube(rows):
@@ -137,3 +140,53 @@ def test_given_transfer_rows_when_filtered_then_only_unclassified_excluded_trans
         "budget_edit_id": ["", "", "e1", "", ""]})
 
     assert unclassified_transfers(rows).index.tolist() == [0, 1]
+
+
+OFFSET = Offset("Pay App", {"Dining": 0.5, "Travel": 0.5})
+
+
+def _offset_cube():
+    return _cube([("2026-01-05", "spend", "Dining", "Alice", 100.0),
+                  ("2026-01-06", "spend", "Travel", "Alice", 300.0),
+                  ("2026-01-07", "income", "Pay App", "Alice", -40.0),
+                  ("2026-02-07", "income", "Pay App", "Bob", -60.0)])
+
+
+def test_given_ledger_without_source_rows_when_borrowed_and_offset_then_it_equals_the_model():
+    cube = _offset_cube()
+    model = _model_pivot(cube, _spec())
+    ledger = model.drop(index="Pay App")
+
+    borrowed = add_pivots(ledger, offset_source_pivot(cube, _spec(), ["Pay App"]))
+
+    pd.testing.assert_frame_equal(apply_offsets(borrowed, [OFFSET])[0].sort_index(),
+                                  apply_offsets(model, [OFFSET])[0].sort_index())
+
+
+def test_given_person_and_other_filters_when_source_borrowed_then_only_person_narrows_it():
+    spec = _spec(filters={"person": ["Bob"], "flow": ["spend"], "tier1": ["Dining"]})
+
+    pivot = offset_source_pivot(_offset_cube(), spec, ["Pay App"])
+
+    assert pivot.to_dict("index") == {"Pay App": {"2026-02": -60.0}}
+
+
+def test_given_empty_ledger_when_source_borrowed_then_the_source_rows_remain():
+    borrowed = add_pivots(pd.DataFrame(), offset_source_pivot(_offset_cube(), _spec(), ["Pay App"]))
+
+    assert list(borrowed.index) == ["Pay App"]
+
+
+def test_given_offsets_off_when_filtered_then_the_source_row_leaves_and_absent_is_harmless():
+    pivot = _model_pivot(_offset_cube(), _spec())
+
+    assert "Pay App" not in without_sources(pivot, [OFFSET]).index
+    assert list(without_sources(pivot.drop(index="Pay App"), [OFFSET]).index) == ["Dining", "Travel"]
+
+
+def test_given_yaml_without_or_with_offsets_enabled_when_loaded_then_default_is_true(tmp_path):
+    path = tmp_path / "budget.yaml"
+    path.write_text("goals: {Dining: 1}\n")
+    assert load_budget(path).offsets_enabled is True and Budget().offsets_enabled is True
+    path.write_text("goals: {Dining: 1}\noffsets_enabled: false\n")
+    assert load_budget(path).offsets_enabled is False

@@ -31,6 +31,9 @@ it never edits records — category fixes append INTENTS to the transformer's lo
   applied in the Budget tab only, never to the cube. The Budget tab's `budget_amount`
   is the signed amount of any row that has a `budget_cat`, whatever its flow, which is
   how an edit counts a transfer.
+- Budget offsets apply under either actuals source: the converter ledger has no source
+  rows (it drops transfers), so it borrows them from the archive. Toggled off, the
+  source rows are left out of both.
 - Review sign-offs are `budget_review` intents in the same log (`signoff.py`): each
   records the budget category every row had when confirmed. A row needs review until a
   live sign-off covers it with its current category, so a rule change or re-audit that

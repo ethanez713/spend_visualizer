@@ -125,6 +125,7 @@ class Budget:
     goal_base_year: int | None = None
     goal_inflation: float = 0.0
     offsets: list[Offset] = field(default_factory=list)
+    offsets_enabled: bool = True
     projects: list[Project] = field(default_factory=list)
     averaging: str = COMPLETE_MONTHS
 
@@ -182,6 +183,7 @@ def load_budget(path: str | Path = PERSONAL_CONFIG_DIR / "budget.yaml") -> Budge
                   indexed_goals=indexed,
                   goal_base_year=int(index["base_year"]) if _number(index.get("base_year")) is not None else None,
                   goal_inflation=_number(index.get("inflation")) or 0.0,
-                  offsets=[o for o in offsets if o.spread], projects=projects,
+                  offsets=[o for o in offsets if o.spread],
+                  offsets_enabled=data.get("offsets_enabled") is not False, projects=projects,
                   averaging=averaging if averaging in (COMPLETE_MONTHS, MONTHS_WITH_DATA)
                   else COMPLETE_MONTHS)

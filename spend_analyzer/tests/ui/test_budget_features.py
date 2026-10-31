@@ -41,6 +41,26 @@ def test_given_projects_configured_when_budget_opens_then_the_panel_and_grid_ren
     assert "Monthly grid" in [e.label for e in at.expander]
 
 
+def test_given_offset_toggle_off_when_budget_rerenders_in_either_source_then_source_row_is_gone(
+        monkeypatch, tmp_path, boot_app):
+    _no_history(monkeypatch, tmp_path)
+    ledger = tmp_path / "ledger.csv"
+    ledger.write_text("Source,Date,Description,Category,Debit,Credit,Debit Less Credit,Account,Note\n"
+                      "A,01/05/2026,Tacos,Dining Out,$10.00,,$10.00,,\n")
+    budget = Budget(goals={"Dining Out": 1.0}, ledger_csv=str(ledger),
+                    offsets=[Offset("Venmo - Income", {"Dining Out": 0.5, "Travel": 0.5})])
+    monkeypatch.setattr(config_io, "load_budget", lambda *a, **k: budget)
+
+    at = boot_app("Budget")
+    for source in ("Converter ledger", "Budget model"):
+        widget(at.radio, key="budget_source").set_value(source).run()
+        assert not at.exception
+        widget(at.toggle, key="budget_offsets").set_value(False).run()
+        assert not at.exception and not any("Venmo - Income" in repr(d.value) for d in at.dataframe)
+        widget(at.toggle, key="budget_offsets").set_value(True).run()
+        assert not at.exception
+
+
 def test_given_months_with_data_configured_when_budget_opens_then_that_mode_is_selected(
         monkeypatch, tmp_path, boot_app):
     _configured(monkeypatch, tmp_path)
