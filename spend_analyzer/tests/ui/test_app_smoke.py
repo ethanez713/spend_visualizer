@@ -45,3 +45,10 @@ def test_given_drilldown_and_budget_when_opened_then_averages_name_their_period(
                for d in drill.dataframe for c in d.value.columns)
     budget = boot_app("Budget")
     assert any(re.fullmatch(r"\d{4} avg", str(c)) for d in budget.dataframe for c in d.value.columns)
+
+
+def test_given_two_annualized_figures_when_opened_then_each_says_what_it_measures(boot_app):
+    drill = boot_app("Drilldown")
+    assert any("Every spending category" in (m.proto.help or "") for m in drill.metric)
+    budget = boot_app("Budget")
+    assert any("Budget categories only" in c.value for c in budget.caption)

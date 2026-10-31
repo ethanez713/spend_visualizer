@@ -76,7 +76,8 @@ def render(cube: Cube, spec: GroupingSpec, earliest: date) -> None:
     d = st.columns(4)
     d[0].metric("Total", money(visible_total))
     d[1].metric("Annualized", money(float(monthly.mean()) * 12),
-                help=f"Average of the {len(months)} complete months in the period, times 12.")
+                help=f"Average of the {len(months)} complete months in the period, times 12. "
+                     "Every spending category, from the Plaid categories.")
     d[2].metric("Less Mortgage", money(visible_total - mortgage))
     d[3].metric("Less Mortgage & Home", money(visible_total - mortgage - house))
 

@@ -355,6 +355,7 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
     with right:
         st.dataframe(style_table(derived.set_index(""), money_cols=["Actual", "Goal"]),
                      width="stretch")
+        st.caption("Budget categories only; projects and offsets as configured.")
         if table["_hidden"].any():
             hidden_names = table.loc[table["_hidden"], "Category"].tolist()
             st.caption(f"Hidden from totals: {', '.join(hidden_names)}")
