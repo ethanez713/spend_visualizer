@@ -14,9 +14,6 @@ it never edits records — category fixes append INTENTS to the transformer's lo
   are project config (repo); `accounts.yaml` + `budget.yaml` are personal (data root,
   `config_io.PERSONAL_CONFIG_DIR`). `SPEND_ANALYZER_CONFIG_DIR` redirects BOTH for
   tests. Relative `archive_paths` resolve from the data root.
-- Pipeline: ingest (load → dedupe → normalize to CanonicalTransaction) → enrich
-  (taxonomy tags + facets incl. `person` = record `txn_owner`, falling back to
-  accounts.yaml) → cube (rollups). Streamlit caches key on archive mtime/size.
 - The transformer's CODE is imported via `transformer_root` (taxonomy + intent
   validation in `manual_edits.py`; rule tables + match cascade in
   `rules_bridge.py`); its DATA paths come from the data root — don't conflate.

@@ -51,43 +51,21 @@ Everything personal resolves to one external dir (mirrors the monorepo layout):
 `$SPEND_VISUALIZER_DATA` → else first non-comment line of `<repo>/data_root` → else
 `~/finance_data`. The user's data root is a separate PRIVATE git repo.
 
-Resolver implementations (kept deliberately duplicated — components are
-self-contained): `transactions/src/plaid_client.py:_data_root`,
-`plaid_category_transformer/src/paths.py`, `spend_analyzer/config_io.py:data_root`,
-`finance_pipeline/tools/migrate_multiuser.py:_data_root`,
-`finance_pipeline/src/config.py:_data_root`, and an inline snippet in
-`deploy/bin/finance-alert.sh`.
-
-| Data | Path under the data root |
-|---|---|
-| raw Plaid store (source of truth, xz JSONL) | `transactions/data/transactions_raw.jsonl.xz` |
-| durable reconciled store (Drive-synced) | `transactions/data/transactions.jsonl` |
-| sync cursors / overfetch + reconcile state | `transactions/data/*.json(l)` |
-| CSV deliverable | `transactions/transactions.csv` |
-| categorized store + worklist + manual edits | `plaid_category_transformer/data/…` |
-| personal analyzer config (accounts, budget) | `spend_analyzer/config/…` |
-| corrections queue | `spend_analyzer/data/corrections.jsonl` |
-| external budget ledger (optional Budget-tab source) | `spend_analyzer/data/budget_ledger.csv` |
-| pinned browser tabs for Sheet runs (one URL/line, `#` comments) | `pinned_tabs` |
-| what each uploaded Sheet held (converter-owned; drives the incremental export) | `sheet_exports/manifest.jsonl` |
+Each component resolves this itself, deliberately duplicated so components stay
+self-contained: `grep -rn _data_root`, plus `paths.py` in the transformer and an inline
+snippet in `deploy/bin/finance-alert.sh`. A change to the order must reach all of them.
 
 The optional **external converter** (Budget-tab categorization) is located by
 `finance_pipeline/src/config.py:_converter_dir`: `$SPEND_VISUALIZER_CONVERTER`, else
 the first non-comment line of `<data_root>/converter_root`, else None (step skipped).
 A plain-text pointer, not YAML, because finance_pipeline is stdlib-only.
 
-## Components, entry points, tests
+## Conventions
 
-| Component | venv | Entry points | Tests |
-|---|---|---|---|
-| `transactions/` | `./venv` | `app.py --user <name>` (link), `fetch_transactions.py [--user]` (sync) | `./venv/bin/python -m pytest` |
-| `persister/` | `./.venv` | library (`import persister`); `persist.py` CLI | `./.venv/bin/python -m pytest` |
-| `plaid_category_transformer/` | `./.venv` | `categorize.py [--no-drive --llm --llm-defer --full --review --edit --claude-export --claude-apply]` (local LLM OFF by default — Claude ritual is the reviewer) | `./.venv/bin/python -m pytest` |
-| `spend_analyzer/` | `./venv` | `streamlit run app.py` | `pytest` (unit+UI); browser e2e opt-in: `pytest tests/e2e -m e2e` |
-| `finance_pipeline/` | `./venv` | `./run.py [--no-drive --llm --llm-defer --no-convert --no-ui --no-push-data --no-sheet --sheet-month YYYY-MM]` (bare `./run.py` = the monthly ritual: data push + last complete month's converter Sheet + extra browser tabs); `tools/migrate_multiuser.py` | `./venv/bin/python -m pytest` |
-| `deploy/` | `./.venv` | static server artifacts — units/scripts are user-run only (see its CLAUDE.md) | `./.venv/bin/python -m pytest` |
+Each component has its own venv and tests: from its directory, `pyrun python -m pytest`.
+spend_analyzer's browser e2e is opt-in (`pytest tests/e2e -m e2e`).
 
-Conventions: tests are named `given_<precondition>_when_<action>_then_<result>`
+Tests are named `given_<precondition>_when_<action>_then_<result>`
 (pytest.ini adds `given_*`), except spend_analyzer which uses plain `test_*`.
 Dependencies are pinned `==` in per-component requirements files AND hash-locked
 (`requirements.lock.txt`, installed with `--require-hashes`; regenerate via
@@ -103,14 +81,6 @@ review, follow the project-local `audit-transactions` skill
 `/audit-transactions` rather than auto-running it.
 
 ## Data flow + invariants (don't rediscover these)
-
-```
-Plaid ──sync (cursor/Item)──▶ raw xz store ──persist/reconcile──▶ transactions.jsonl ──▶ Drive
-                                   │                                      │
-                                   └──────────── categorize ──────────────▶ transactions_categorized.jsonl ──▶ Drive
-                                                                                  │
-                                                                       spend_analyzer (read-only UI)
-```
 
 - **Multi-user**: each tokens.json entry carries an `owner` (set at link time by
   `app.py --user`). Every record is stamped `txn_owner` at BOTH fetch boundaries —
@@ -130,22 +100,10 @@ Plaid ──sync (cursor/Item)──▶ raw xz store ──persist/reconcile─�
 - **Plaid is golden, but never deletes**: overfetch adds/overwrites and only FLAGS
   stale rows; reconcile conflicts trigger a bounded repair fetch; unresolved
   conflicts STOP the run before anything is persisted or pushed.
-- **Drive head adoption (categorized store)**: the store has TWO legitimate
-  writers (scheduled server run + occasional desktop Claude audit/review runs),
-  serialized through Drive — every Drive-enabled transformer run STARTS by adopting the
-  remote head: remote-only rows taken, local-only kept, conflicts resolved by
-  **newest `category_audited_at` stamp** (local-ahead work never loses; ties →
-  remote), with BOTH versions of every conflict appended to
-  `…/data/adopt_conflicts.jsonl` (git-pushed daily — nothing silently
-  discarded). The stamp moves only on real audit-content changes (see the
-  transformer CLAUDE.md's stamp invariant). The manual-edits intent log is
-  union-merged in the same step (a stale local log would otherwise revert the
-  other machine's corrections at replay). Pull failure stops the run;
-  `--force-push` skips adoption (local authoritative). Simultaneous runs on both
-  machines race the final push — avoid (self-converges, but wastes LLM work).
-  persister's DriveSync is append-only by construction (revisions, never delete)
-  with file-id memory in `.secrets/drive_state.json` — local path moves don't
-  affect Drive identity.
+- **Drive head adoption (categorized store)**: the store has TWO legitimate writers,
+  serialized through Drive, and every Drive-enabled transformer run adopts the remote head
+  first (rules in the transformer's CLAUDE.md). Simultaneous runs on both machines race the
+  final push, so avoid them. persister's DriveSync is append-only by construction.
 - **One GitHub pusher**: when a server runs the daily job, the server is the SOLE
   pusher of the finance_data repo; other machines `git pull` only and must run
   `run.py --no-push-data` (the push is on by default). Cross-machine data merging
@@ -164,12 +122,6 @@ Plaid ──sync (cursor/Item)──▶ raw xz store ──persist/reconcile─�
 
 ## Gotchas
 
-- The analyzer imports the transformer's code via `transformer_root` (app.yaml) for
-  intent validation/taxonomy — but the transformer's DATA paths come from the data
-  root. Don't conflate them.
-- `spend_analyzer/tests/ui` + `tests/e2e` run the REAL app over the REAL archive
-  read-only; write paths are monkeypatched to tmp and `tests/_liveguard.py` fails
-  any test that mutates live files. Preserve both patterns when adding UI tests.
 - Joint accounts linked by both users double-count (two Plaid Items, different
   transaction_ids) — documented limitation; each shared account is linked by
   exactly one user.
