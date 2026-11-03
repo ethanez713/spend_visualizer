@@ -729,7 +729,8 @@ def edit_run(*, out_jsonl: str, out_csv: str, flags_csv: str, log_path: str,
                                  conflict_log=_conflict_log_path(out_jsonl))
 
     n_new = run_edit_session(store, edits_path)
-    summary = apply_manual_edits(store, load_index(edits_path))
+    index = load_index(edits_path)
+    summary = apply_manual_edits(store, index)
 
     if not (n_new or summary["applied"] or summary["reverted"] or summary["dismissed"]):
         print("No changes — store left untouched.")
@@ -738,7 +739,7 @@ def edit_run(*, out_jsonl: str, out_csv: str, flags_csv: str, log_path: str,
     persister.derive_csv(store, out_csv, COLUMNS, row_fn=row_fn)
     n_flagged = write_flags_file(flags_csv, store)
     write_category_log(log_path, summary["applied"])
-    print(f"  Replayed {len(index)} intent(s): applied {len(summary['applied'])}, "  # type: ignore[name-defined]  # noqa: F821
+    print(f"  Replayed {len(index)} intent(s): applied {len(summary['applied'])}, "
           f"already satisfied {summary['already']}, reverted {len(summary['reverted'])}.")
     print(f"  Updated {out_jsonl}, {out_csv}, and {flags_csv} "
           f"({n_flagged} row(s) pending review).")

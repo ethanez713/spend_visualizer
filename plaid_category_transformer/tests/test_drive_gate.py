@@ -377,3 +377,34 @@ def given_remote_ahead_when_review_then_head_adopted_and_persisted(review_world)
     saved = persister.load_jsonl(review_world["out_jsonl"])
     assert "ghost" in saved
     assert tr.DRIVE_JSONL_NAME in FakePushDriveSync.pushes
+
+
+@pytest.fixture
+def edit_world(review_world, monkeypatch, tmp_path):
+    """The review store, plus a stubbed edit session that appends one intent."""
+    import src.manual as manual_mod
+    edits = tmp_path / "manual_edits.jsonl"
+
+    def session(store, edits_path):
+        manual_mod.append_intent(edits_path, {"id": "e1", "created_at": "2026-01-01T00:00:00",
+                                              "action": "revoke", "revokes": "none", "source": "test"})
+        return 1
+
+    monkeypatch.setattr(manual_mod, "run_edit_session", session)
+    return dict(out_jsonl=review_world["out_jsonl"], out_csv=review_world["out_csv"],
+                flags_csv=review_world["flags_csv"], log_path=str(tmp_path / "log.jsonl"),
+                edits_path=str(edits))
+
+
+def given_an_edit_session_with_changes_when_drive_on_then_it_finishes_and_pushes(edit_world):
+    tr.edit_run(**edit_world, do_drive=True)
+
+    assert FakePushDriveSync.pushes == [tr.DRIVE_JSONL_NAME, "transactions_categorized.csv",
+                                        "flagged_for_review.csv", "manual_edits.jsonl"]
+
+
+def given_an_edit_session_when_no_drive_then_it_finishes_and_pushes_nothing(edit_world, capsys):
+    tr.edit_run(**edit_world, do_drive=False)
+
+    assert FakePushDriveSync.pushes == []
+    assert "Replayed 0 intent(s)" in capsys.readouterr().out
