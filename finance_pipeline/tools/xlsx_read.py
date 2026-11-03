@@ -39,12 +39,15 @@ def _sheet_paths(book: zipfile.ZipFile) -> dict[str, str]:
     """Sheet name -> part path, resolved through the workbook relationships (the
     numbering of ``sheetN.xml`` follows creation order, not tab order)."""
     rels = ET.fromstring(book.read("xl/_rels/workbook.xml.rels"))
-    targets = {r.get("Id"): r.get("Target") for r in rels.findall(_PKG_REL + "Relationship")}
+    targets = {r.get("Id", ""): r.get("Target", "") for r in rels.findall(_PKG_REL + "Relationship")}
     workbook = ET.fromstring(book.read("xl/workbook.xml"))
+    listed = workbook.find(_MAIN + "sheets")
+    if listed is None:
+        raise ValueError("the workbook lists no sheets")
     paths = {}
-    for sheet in workbook.find(_MAIN + "sheets"):
-        target = targets[sheet.get(_DOC_REL + "id")]
-        paths[sheet.get("name")] = target.lstrip("/") if target.startswith("/") else "xl/" + target
+    for sheet in listed:
+        target = targets[sheet.get(_DOC_REL + "id", "")]
+        paths[sheet.get("name", "")] = target.lstrip("/") if target.startswith("/") else "xl/" + target
     return paths
 
 
@@ -82,7 +85,10 @@ def read_sheet(path, name: str) -> dict[int, dict[str, object]]:
         value = _cell_value(cell, strings)
         if value is None:
             continue
-        column, row = _CELL_REF.fullmatch(cell.get("r")).groups()
+        ref = _CELL_REF.fullmatch(cell.get("r", ""))
+        if ref is None:
+            raise ValueError(f"cell with an unreadable reference {cell.get('r')!r}")
+        column, row = ref.groups()
         rows.setdefault(int(row), {})[column] = value
     return rows
 

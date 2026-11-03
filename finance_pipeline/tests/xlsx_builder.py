@@ -88,5 +88,5 @@ def make_xlsx(path, sheets: dict[str, list[list]], *, reverse_part_order: bool =
         z.writestr("xl/sharedStrings.xml",
                    '<?xml version="1.0"?><sst xmlns="http://schemas.openxmlformats.org/'
                    f'spreadsheetml/2006/main">{"".join(items)}</sst>')
-        for i, n in enumerate(names, 1):
+        for i in range(1, len(names) + 1):
             z.writestr(f"xl/worksheets/sheet{numbering[i - 1]}.xml", parts[i])

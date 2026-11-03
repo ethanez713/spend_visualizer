@@ -103,7 +103,8 @@ def compare(sheet: list[Row], ledger: list[Row], warnings: int = 0) -> Compariso
 
 
 def category_totals(c: Comparison) -> dict[str, tuple[float, float]]:
-    sheet, ledger = Counter(), Counter()
+    sheet: defaultdict[str, float] = defaultdict(float)
+    ledger: defaultdict[str, float] = defaultdict(float)
     for r in c.sheet_rows:
         sheet[r.category] += r.net
     for r in c.ledger_rows:
@@ -141,7 +142,8 @@ def rule_suggestions(c: Comparison, min_rows: int = 3) -> tuple[list[dict], list
         key = merchant_key(l.desc)
         if len(key) >= 4 and s.desc.count("*") < 4 and l.desc.count("*") < 4:
             by_merchant[key].append((s, l))
-    candidates, contested = [], []
+    candidates: list[dict] = []
+    contested: list[dict] = []
     for key, rows in by_merchant.items():
         moved = [(s, l) for s, l in rows if s.category != l.category]
         if len(moved) < min_rows:
@@ -191,7 +193,8 @@ def complete_months(first: date, last: date) -> list[str]:
 def monthly_averages(rows: list[Row], months: list[str] | None) -> dict[str, float]:
     """Average monthly net per category: over ``months`` when given, else over the months
     the rows themselves occupy (how the sheet divides)."""
-    totals, seen = Counter(), set()
+    totals: defaultdict[str, float] = defaultdict(float)
+    seen: set[str] = set()
     for r in rows:
         month = r.date.strftime("%Y-%m")
         if months is None or month in months:

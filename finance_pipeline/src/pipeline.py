@@ -215,7 +215,7 @@ def preflight(cfg: Config, args: argparse.Namespace) -> None:
                 "  - --sheet needs a configured converter: set "
                 "$SPEND_VISUALIZER_CONVERTER or <data_root>/converter_root"
             )
-        elif not cfg.converter_python.is_file():
+        elif cfg.converter_python is None or not cfg.converter_python.is_file():
             problems.append(
                 f"  - --sheet: converter venv python missing ({cfg.converter_python}); "
                 "rebuild the converter's .venv"
@@ -272,7 +272,7 @@ def convert_ledger(cfg: Config, args: argparse.Namespace) -> None:
     if args.no_convert or not cfg.converter_dir:
         return
     print("\n━━━ convert (external budget ledger) ━━━")
-    if not cfg.converter_python.is_file():
+    if cfg.converter_python is None or not cfg.converter_python.is_file():
         print(f"  ⚠ converter configured at {cfg.converter_dir} but its venv python "
               f"is missing ({cfg.converter_python}); skipping ledger regen. "
               "Rebuild the converter's .venv, or unset its pointer.")
