@@ -80,9 +80,8 @@ jobs:
           ./.civenv/bin/pip install --require-hashes -r requirements-lint.txt
       - name: Ruff
         run: ./.civenv/bin/ruff check .
-      # plaid_category_transformer, finance_pipeline and spend_analyzer are not type-checked yet (module layout plus untyped pandas/Streamlit code).
       - name: Mypy
         run: |
-          for comp in transactions persister deploy; do
+          for comp in transactions persister plaid_category_transformer finance_pipeline spend_analyzer deploy; do
             (cd "$comp" && ../.civenv/bin/mypy --config-file ../mypy.ini .)
           done
