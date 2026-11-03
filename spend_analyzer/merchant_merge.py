@@ -42,7 +42,8 @@ def merchants(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def kept_first(a: dict, b: dict) -> tuple[dict, dict]:
-    return tuple(sorted((a, b), key=lambda m: (-m["visits"], m["merchant_id"])))
+    first, second = sorted((a, b), key=lambda m: (-m["visits"], m["merchant_id"]))
+    return first, second
 
 
 def candidates(df: pd.DataFrame, decided: set[frozenset[str]]) -> list[dict]:

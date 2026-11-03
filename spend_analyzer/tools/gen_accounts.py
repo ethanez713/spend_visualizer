@@ -93,7 +93,7 @@ def main() -> int:
     ]
     identity = collector_identity()
     for acct_id, n in counts.most_common():
-        ident = {**_PLACEHOLDER, **identity.get(acct_id, {})}
+        ident = {**_PLACEHOLDER, **identity.get(acct_id or "", {})}
         lines.append(f"  {acct_id}:")
         lines.append(f"    person: {owners.get(acct_id, 'Unknown')}")
         lines.append(f"    name: {_yaml_str(ident['name'])}")

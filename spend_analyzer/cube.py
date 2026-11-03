@@ -54,6 +54,12 @@ class GroupingSpec:
     limit: Optional[int] = None
     include_hidden: bool = False    # if False, rows flagged hidden are excluded
 
+    def bounds(self) -> tuple[str, str]:
+        """The inclusive date range, for the views that cannot work without one."""
+        if self.date_from is None or self.date_to is None:
+            raise ValueError("this view needs a bounded date range")
+        return self.date_from, self.date_to
+
 
 class Cube:
     def __init__(self, df: pd.DataFrame):

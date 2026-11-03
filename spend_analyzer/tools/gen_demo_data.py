@@ -26,7 +26,7 @@ from pathlib import Path
 import yaml
 
 # (merchant, primary, detailed, lo, hi, channel) — spend is +, income is - (set later).
-MERCHANTS = {
+MERCHANTS: dict[str, list[tuple[str, str, str, float, float, str]]] = {
     "groceries": [
         ("Green Valley Market", "FOOD_AND_DRINK", "FOOD_AND_DRINK_GROCERIES", 28, 145, "in store"),
         ("FreshMart", "FOOD_AND_DRINK", "FOOD_AND_DRINK_GROCERIES", 22, 120, "in store"),

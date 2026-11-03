@@ -70,7 +70,7 @@ def load_ledger(path: str | Path) -> pd.DataFrame:
     spend = _money(df[_NET_COL])
     out = pd.DataFrame(
         {
-            "person": (df[_PERSON_COL] if _PERSON_COL in df.columns else "").astype(str),
+            "person": df[_PERSON_COL].astype(str) if _PERSON_COL in df.columns else "",
             # The day is kept so the date filter can match the cube's precision;
             # the month is what the pivot buckets on.
             "date": dates.dt.strftime("%Y-%m-%d"),

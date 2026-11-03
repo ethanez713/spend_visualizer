@@ -7,13 +7,13 @@ normalize keeps INGEST independent of the taxonomy config.
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 from models import CanonicalTransaction
 
 
 def _g(d: Optional[dict], *keys, default=None):
-    cur = d or {}
+    cur: Any = d or {}
     for k in keys:
         if not isinstance(cur, dict):
             return default

@@ -21,6 +21,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlencode
 
 from tests.e2e import _browser, _server
@@ -108,7 +109,7 @@ _HEIGHT_JS = """
 }
 """
 
-_VIEWS = [
+_VIEWS: list[dict[str, Any]] = [
     {
         "view": "Overview",
         "file": "overview.png",

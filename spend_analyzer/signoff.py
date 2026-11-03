@@ -80,7 +80,8 @@ def states(df: pd.DataFrame, entries: list[dict], parents: dict[str, str],
     scope = in_scope(df, needs_decision)
     rows = df[scope | df["transaction_id"].isin(signed.keys())
               | df["transaction_id"].map(lambda t: parents.get(t) in signed)].copy()
-    state, was = [], []
+    state: list[str] = []
+    was: list[str | None] = []
     for tid, category, edit_id in zip(rows["transaction_id"], rows["budget_cat"],
                                       rows["budget_edit_id"]):
         hit = signed.get(tid) or signed.get(parents.get(tid, ""))
@@ -114,7 +115,8 @@ def manifest_path() -> Path:
 def sheet_coverage(path: Path) -> tuple[set[str], str | None]:
     """Transaction ids the converter's Sheets have held, and the manifest's floor date
     (rows before it went out in the monthly Sheets that predate the manifest)."""
-    ids, floor = set(), None
+    ids: set[str] = set()
+    floor: str | None = None
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except OSError:

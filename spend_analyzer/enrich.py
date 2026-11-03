@@ -158,7 +158,7 @@ def enrich(
     records: list[dict] = []
 
     for t in txns:
-        acct = accounts.get(t.account_id, {})
+        acct = accounts.get(t.account_id or "", {})
         if acct.get("include") is False:
             continue
 

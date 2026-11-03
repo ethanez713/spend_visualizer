@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Any
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -21,7 +22,7 @@ _PARTIAL_OPACITY = 0.45
 def render(cube: Cube, spec: GroupingSpec, earliest: date, anchor: date) -> None:
     # Income and spending are the two halves of this view, so Flow is ignored.
     filters = {k: v for k, v in spec.filters.items() if k != "flow"}
-    base = dict(filters=filters, date_from=spec.date_from, date_to=spec.date_to)
+    base: dict[str, Any] = dict(filters=filters, date_from=spec.date_from, date_to=spec.date_to)
     c1, c2 = st.columns([3, 2])
     view = c1.radio("View", ["Over time", "Where it went"], horizontal=True, key="cash_view")
     timeframe = "Month"

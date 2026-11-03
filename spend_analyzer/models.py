@@ -13,7 +13,7 @@ from typing import Any, Optional
 @dataclass
 class CanonicalTransaction:
     transaction_id: str
-    account_id: str
+    account_id: Optional[str]
     institution: Optional[str] = None
     owner: Optional[str] = None              # who the linked Item belongs to (txn_owner)
 

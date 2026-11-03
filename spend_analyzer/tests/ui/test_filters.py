@@ -1,7 +1,7 @@
 """Sidebar filters + granularity actually reshape the views (and never crash)."""
 from datetime import date, timedelta
 
-from tests.ui._harness import metric, money_to_f, spend_table, texts, widget
+from tests.ui._harness import metric, money_to_f, spend_table, widget
 
 
 def test_given_merchant_granularity_when_selected_then_table_groups_by_merchant(at):

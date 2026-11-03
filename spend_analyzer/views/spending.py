@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import date
+from typing import Any
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -186,7 +187,7 @@ def _clear_filter(key: str, empty) -> None:
 
 def _showing(root: list, narrowing: dict) -> None:
     """The narrowing in force, each part with its own ×."""
-    chips = []
+    chips: list[tuple[str, str, Any]] = []
     period = st.session_state.get(PERIOD_KEY)
     if period:
         chips.append((f"Period: {period[2]}", PERIOD_KEY, None))
@@ -478,7 +479,7 @@ def _build_hierarchy_fig(vis, levels, root, treemap: bool):
     # The necessity ring has two values, which would paint the whole wheel in two
     # colours; hue follows the category ring beneath it and necessity stays neutral.
     hue_depth = 2 if levels[0] == "tier0" and len(levels) > 1 else 1
-    top = sorted((k for k in totals if len(k) == hue_depth), key=totals.get, reverse=True)
+    top = sorted((k for k in totals if len(k) == hue_depth), key=lambda k: totals[k], reverse=True)
     cmap = theme.series_colors(top)
     for key, val in totals.items():
         ids.append("/".join(map(str, key)))

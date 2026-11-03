@@ -152,7 +152,7 @@ def _reaching_legacy(spec: GroupingSpec, rows: pd.DataFrame) -> GroupingSpec:
     preset = st.session_state.get("period_preset")
     if rows.empty or preset in (None, CUSTOM):
         return spec
-    start, _ = preset_range(preset, date.fromisoformat(spec.date_to),
+    start, _ = preset_range(preset, date.fromisoformat(spec.bounds()[1]),
                             date.fromisoformat(rows["date"].min()))
     return replace(spec, date_from=str(start))
 
@@ -185,7 +185,7 @@ def _adjustments_panel(cube: Cube, spec: GroupingSpec, categories: list[str]) ->
                 st.rerun()
         with st.form("budget_adjustment", clear_on_submit=True):
             c1, c2, c3 = st.columns([1, 3, 2])
-            day = c1.date_input("Date", value=date.fromisoformat(spec.date_to), key="adjust_date")
+            day = c1.date_input("Date", value=date.fromisoformat(spec.bounds()[1]), key="adjust_date")
             description = c2.text_input("Description", key="adjust_description")
             category = c3.selectbox("Budget category", categories, key="adjust_category")
             c4, c5, c6 = st.columns([1, 1, 3])
@@ -266,7 +266,7 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
     adjusted = pd.DataFrame() if use_ledger else budget_edits.adjustment_rows()
     present = [frame for frame in (imported, adjusted) if not frame.empty]
     extras = pd.concat(present, ignore_index=True) if present else pd.DataFrame()
-    if use_ledger:
+    if use_ledger and ledger_csv:
         pivot = _ledger_pivot(ledger_csv, spec)
         st.caption(f"YTD average and trailing {window}-month running average vs monthly "
                    "goal. Actuals from the external categorized ledger — only the date "
@@ -295,7 +295,7 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
     pivot, projects = split_projects(pivot, budget.projects)
 
     if averaging == COMPLETE_MONTHS:
-        months = averaging_months(spec.date_from, spec.date_to, list(pivot.columns))
+        months = averaging_months(*spec.bounds(), list(pivot.columns))
         st.caption(f"Averages are over the {len(months)} complete months in the period; a "
                    "month the period only clips is left out.")
     else:
@@ -305,7 +305,7 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
     averaged = pivot.reindex(columns=months, fill_value=0.0) if not pivot.empty else pivot
     avg = _running_avg(averaged, window)
     ytd = _ytd_avg(averaged)
-    year = int(spec.date_to[:4])
+    year = int(spec.bounds()[1][:4])
     avg_col = f"{window}mo Avg"
     year_col = f"{max([m[:4] for m in averaged.columns], default=year)} avg"
     cats = sorted(set(avg.index) | set(budget.goal_categories()))
@@ -393,7 +393,7 @@ def render(cube: Cube, spec: GroupingSpec, budget: Budget, window: int) -> None:
     if not use_ledger:
         _adjustments_panel(cube, spec, known_categories(budget, pivot.index))
     _history(cube, spec, budget, extras, net_offsets)
-    if ledger_present:
+    if ledger_present and ledger_csv:
         _compare_sources(cube, original_spec, ledger_csv, window, budget.offsets)
     _trends(pivot, window)
     _export_buttons(indexed, pivot)
@@ -404,8 +404,7 @@ def _compare_sources(cube: Cube, spec: GroupingSpec, ledger_csv: str, window: in
     # The source rows are the archive's in both, so they are never a disagreement.
     model = without_sources(_model_pivot(cube, spec), offsets)
     ledger = without_sources(_ledger_pivot(ledger_csv, spec), offsets)
-    months = averaging_months(spec.date_from, spec.date_to,
-                              sorted(set(model.columns) | set(ledger.columns)))
+    months = averaging_months(*spec.bounds(), sorted(set(model.columns) | set(ledger.columns)))
     with st.expander("Compare the budget model with the converter ledger"):
         diff = compare_averages(model, ledger, months, window)
         if diff.empty:

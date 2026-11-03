@@ -31,7 +31,7 @@ def render(cube: Cube, spec: GroupingSpec, earliest: date, anchor: date, todo: l
     if rows.empty:
         st.info("Nothing matches the current filters.")
         return
-    current = (date.fromisoformat(spec.date_from), date.fromisoformat(spec.date_to))
+    current = tuple(date.fromisoformat(d) for d in spec.bounds())
     previous = previous_period(*current)
     has_previous = previous[0] >= month_start(earliest)
 

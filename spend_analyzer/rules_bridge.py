@@ -83,11 +83,11 @@ def tables_sig() -> tuple:
             sig.append((str(p), s.st_mtime if s else 0.0, s.st_size if s else 0))
     except Exception:  # noqa: BLE001 — a broken config just yields a cold cache key
         sig.append(("transformer", 0.0, 0))
-    for p in load_app_config().resolved_archive_paths:
+    for archive in load_app_config().resolved_archive_paths:
         try:
-            sig.append(stat_source(p).cache_key)
+            sig.append(stat_source(archive).cache_key)
         except FileNotFoundError:
-            sig.append((p, 0.0, 0))
+            sig.append((archive, 0.0, 0))
     return tuple(sig)
 
 
@@ -247,6 +247,8 @@ def converter_rules() -> dict | None:
         return None
     try:
         spec = importlib.util.spec_from_file_location("_sheet_converter_config", cfg)
+        if spec is None or spec.loader is None:
+            return None
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
     except Exception:  # noqa: BLE001 — optional feature, never take the app down
