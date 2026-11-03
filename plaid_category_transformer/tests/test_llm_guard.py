@@ -10,7 +10,7 @@ from src.llm import CategoryLLM
 
 def _llm_raising(exc: BaseException) -> CategoryLLM:
     llm = CategoryLLM()
-    llm._categorize_inner = lambda items: (_ for _ in ()).throw(exc)
+    llm._categorize_inner = lambda items: (_ for _ in ()).throw(exc)  # type: ignore[method-assign]
     return llm
 
 

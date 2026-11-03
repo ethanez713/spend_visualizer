@@ -69,7 +69,7 @@ def mine(entries: list[dict], *, min_count: int = 2) -> dict:
         if snap.get("before_step"):  # a pipeline stage authored the overridden value
             demote[f"{snap['before_step']}: {snap.get('before_reason', '')}"] += 1
 
-    scorecard = Counter()
+    scorecard: Counter[str] = Counter()
     for it in intents:
         snap = it.get("snapshot") or {}
         pend = (snap.get("review_pending_primary"), snap.get("review_pending_detailed"))

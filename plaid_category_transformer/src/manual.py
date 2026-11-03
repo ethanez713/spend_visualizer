@@ -68,7 +68,7 @@ MIN_PHRASE_CHARS = 4
 _DESCRIPTION_FIELDS = ("name", "original_description", "merchant_name")
 
 
-def normalize_phrase(text: str) -> str:
+def normalize_phrase(text: str | None) -> str:
     """A description phrase in the form it is matched in (see ``normalize_merchant``)."""
     return normalize_merchant(text or "")
 
@@ -348,10 +348,10 @@ class ManualIndex:
     def dismisses(self, record: dict) -> bool:
         """Whether the row's pending suggestion is one the human already rejected."""
         pair = (record.get("category_review_primary"), record.get("category_review_detailed"))
-        return pair in self.dismissed.get(record.get("transaction_id"), ())
+        return pair in self.dismissed.get(record.get("transaction_id") or "", ())
 
     def match(self, record: dict) -> dict | None:
-        it = self.by_txn.get(record.get("transaction_id"))
+        it = self.by_txn.get(record.get("transaction_id") or "")
         if it is not None:
             return it
         candidates: list[tuple[int, dict]] = []

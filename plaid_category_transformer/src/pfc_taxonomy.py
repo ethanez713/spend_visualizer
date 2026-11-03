@@ -64,12 +64,12 @@ PRIMARY, DETAILED, GLOSS = _load()
 ALL_DETAILED = {d for ds in DETAILED.values() for d in ds}
 
 
-def is_valid(primary: str, detailed: str) -> bool:
+def is_valid(primary: str | None, detailed: str | None) -> bool:
     """True iff ``primary`` is a PFC primary and ``detailed`` belongs to that primary."""
     return primary in DETAILED and detailed in DETAILED[primary]
 
 
-def primary_other(primary: str) -> str | None:
+def primary_other(primary: str | None) -> str | None:
     """The catch-all 'OTHER' detailed for a primary (every primary has exactly one).
 
     Used to salvage an LLM decision whose primary is valid but whose detailed isn't in

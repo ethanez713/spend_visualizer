@@ -622,7 +622,8 @@ def run(*, input_path: str, out_jsonl: str, out_csv: str, flags_csv: str, log_pa
 
     print(f"  Audited {n_selected} row(s); auto-applied {n_auto}; "
           f"flagged {len(flags)} new this run.")
-    if manual_summary is not None and (len(manual_index) or manual_summary["reverted"]):
+    if (manual_index is not None and manual_summary is not None
+            and (len(manual_index) or manual_summary["reverted"])):
         ms = manual_summary
         print(f"  Manual edits: {len(manual_index)} intent(s) → applied "
               f"{len(ms['applied'])}, already satisfied {ms['already']}, reverted "
@@ -737,7 +738,7 @@ def edit_run(*, out_jsonl: str, out_csv: str, flags_csv: str, log_path: str,
     persister.derive_csv(store, out_csv, COLUMNS, row_fn=row_fn)
     n_flagged = write_flags_file(flags_csv, store)
     write_category_log(log_path, summary["applied"])
-    print(f"  Replayed {len(index)} intent(s): applied {len(summary['applied'])}, "  # noqa: F821
+    print(f"  Replayed {len(index)} intent(s): applied {len(summary['applied'])}, "  # type: ignore[name-defined]  # noqa: F821
           f"already satisfied {summary['already']}, reverted {len(summary['reverted'])}.")
     print(f"  Updated {out_jsonl}, {out_csv}, and {flags_csv} "
           f"({n_flagged} row(s) pending review).")

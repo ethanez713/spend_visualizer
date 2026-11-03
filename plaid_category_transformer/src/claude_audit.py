@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 from datetime import datetime, timezone
+from typing import Any
 
 from .config import INFLOW_PRIMARIES
 from .pfc_taxonomy import is_valid, primary_other
@@ -100,17 +101,17 @@ def apply_verdicts(store: dict[str, dict], verdicts: list[dict]) -> dict:
     UNSTAMPED in ``invalid`` so it can be corrected and retried. A verdict for a row not in
     the store is reported in ``unknown`` (also unstamped).
     """
-    summary = {"flagged": 0, "ok": 0, "invalid": [], "unknown": [], "log": []}
+    summary: dict[str, Any] = {"flagged": 0, "ok": 0, "invalid": [], "unknown": [], "log": []}
     for v in verdicts:
         tid = v.get("transaction_id")
-        rec = store.get(tid)
+        rec = store.get(tid) if tid is not None else None
         if rec is None:
             summary["unknown"].append(tid)
             continue
         verdict = str(v.get("verdict") or "").lower()
 
         if verdict == "flag":
-            primary, detailed = v.get("primary"), v.get("detailed")
+            primary, detailed = v.get("primary") or "", v.get("detailed") or ""
             if not is_valid(primary, detailed):
                 other = primary_other(primary)
                 if other is None:            # unknown primary → leave it for correction

@@ -21,6 +21,7 @@ import json
 import os
 import sys
 from datetime import datetime
+from typing import Any
 
 from .pfc_taxonomy import DETAILED, PRIMARY, is_valid
 from .rules import MerchantMemory
@@ -42,6 +43,8 @@ def accept_flag(record: dict, memory: MerchantMemory | None = None) -> bool:
     reason = record.get("category_review_reason") or ""
     conf = record.get("category_review_confidence") or ""
     source = record.get("category_review_source") or "llm"
+    if not (primary and detailed):
+        return False
     applied = set_provenance(record, primary, detailed, "review",
                              f"accepted {source}: {reason}".strip(), conf)
     clear_review_flag(record)
@@ -126,7 +129,7 @@ def run_review(store: dict[str, dict], memory: MerchantMemory | None = None, *,
     block). ``input_fn``/``out`` are injectable for tests.
     """
     flags = flagged_rows(store)
-    summary = {"accepted": 0, "rejected": 0, "repicked": 0, "skipped": 0, "log": []}
+    summary: dict[str, Any] = {"accepted": 0, "rejected": 0, "repicked": 0, "skipped": 0, "log": []}
     if not flags:
         out("No flagged rows to review.")
         return summary

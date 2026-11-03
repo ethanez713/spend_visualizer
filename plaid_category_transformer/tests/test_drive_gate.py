@@ -20,7 +20,7 @@ from src.manual import ManualIndex, apply_manual_edits, load_intents, resolve_in
 
 class FakeDriveSync:
     """Returns canned per-file remote bytes from pull(); records construction args."""
-    remote_by_name = None
+    remote_by_name: dict[str, bytes] = {}
     instances = None
 
     def __init__(self, file_name, folder_name="transactions_archive", secrets_dir=None):
