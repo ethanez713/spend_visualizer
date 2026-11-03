@@ -6,7 +6,7 @@ the class of bug previously only caught by opening the app by hand.
 import pytest
 from streamlit.testing.v1 import AppTest
 
-from tests.ui._harness import widget, APP, VIEWS, go, metric, metrics, money_to_f
+from tests.ui._harness import widget, APP, VIEWS, go, metric, metrics, money_to_f, require_archive
 
 
 
@@ -66,6 +66,7 @@ def test_given_a_month_in_progress_when_cash_flow_opens_then_it_is_labelled_part
 
 @pytest.mark.parametrize("old, caption", [("Drilldown", "All transactions"), ("Transactions", "All transactions")])
 def test_given_an_old_view_link_when_opened_then_it_lands_on_the_page_that_replaced_it(old, caption):
+    require_archive()
     at = AppTest.from_file(APP, default_timeout=60)
     at.query_params["view"] = old
     at.run()

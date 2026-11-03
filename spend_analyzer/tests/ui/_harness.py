@@ -31,14 +31,18 @@ def go(at: AppTest, view: str) -> AppTest:
     return at
 
 
-def boot(view: str = "Spending") -> AppTest:
-    """Run app.py against the real archive and open `view`; fail on any uncaught
-    exception."""
+def require_archive() -> None:
     from config_io import load_app_config
 
     archives = load_app_config().resolved_archive_paths
     if not all(Path(p).exists() for p in archives):
         pytest.skip("real transaction archive not present")
+
+
+def boot(view: str = "Spending") -> AppTest:
+    """Run app.py against the real archive and open `view`; fail on any uncaught
+    exception."""
+    require_archive()
     at = AppTest.from_file(APP, default_timeout=60)
     at.run()
     assert not at.exception, [str(e.value) for e in at.exception]
