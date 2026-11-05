@@ -136,9 +136,10 @@ review, follow the project-local `audit-transactions` skill
   would recurse into run.py.
 - **Incremental Sheet (step 2c, on by default when a converter is configured;
   `--no-sheet` skips it)**: a second converter invocation with upload ON creates
-  a new Google Sheet with everything earlier Sheets don't hold, up to today, pending
-  rows included; its URL (via the converter's `--url-file`) plus
-  `<data_root>/pinned_tabs` URLs open as extra browser tabs after the UI.
+  a new Google Sheet with every settled row earlier Sheets don't hold, up to today
+  (pending rows wait to settle), ending in a hidden `ID` column; its URL (via the
+  converter's `--url-file`) plus `<data_root>/pinned_tabs` URLs open as extra
+  browser tabs after the UI.
   Non-fatal, runs outside the pipeline lock. Same live-run authorization rules as
   the rest of `run.py` (golden rule 1). The converter owns the bookkeeping (what each
   Sheet held, pending-row reconciliation, warning rows) in

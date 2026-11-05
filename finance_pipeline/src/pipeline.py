@@ -18,8 +18,8 @@ venv from its own repo root, stopping at the first non-zero exit:
      NON-fatal: it derives a view, never touches the source stores.
   2c. (``--sheet``, on by default when a converter is configured) the converter
      again, in its incremental Sheet mode: it uploads a new Google Sheet with
-     everything earlier Sheets don't hold yet (pending rows included, and warning
-     rows for earlier pending rows that changed) — the converter's ``sheet_state``
+     the settled rows earlier Sheets don't hold yet (plus warning rows for pending
+     rows an earlier Sheet holds that changed) — the converter's ``sheet_state``
      owns that bookkeeping. NON-fatal; the Sheet URL is captured via the converter's
      ``--url-file`` (absent when nothing was new) and opened as an extra browser tab,
      along with any URLs pinned in ``<data_root>/pinned_tabs`` (e.g. the master

@@ -45,8 +45,8 @@ two machines legitimately write it — see the transformer's CLAUDE.md).
   and opens as an extra browser tab together with `<data_root>/pinned_tabs` URLs.
   Invocation is one-directional (pipeline → converter): the converter's refresh.py
   no longer fetches, so never re-add a fetch flag to its invocations.
-  The orchestrator passes the converter no window: what to export (everything earlier
-  Sheets don't hold, pending rows and their reconciliation included) is the
-  converter's `sheet_state` module's decision, tracked in
+  The orchestrator passes the converter no window: what to export (the settled rows
+  earlier Sheets don't hold, plus the reconciliation of pending rows they already hold)
+  is the converter's `sheet_state` module's decision, tracked in
   `<data_root>/sheet_exports/manifest.jsonl`. Don't re-add window flags or pending
   handling here.

@@ -115,10 +115,11 @@ tab reads when `ledger.csv` is set in its `budget.yaml` (see spend_analyzer's RE
 
 With a converter configured, `./run.py` also runs it in its incremental Sheet mode
 (`refresh.py --url-file …`, upload ON): a new Sheet named `plaid_<since>_<until>` with
-everything no earlier Sheet holds, up to today. Pending rows are included and marked;
-when one later settles differently or disappears, the next Sheet carries a warning row
-naming the stale row to delete by hand (the converter's `sheet_state` module explains
-the bookkeeping, kept in `<data_root>/sheet_exports/manifest.jsonl`). Nothing new means
+every settled row no earlier Sheet holds, up to today. Pending rows wait until they
+settle; a pending row an earlier Sheet already holds that settles differently or
+disappears gets a warning row naming the stale row to delete by hand (the converter's
+`sheet_state` module explains the bookkeeping, kept in
+`<data_root>/sheet_exports/manifest.jsonl`). Nothing new means
 no Sheet. Then it opens **all**
 the review tabs at once: the Streamlit UI, the freshly uploaded Google Sheet,
 and every URL listed in `<data_root>/pinned_tabs` (one per line, `#` comments allowed —
