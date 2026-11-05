@@ -27,22 +27,30 @@ FONT_MONO = '"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace'
 # normal-vision separation). Light azure sits a hair under the checker's chroma
 # floor and stays because it is the system's info hue. A series past the last
 # slot folds into OTHER rather than cycling.
+#
+# ORANGE_500 marks without a label (focus, underline, radio dot); a fill that carries a
+# label is ACCENT, the same in both themes so its warm-white label clears 4.5:1.
+# ON_FILL_* are the two label inks a data fill picks between (``label_on``).
+_BOTH = dict(
+    ACCENT="#AF5A1D", ACCENT_HOVER="#A0531B", ACCENT_PRESS="#944A17",
+    ON_FILL_LIGHT="#FFF8F1", ON_FILL_DARK="#15130E",
+)
 _LIGHT = dict(
+    _BOTH,
     PAPER_0="#FDFCF9", PAPER_1="#F8F6F1", PAPER_2="#F1EDE5",
     INK_900="#211D18", INK_700="#3E3830", INK_600="#574F45", INK_500="#70685B",
     INK_200="#D8D1C5", INK_100="#E8E2D8", INK_050="#F2EFE8",
     ORANGE_700="#944A17", ORANGE_500="#DD7A32", ORANGE_200="#F4D2AC", ORANGE_100="#FBE8D6",
-    ACCENT_HOVER="#BF6321", ACCENT_PRESS="#944A17",
     JADE_500="#0E8A73", HAZARD_200="#C9C2FF", UNDER_FILL="#A9DCCF", SEQUENTIAL_FILL="#F4D2AC",
     INK_RULE="rgba(33,29,24,.14)", LINK_WASH="rgba(112,104,91,.22)",
     CATEGORICAL=["#DD7A32", "#1A7296", "#6B2E9E", "#0E8A73", "#A8321F", "#1F4FA8", "#8A6403"],
 )
 _DARK = dict(
+    _BOTH,
     PAPER_0="#2B271F", PAPER_1="#15130E", PAPER_2="#0E0C09",
     INK_900="#F7F4ED", INK_700="#D6D0C5", INK_600="#B4AEA2", INK_500="#A59E90",
     INK_200="#504A3F", INK_100="#3A352C", INK_050="#35312A",
     ORANGE_700="#F6C08B", ORANGE_500="#DD7A32", ORANGE_200="#54453A", ORANGE_100="#403529",
-    ACCENT_HOVER="#E68A42", ACCENT_PRESS="#C4682A",
     JADE_500="#33B98A", HAZARD_200="#4A2ADB", UNDER_FILL="#1C5A45", SEQUENTIAL_FILL="#7A5330",
     INK_RULE="rgba(247,244,237,.14)", LINK_WASH="rgba(165,158,144,.28)",
     CATEGORICAL=["#C4682A", "#2C86AD", "#B58A1A", "#9A63D0", "#1F9A76", "#4F7FD0", "#C8523D"],
@@ -90,6 +98,26 @@ def _mix(a: str, b: str, t: float) -> str:
     return "#" + "".join(f"{round(x + (y - x) * t):02X}" for x, y in zip(pa, pb))
 
 
+def _luminance(color: str) -> float:
+    def channel(v: int) -> float:
+        s = v / 255
+        return s / 12.92 if s <= 0.03928 else ((s + 0.055) / 1.055) ** 2.4
+    r, g, b = (int(color[i:i + 2], 16) for i in (1, 3, 5))
+    return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+
+
+def contrast(a: str, b: str) -> float:
+    """WCAG contrast ratio of two ``#RRGGBB`` colours."""
+    hi, lo = sorted((_luminance(a), _luminance(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def label_on(fill: str) -> str:
+    """The label ink that reads best on a data fill (a chart sector, a node)."""
+    tokens = _tokens()
+    return max((tokens["ON_FILL_LIGHT"], tokens["ON_FILL_DARK"]), key=lambda ink: contrast(ink, fill))
+
+
 def sequential(t: float) -> str:
     """Magnitude fill for a table cell, t in 0..1: card ground to the orange fill step."""
     tokens = _tokens()
@@ -131,8 +159,9 @@ def _root_vars(t: dict) -> str:
   --paper-0: {t["PAPER_0"]}; --paper-1: {t["PAPER_1"]}; --paper-2: {t["PAPER_2"]};
   --text-heading: {t["INK_900"]}; --text-body: {t["INK_700"]}; --text-muted: {t["INK_600"]};
   --text-faint: {t["INK_500"]}; --border-subtle: {t["INK_100"]}; --border-default: {t["INK_200"]};
-  --surface-hover: {t["INK_050"]}; --accent: {t["ORANGE_500"]}; --accent-hover: {t["ACCENT_HOVER"]};
-  --accent-press: {t["ACCENT_PRESS"]}; --on-accent: #FFF8F1; --text-accent: {t["ORANGE_700"]};
+  --surface-hover: {t["INK_050"]}; --accent: {t["ACCENT"]}; --accent-hover: {t["ACCENT_HOVER"]};
+  --accent-press: {t["ACCENT_PRESS"]}; --on-accent: {t["ON_FILL_LIGHT"]};
+  --border-accent: {t["ORANGE_500"]}; --text-accent: {t["ORANGE_700"]};
   --orange-100: {t["ORANGE_100"]}; --orange-200: {t["ORANGE_200"]}; --ink-rule: {t["INK_RULE"]};
   --font-serif: {FONT_SERIF}; --font-sans: {FONT_SANS}; --font-mono: {FONT_MONO};
 }}
@@ -179,25 +208,25 @@ section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 8px; }
 }
 .stApp [data-testid="stMetricDelta"] { font-family: var(--font-mono); font-size: 12px; }
 
-.stApp button[kind="secondary"], .stApp button[kind="primary"],
+.stApp button[kind^="secondary"], .stApp button[kind^="primary"],
 .stApp [data-testid="stDownloadButton"] button {
   border-radius: 7px; min-height: 30px; padding: 2px 10px; font-weight: 500;
   border: 1px solid var(--border-default); transition: background 90ms;
 }
-.stApp button[kind="secondary"], .stApp [data-testid="stDownloadButton"] button {
+.stApp button[kind^="secondary"], .stApp [data-testid="stDownloadButton"] button {
   background: var(--paper-0); color: var(--text-body);
 }
-.stApp button[kind="secondary"]:hover, .stApp [data-testid="stDownloadButton"] button:hover {
+.stApp button[kind^="secondary"]:hover, .stApp [data-testid="stDownloadButton"] button:hover {
   background: var(--surface-hover); border-color: var(--border-default);
   color: var(--text-heading);
 }
-.stApp button[kind="primary"] {
+.stApp button[kind^="primary"] {
   background: var(--accent); border-color: var(--accent); color: var(--on-accent);
 }
-.stApp button[kind="primary"]:hover {
+.stApp button[kind^="primary"]:hover {
   background: var(--accent-hover); border-color: var(--accent-hover);
 }
-.stApp button[kind="primary"]:active { background: var(--accent-press); }
+.stApp button[kind^="primary"]:active { background: var(--accent-press); }
 .stApp button:disabled { opacity: .45; cursor: not-allowed; }
 
 /* The view switcher is a radio dressed as the tab row. */
@@ -215,7 +244,7 @@ section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 8px; }
 }
 .st-key-view label[data-testid="stRadioOption"]:hover { background: var(--surface-hover); }
 .st-key-view label[data-testid="stRadioOption"][data-selected="true"] {
-  border-bottom-color: var(--accent);
+  border-bottom-color: var(--border-accent);
 }
 .st-key-view label[data-testid="stRadioOption"][data-selected="true"] p {
   color: var(--text-heading);
@@ -231,6 +260,9 @@ section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 8px; }
 .stApp [data-testid="stExpander"] details {
   background: var(--paper-0); border: 1px solid var(--border-subtle); border-radius: 10px;
 }
+/* Streamlit fades the caption container to 60% on top of any colour set here, which
+   would land --text-muted at 3.8:1; the muted ink alone is the system's 4.5:1 step. */
+.stApp [data-testid="stCaptionContainer"] { opacity: 1; }
 .stApp [data-testid="stCaptionContainer"] p { color: var(--text-muted); font-size: 14px; }
 .stApp hr { border-color: var(--ink-rule); margin: 8px 0; }
 .stApp a { color: var(--text-accent); text-underline-offset: 2px; }

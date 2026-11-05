@@ -497,8 +497,8 @@ def _build_hierarchy_fig(vis, levels, root, treemap: bool):
         marker=dict(colors=colors, line=dict(color=theme.PAPER_0, width=2)),
         # No uniformtext: let each sector auto-scale its label to fill the box,
         # capped at 22px, so the (large) leaf sectors get big, readable text.
-        insidetextfont=dict(size=22, color=theme.PAPER_0),
-        textfont=dict(size=15, color=theme.PAPER_0),
+        insidetextfont=dict(size=22, color=[theme.label_on(c) for c in colors]),
+        textfont=dict(size=15, color=[theme.label_on(c) for c in colors]),
         maxdepth=3,
         hovertemplate="<b>%{label}</b><br>%{value:$,.0f}<extra></extra>",
     )
