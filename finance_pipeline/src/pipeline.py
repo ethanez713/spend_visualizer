@@ -107,8 +107,9 @@ def parse_args(argv=None, *, default_port: int = 8501) -> argparse.Namespace:
                         "when a converter is configured; an explicit --sheet without "
                         "one fails preflight)")
     p.add_argument("--sheet-sync", action=argparse.BooleanOptionalAction, default=None,
-                   help="sync manual sheet edits back into the categorized store "
-                        "(inside the lock, before the data push) and cross-check the "
+                   help="turn manual plaid-Sheet edits into budget edits and write the "
+                        "analyzer's budget edits into the Sheets (inside the lock, before "
+                        "the data push), then cross-check the "
                         "master workbook afterwards (default: on when a converter is "
                         "configured; --no-sheet-sync skips both; --no-drive skips the "
                         "Drive-writing sync but still cross-checks locally; an explicit "
@@ -356,7 +357,8 @@ def _warn_skip(step: str, detail: str) -> None:
 
 
 def sync_sheet(cfg: Config, args: argparse.Namespace) -> None:
-    """Mine manual sheet edits back into the categorized store.
+    """Turn manual plaid-Sheet edits into budget-edit intents, and the household's
+    analyzer edits into Sheet writes.
 
     Inside the lock, after the ledger regen and before the data push, so the
     intents these tools append are in this run's commit. ``--no-drive`` skips
