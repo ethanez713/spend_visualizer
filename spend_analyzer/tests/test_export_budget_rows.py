@@ -5,7 +5,6 @@ cases that change which rows and categories come out.
 """
 import csv
 import json
-import os
 import stat
 
 import pandas as pd
