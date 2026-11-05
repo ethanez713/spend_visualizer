@@ -76,6 +76,7 @@ repo root.
 | `--force-push` | skip the transformer's Drive head adoption: local store wins |
 | `--no-convert` | skip the optional budget-ledger regen even if a converter is configured |
 | `--no-sheet` | skip the converter's Google-Sheet upload (on by default when a converter is configured), which also opens the fresh Sheet + `<data_root>/pinned_tabs` URLs as extra browser tabs |
+| `--no-sheet-sync` | skip the Sheet edit sync (2d) and the master cross-check (2e); both are on by default when a converter is configured, and `--no-drive` skips only 2d |
 | `--no-ui` | stop after the data steps (e.g. for scheduled runs) |
 | `--no-push-data` | skip committing the data-root git repo (if dirty) and pushing it to its `origin` after the data steps (on by default; no remote ⇒ warn, commit locally). Pass it on any machine that isn't the data repo's sole pusher |
 | `--no-browser` | serve the UI but don't open a browser |
@@ -127,6 +128,39 @@ e.g. the master budget spreadsheet; personal URLs, so the file lives in the priv
 data root). The step runs *outside* the pipeline lock (it's read-only over the store)
 and is non-fatal. Each run with something new uploads a **new** Sheet, so pass
 `--no-sheet` for runs that shouldn't export.
+
+### Sheet edit sync (step 2d) and the master cross-check (step 2e)
+
+Correct a category in whichever place is at hand. A category re-picked, a row deleted, a
+note typed or a row added in a `plaid_*` Sheet becomes a budget edit in the app on the
+next run. A budget category, exclusion or note set in the analyzer is written into the
+Sheet that holds the row; an exclusion deletes the row. When both sides changed the same
+cell differently since they last agreed, the run reports it and changes neither: make
+one side match the other and the next run settles it. Only one-transaction edits move —
+turning a pattern into a merchant rule stays a decision in the analyzer's Rules tab.
+
+The step runs the converter's `mine_edits.py`, the analyzer's `tools/sheet_sync.py`, then
+the converter's `push_edits.py`, inside the pipeline lock so the imported edits are in
+that run's data push. State and reports live in `<data_root>/sheet_sync/`
+(`conflicts.jsonl` lists what was left for you).
+
+One-time setup:
+
+- **Enable the Google Sheets API** in the converter's Google Cloud project (APIs &
+  Services → Library → Google Sheets API). It hides the `ID` column on upload and writes
+  cells; the token's `drive.file` scope already covers the Sheets this app created.
+  Without it, uploads still work, the `ID` column stays visible, and pushes are reported
+  as failed.
+- **Review the first import.** Until the sync has state, each run only previews what it
+  would import from the Sheets that already exist. Read the listing, then apply it once:
+  `cd spend_analyzer && ./venv/bin/python -m tools.sheet_sync --accept-backfill`.
+
+The cross-check (2e) compares three things: the master Financials workbook, the plaid
+Sheets as edited, and the app's budget rows. It prints rows missing on one side,
+category disagreements and monthly totals that differ, and writes the findings to
+`<data_root>/sheet_compare/`. It reads the newest `~/downloads/Financials*.xlsx` (File →
+Download → Microsoft Excel), so download a fresh copy before a run you want checked. An
+old download is still compared, with a note of its age. It is local and report-only.
 
 ## First-run notes
 
