@@ -16,6 +16,12 @@ venv from its own repo root, stopping at the first non-zero exit:
      (see ``config._converter_dir``). Regenerates the budget ledger CSV the Budget
      tab reads so its categories match the established budget. Local-only and
      NON-fatal: it derives a view, never touches the source stores.
+  2d. (``--sheet-sync``, on by default when a converter is configured; ``--no-drive``
+     skips it) sheet sync, INSIDE the lock after the ledger regen and before the
+     data push, so the intents it appends land in this run's commit. Three
+     subprocesses, in order: converter ``mine_edits.py``, analyzer
+     ``python -m tools.sheet_sync``, converter ``push_edits.py``. NON-fatal: a
+     non-zero substep warns and the rest of 2d is skipped; the run continues.
   2c. (``--sheet``, on by default when a converter is configured) the converter
      again, in its incremental Sheet mode: it uploads a new Google Sheet with
      the settled rows earlier Sheets don't hold yet (plus warning rows for pending
@@ -23,7 +29,11 @@ venv from its own repo root, stopping at the first non-zero exit:
      owns that bookkeeping. NON-fatal; the Sheet URL is captured via the converter's
      ``--url-file`` (absent when nothing was new) and opened as an extra browser tab,
      along with any URLs pinned in ``<data_root>/pinned_tabs`` (e.g. the master
-     budget spreadsheet).
+     budget spreadsheet). Runs OUTSIDE the lock, after the data push.
+  2e. (same ``--sheet-sync`` switch; still runs under ``--no-drive``, since it is
+     local) master cross-check, OUTSIDE the lock, after the incremental Sheet
+     step. Analyzer ``tools/export_budget_rows.py``, then this repo's
+     ``tools/sheet_compare.py --three-way``. NON-fatal.
   3. ``spend_analyzer`` — serves the Streamlit UI over the categorized store and
      opens the default browser at the local URL.
 
@@ -52,6 +62,10 @@ from .git_push import push_data
 # Files that let persister's DriveSync authenticate; copied (locally) from
 # transactions/.secrets into the transformer's .secrets on first Drive-enabled run.
 _DRIVE_CRED_FILES = ("client_secret.json", "token.json")
+
+# This file is <repo>/finance_pipeline/src/pipeline.py. The master cross-check
+# runs this repo's tools/sheet_compare.py with the pipeline's own interpreter.
+_PIPELINE_DIR = Path(__file__).resolve().parents[1]
 
 
 def parse_args(argv=None, *, default_port: int = 8501) -> argparse.Namespace:
@@ -92,6 +106,13 @@ def parse_args(argv=None, *, default_port: int = 8501) -> argparse.Namespace:
                         "<data_root>/pinned_tabs) as extra browser tabs (default: on "
                         "when a converter is configured; an explicit --sheet without "
                         "one fails preflight)")
+    p.add_argument("--sheet-sync", action=argparse.BooleanOptionalAction, default=None,
+                   help="sync manual sheet edits back into the categorized store "
+                        "(inside the lock, before the data push) and cross-check the "
+                        "master workbook afterwards (default: on when a converter is "
+                        "configured; --no-sheet-sync skips both; --no-drive skips the "
+                        "Drive-writing sync but still cross-checks locally; an explicit "
+                        "--sheet-sync without a converter fails preflight)")
     p.add_argument("--no-ui", action="store_true",
                    help="stop after the data steps; don't launch the Streamlit UI")
     p.add_argument("--no-browser", action="store_true",
@@ -139,6 +160,16 @@ def sheet_cmd(cfg: Config, url_file: str) -> list[str]:
     hold as a new Google Sheet, reporting the Sheet's URL through ``url_file`` so the
     pipeline can open it in a browser tab."""
     return [str(cfg.converter_python), "refresh.py", "--url-file", url_file]
+
+
+def _sheet_sync_active(cfg: Config, args: argparse.Namespace) -> bool:
+    """Both sheet-sync steps were requested and a converter is configured."""
+    return bool(args.sheet_sync) and cfg.converter_dir is not None
+
+
+def _sync_sheet_will_run(cfg: Config, args: argparse.Namespace) -> bool:
+    """2d reads and writes Google Drive, so --no-drive skips it. 2e still runs."""
+    return _sheet_sync_active(cfg, args) and not args.no_drive
 
 
 def ui_cmd(cfg: Config, args: argparse.Namespace) -> list[str]:
@@ -207,17 +238,20 @@ def preflight(cfg: Config, args: argparse.Namespace) -> None:
             f"`{cfg.transactions_python} app.py` in {cfg.transactions_dir} "
             "and link your banks first"
         )
-    # --sheet was asked for explicitly, so a missing converter is a hard failure
-    # (unlike the ledger regen, which silently skips when none is configured).
-    if args.sheet:
+    # --sheet / --sheet-sync asked for explicitly (or defaulted on because a
+    # converter is configured) need that converter. A missing one is a hard
+    # failure, unlike the ledger regen, which silently skips when none is set.
+    for flag, enabled in (("--sheet", args.sheet), ("--sheet-sync", args.sheet_sync)):
+        if not enabled:
+            continue
         if not cfg.converter_dir:
             problems.append(
-                "  - --sheet needs a configured converter: set "
+                f"  - {flag} needs a configured converter: set "
                 "$SPEND_VISUALIZER_CONVERTER or <data_root>/converter_root"
             )
         elif cfg.converter_python is None or not cfg.converter_python.is_file():
             problems.append(
-                f"  - --sheet: converter venv python missing ({cfg.converter_python}); "
+                f"  - {flag}: converter venv python missing ({cfg.converter_python}); "
                 "rebuild the converter's .venv"
             )
     if problems:
@@ -237,9 +271,11 @@ def pipeline_lock(data_root):
     """Hold an exclusive flock for the data steps so a timer-scheduled run and a
     manual one can't interleave writes on the same machine (cross-machine
     concurrency is already handled by the components' Drive reconcile). Held for
-    fetch → categorize → push only — the UI runs indefinitely and is read-only,
-    so it must not keep the next day's run out. The lock file is never deleted
-    (unlinking would race another process opening it)."""
+    fetch → categorize → ledger regen → sheet sync → push only. Released before
+    the incremental Sheet upload, the master cross-check, and the UI: the UI
+    runs indefinitely and is read-only, and a slow Google API must not keep the
+    next day's run out. The lock file is never deleted (unlinking would race
+    another process opening it)."""
     data_root.mkdir(parents=True, exist_ok=True)
     lock_path = data_root / ".pipeline.lock"
     with lock_path.open("w") as fd:
@@ -313,6 +349,78 @@ def upload_sheet(cfg: Config) -> str | None:
         url = url_file.read_text(encoding="utf-8").strip()
     print(f"✓ sheet finished in {time.monotonic() - t0:.0f}s → {url}")
     return url
+
+
+def _warn_skip(step: str, detail: str) -> None:
+    print(f"  ⚠ {step}: {detail} Core pipeline unaffected.")
+
+
+def sync_sheet(cfg: Config, args: argparse.Namespace) -> None:
+    """Mine manual sheet edits back into the categorized store.
+
+    Inside the lock, after the ledger regen and before the data push, so the
+    intents these tools append are in this run's commit. ``--no-drive`` skips
+    it (the tools read and write Google Drive). NON-fatal: a non-zero substep
+    skips the rest of this step — a later tool would act on a partial mine —
+    and the run continues."""
+    if not _sync_sheet_will_run(cfg, args):
+        return
+    print("\n━━━ sheet sync ━━━")
+    # (label, interpreter, argv, cwd). Order is the contract: mine, apply, push.
+    steps = (
+        ("mine_edits.py", cfg.converter_python, ["mine_edits.py"], cfg.converter_dir),
+        ("tools.sheet_sync", cfg.analyzer_python,
+         ["-m", "tools.sheet_sync"], cfg.analyzer_dir),
+        ("push_edits.py", cfg.converter_python, ["push_edits.py"], cfg.converter_dir),
+    )
+    t0 = time.monotonic()
+    for label, py, argv, cwd in steps:
+        if py is None or not Path(py).is_file():
+            _warn_skip("sheet sync",
+                       f"{label} interpreter missing ({py}); skipping the rest "
+                       "of sheet sync this run.")
+            return
+        rc = subprocess.run([str(py), *argv], cwd=cwd).returncode
+        if rc != 0:
+            _warn_skip("sheet sync",
+                       f"{label} exited {rc}; skipping the rest of sheet sync this run.")
+            return
+    print(f"✓ sheet sync finished in {time.monotonic() - t0:.0f}s")
+
+
+def crosscheck_master(cfg: Config, args: argparse.Namespace) -> None:
+    """Compare the master workbook with the app's budget rows.
+
+    Outside the lock, after the incremental Sheet step. Local only, so
+    ``--no-drive`` does not skip it. The compare finds the workbook itself and
+    prints its own report. NON-fatal."""
+    if not _sheet_sync_active(cfg, args):
+        return
+    print("\n━━━ cross-check (master workbook) ━━━")
+    if cfg.analyzer_python is None or not cfg.analyzer_python.is_file():
+        _warn_skip("cross-check",
+                   f"analyzer venv python is missing ({cfg.analyzer_python}); skipping it.")
+        return
+    t0 = time.monotonic()
+    with tempfile.TemporaryDirectory() as tmp:
+        out = str(Path(tmp) / "budget_rows.csv")
+        rc = subprocess.run(
+            [str(cfg.analyzer_python), "tools/export_budget_rows.py", "--out", out],
+            cwd=cfg.analyzer_dir,
+        ).returncode
+        if rc != 0:
+            _warn_skip("cross-check",
+                       f"export_budget_rows.py exited {rc}; skipping the compare.")
+            return
+        rc = subprocess.run(
+            [str(cfg.pipeline_python), "tools/sheet_compare.py",
+             "--three-way", "--app-csv", out],
+            cwd=_PIPELINE_DIR,
+        ).returncode
+        if rc != 0:
+            _warn_skip("cross-check", f"sheet_compare.py exited {rc}.")
+            return
+    print(f"✓ cross-check finished in {time.monotonic() - t0:.0f}s")
 
 
 def pinned_urls(data_root: Path) -> list[str]:
@@ -397,6 +505,8 @@ def main(argv=None, cfg: Config | None = None) -> None:
     args = parse_args(argv, default_port=cfg.ui_port)
     if args.sheet is None:
         args.sheet = cfg.converter_dir is not None
+    if args.sheet_sync is None:
+        args.sheet_sync = cfg.converter_dir is not None
 
     # When stdout is redirected (cron, `./run.py > log`), Python block-buffers it and
     # the status lines below would only land at exit — AFTER the components' own
@@ -409,6 +519,8 @@ def main(argv=None, cfg: Config | None = None) -> None:
         mode += " + data git push"
     if args.sheet:
         mode += " + Sheet upload"
+    if _sync_sheet_will_run(cfg, args):
+        mode += " + Sheet sync"
     print(f"finance_pipeline — fetch → categorize → analyze   [{mode}]")
     preflight(cfg, args)
 
@@ -419,6 +531,7 @@ def main(argv=None, cfg: Config | None = None) -> None:
             run_step("categorize (plaid_category_transformer)",
                      categorize_cmd(cfg, args), cfg.transformer_dir)
             convert_ledger(cfg, args)   # optional, non-fatal; before push so it's versioned
+            sync_sheet(cfg, args)        # optional, non-fatal; intents land in this commit
             if args.push_data:
                 print("\n━━━ push data (git → origin) ━━━")
                 t0 = time.monotonic()
@@ -430,12 +543,15 @@ def main(argv=None, cfg: Config | None = None) -> None:
         # atomically), so a plain re-run resumes from the durable state.
         sys.exit("\n✖ Interrupted — pipeline stopped. Re-run ./run.py to resume.")
 
-    # Sheet upload + tab collection happen OUTSIDE the lock (read-only over the
-    # store; a slow Google API must not block the next scheduled run).
+    # Sheet upload, the master cross-check, and tab collection happen OUTSIDE
+    # the lock. Sheet sync stays inside, before the push, so the intents it
+    # appends are in this run's commit. A slow Google API must not block the
+    # next scheduled run, and the cross-check only reports.
     extra_urls: tuple[str, ...] = ()
     if args.sheet:
         sheet_url = upload_sheet(cfg)
         extra_urls = ((sheet_url,) if sheet_url else ()) + tuple(pinned_urls(cfg.data_root))
+    crosscheck_master(cfg, args)
 
     if args.no_ui:
         print("\n✓ Data pipeline complete (--no-ui: skipping the Streamlit step).")

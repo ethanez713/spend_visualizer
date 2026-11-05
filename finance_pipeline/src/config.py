@@ -6,6 +6,7 @@ tests build their own ``Config`` pointing at fake components in a tmp dir.
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,6 +26,11 @@ class Config:
     transactions_python: Path
     transformer_python: Path
     analyzer_streamlit: Path
+    analyzer_python: Path
+    # Interpreter for this repo's own tools (the master cross-check). The
+    # orchestrator is stdlib-only, so this is the interpreter running the
+    # pipeline; tests point it at a fake.
+    pipeline_python: Path
 
     # Drive credentials: each Drive-pushing repo owns its own .secrets (persister is a
     # pure library). transactions/.secrets is the original (OAuth'd) set; the
@@ -36,7 +42,8 @@ class Config:
     # the established budget's categories (a ledger CSV the analyzer's Budget tab
     # reads). All three are None unless a converter is configured (see
     # `_converter_dir`), in which case the pipeline regenerates the ledger after
-    # categorize. Kept out of this repo so it stays generic.
+    # categorize and, unless --no-sheet-sync, syncs sheet edits and cross-checks
+    # the master workbook. Kept out of this repo so it stays generic.
     converter_dir: Path | None = None
     converter_python: Path | None = None
     budget_ledger_csv: Path | None = None
@@ -106,8 +113,11 @@ def default_config() -> Config:
         transactions_python=transactions / "venv" / "bin" / "python",
         transformer_python=transformer / ".venv" / "bin" / "python",
         analyzer_streamlit=analyzer / "venv" / "bin" / "streamlit",
+        # Same venv as streamlit: spend_analyzer's tools run under its python.
+        analyzer_python=analyzer / "venv" / "bin" / "python",
         transactions_secrets=transactions / ".secrets",
         transformer_secrets=transformer / ".secrets",
+        pipeline_python=Path(sys.executable),
         converter_dir=converter,
         converter_python=converter_python,
         budget_ledger_csv=budget_ledger_csv,

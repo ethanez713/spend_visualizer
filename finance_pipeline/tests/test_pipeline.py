@@ -95,6 +95,8 @@ def fake_world(tmp_path):
         transactions_python=transactions / "venv" / "bin" / "python",
         transformer_python=transformer / ".venv" / "bin" / "python",
         analyzer_streamlit=analyzer / "venv" / "bin" / "streamlit",
+        analyzer_python=analyzer / "venv" / "bin" / "python",
+        pipeline_python=tmp_path / "pipeline" / "python",
         transactions_secrets=transactions / ".secrets",
         transformer_secrets=transformer / ".secrets",
         ui_port=_free_port(),
@@ -104,6 +106,10 @@ def fake_world(tmp_path):
     _write_exe(cfg.transactions_python, component_python("fetch"))
     _write_exe(cfg.transformer_python, component_python("categorize"))
     _write_exe(cfg.analyzer_streamlit, streamlit_body)
+    # Sheet sync and the budget-row export run under the analyzer venv, not
+    # streamlit. The master cross-check runs under the pipeline's own interpreter.
+    _write_exe(cfg.analyzer_python, component_python("analyzer"))
+    _write_exe(cfg.pipeline_python, component_python("compare"))
 
     # Linked banks + existing Drive creds (preflight requirements) — both live in
     # transactions/.secrets, the repo that owns the raw store's Drive sync.
@@ -182,6 +188,12 @@ def given_no_flags_when_parsing_then_push_on_and_sheet_left_to_converter_presenc
     args = parse_args([])
     assert args.push_data is True
     assert args.sheet is None
+    assert args.sheet_sync is None
+
+
+def given_sheet_sync_flags_when_parsing_then_tri_state():
+    assert parse_args(["--sheet-sync"]).sheet_sync is True
+    assert parse_args(["--no-sheet-sync"]).sheet_sync is False
 
 
 def given_llm_defer_when_building_cmds_then_it_propagates(fake_world):
@@ -408,8 +420,9 @@ def given_converter_configured_when_main_then_convert_runs_after_categorize(with
 
     main(["--no-sheet", "--no-push-data", "--no-drive", "--no-browser"], cfg=cfg)
 
+    # --no-drive skips sheet sync; the local cross-check still runs before the UI.
     assert [l.split()[0] for l in _log_lines(log)] == \
-        ["fetch", "categorize", "convert", "streamlit"]
+        ["fetch", "categorize", "convert", "analyzer", "compare", "streamlit"]
     convert_line = next(l for l in _log_lines(log) if l.startswith("convert"))
     assert "--no-upload" in convert_line          # the ledger regen never uploads
 
@@ -419,7 +432,10 @@ def given_no_convert_flag_when_main_then_ledger_not_regenerated(with_converter):
 
     main(["--no-sheet", "--no-push-data", "--no-drive", "--no-ui", "--no-convert"], cfg=cfg)
 
-    assert [l.split()[0] for l in _log_lines(log)] == ["fetch", "categorize"]
+    # Ledger regen is skipped; the local cross-check is a different step and still runs.
+    assert [l.split()[0] for l in _log_lines(log)] == \
+        ["fetch", "categorize", "analyzer", "compare"]
+    assert not any(l.startswith("convert") for l in _log_lines(log))
 
 
 def given_converter_fails_when_main_then_pipeline_continues(with_converter, capsys):
@@ -429,7 +445,7 @@ def given_converter_fails_when_main_then_pipeline_continues(with_converter, caps
     main(["--no-sheet", "--no-push-data", "--no-drive", "--no-browser"], cfg=cfg)  # does NOT raise
 
     assert [l.split()[0] for l in _log_lines(log)] == \
-        ["fetch", "categorize", "convert", "streamlit"]   # UI still served
+        ["fetch", "categorize", "convert", "analyzer", "compare", "streamlit"]
     assert "converter exited 5" in capsys.readouterr().out
 
 
@@ -437,7 +453,9 @@ def given_converter_venv_missing_when_main_then_warns_and_continues(with_convert
     cfg, log = with_converter
     cfg.converter_python.unlink()                 # configured but venv not built
 
-    main(["--no-sheet", "--no-push-data", "--no-drive", "--no-ui"], cfg=cfg)
+    # --no-sheet-sync: this test is about the ledger regen's own missing-venv warning.
+    # Sheet sync's preflight would otherwise stop the run on the same missing python.
+    main(["--no-sheet", "--no-sheet-sync", "--no-push-data", "--no-drive", "--no-ui"], cfg=cfg)
 
     assert [l.split()[0] for l in _log_lines(log)] == ["fetch", "categorize"]
     assert "venv python is missing" in capsys.readouterr().out
@@ -451,7 +469,9 @@ def given_converter_and_push_when_main_then_convert_precedes_push(with_converter
 
     main(["--no-sheet", "--no-drive", "--no-ui", "--push-data"], cfg=cfg)
 
-    assert [l.split()[0] for l in _log_lines(log)] == ["fetch", "categorize", "convert"]
+    # --no-drive skips sheet sync. The cross-check is outside the lock, after the push.
+    assert [l.split()[0] for l in _log_lines(log)] == \
+        ["fetch", "categorize", "convert", "analyzer", "compare"]
     assert _remote_commits(origin) == 1           # ledger regen happens before the push
 
 
@@ -489,7 +509,7 @@ def given_sheet_flag_when_main_then_sheet_runs_last_and_tabs_open(
     main(["--no-push-data", "--no-drive", "--sheet"], cfg=cfg)
 
     assert [l.split()[0] for l in _log_lines(log)] == \
-        ["fetch", "categorize", "convert", "convert", "streamlit"]
+        ["fetch", "categorize", "convert", "convert", "analyzer", "compare", "streamlit"]
     sheet_line = _log_lines(log)[3]               # second converter call = Sheet mode
     assert "--url-file" in sheet_line and "--no-upload" not in sheet_line
     assert opened_urls == [f"http://localhost:{cfg.ui_port}",
@@ -588,7 +608,7 @@ def given_sheet_with_no_ui_when_main_then_urls_printed_not_opened(
     main(["--no-push-data", "--no-drive", "--no-ui", "--sheet"], cfg=cfg)
 
     assert [l.split()[0] for l in _log_lines(log)] == \
-        ["fetch", "categorize", "convert", "convert"]
+        ["fetch", "categorize", "convert", "convert", "analyzer", "compare"]
     assert opened_urls == []
     assert "open https://sheet.example/fake in your browser" in capsys.readouterr().out
 
@@ -597,3 +617,246 @@ def given_pinned_tabs_file_when_parsing_then_comments_and_blanks_skipped(tmp_pat
     (tmp_path / "pinned_tabs").write_text("# a comment\n\n  https://x.example/a  \n")
     assert pinned_urls(tmp_path) == ["https://x.example/a"]
     assert pinned_urls(tmp_path / "missing") == []   # no data root file → no tabs
+
+
+# Sheet sync (2d) mines manual edits back into the store inside the lock, before
+# the data push. The master cross-check (2e) runs after the incremental Sheet
+# step, outside the lock. Both are on by default when a converter is configured;
+# --no-sheet-sync skips both, and --no-drive skips only 2d.
+
+def _lock_held(data_root) -> bool:
+    """True when another fd in this process already holds the pipeline lock.
+
+    flock is per open-file-description, so a second open in the orchestrator
+    process conflicts with pipeline_lock's fd — the same check a subprocess
+    would see from outside."""
+    lock = data_root / ".pipeline.lock"
+    if not lock.exists():
+        return False
+    with lock.open("a") as fd:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return True
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        return False
+
+
+def _step_kind(text: str):
+    if text == "__push_data__":
+        return "push"
+    if "fetch_transactions.py" in text:
+        return "fetch"
+    if "categorize.py" in text:
+        return "categorize"
+    if "refresh.py" in text and "--url-file" in text:
+        return "sheet"
+    if "refresh.py" in text:
+        return "convert"
+    if "mine_edits.py" in text:
+        return "mine"
+    if "tools.sheet_sync" in text:
+        return "sync"
+    if "push_edits.py" in text:
+        return "pushedits"
+    if "export_budget_rows.py" in text:
+        return "export"
+    if "sheet_compare.py" in text:
+        return "compare"
+    return None
+
+
+def given_converter_when_main_then_sheet_sync_inside_lock_and_crosscheck_outside(
+        with_converter, data_repo, monkeypatch, capsys):
+    cfg, log = with_converter
+    repo, origin = data_repo
+    assert repo == cfg.data_root
+    (repo / "transactions.csv").write_text("synthetic\n")
+
+    seen = []
+    real_run = subprocess.run
+    real_push = src.pipeline.push_data
+
+    def spy(cmd, cwd=None, **kwargs):
+        seen.append((" ".join(str(c) for c in cmd), _lock_held(cfg.data_root), cwd))
+        return real_run(cmd, cwd=cwd, **kwargs)
+
+    def spy_push(data_root):
+        seen.append(("__push_data__", _lock_held(data_root), data_root))
+        return real_push(data_root)
+
+    monkeypatch.setattr(src.pipeline.subprocess, "run", spy)
+    monkeypatch.setattr(src.pipeline, "push_data", spy_push)
+
+    main(["--no-ui", "--push-data"], cfg=cfg)
+
+    kinds = [k for k in (_step_kind(text) for text, _, _ in seen) if k]
+    assert kinds == ["fetch", "categorize", "convert", "mine", "sync", "pushedits",
+                     "push", "sheet", "export", "compare"]
+    inside = {"fetch", "categorize", "convert", "mine", "sync", "pushedits", "push"}
+    by_kind = {}
+    for text, held, cwd in seen:
+        kind = _step_kind(text)
+        if kind is None:
+            continue
+        by_kind[kind] = (text, held, cwd)
+        assert held is (kind in inside), kind
+
+    assert by_kind["mine"][2] == cfg.converter_dir
+    assert by_kind["sync"][2] == cfg.analyzer_dir
+    assert by_kind["pushedits"][2] == cfg.converter_dir
+    assert by_kind["sheet"][2] == cfg.converter_dir
+    assert by_kind["export"][2] == cfg.analyzer_dir
+    assert by_kind["compare"][2] == src.pipeline._PIPELINE_DIR
+
+    assert by_kind["mine"][0].startswith(str(cfg.converter_python) + " ")
+    assert by_kind["mine"][0].endswith("mine_edits.py")
+    assert by_kind["sync"][0] == f"{cfg.analyzer_python} -m tools.sheet_sync"
+    assert by_kind["pushedits"][0] == f"{cfg.converter_python} push_edits.py"
+    assert "tools/export_budget_rows.py" in by_kind["export"][0]
+    export_out = by_kind["export"][0].split("--out ", 1)[1]
+    assert export_out.endswith("/budget_rows.csv")
+    assert by_kind["compare"][0] == (
+        f"{cfg.pipeline_python} tools/sheet_compare.py --three-way --app-csv {export_out}")
+
+    # The fakes actually ran, in the same order the spy saw.
+    assert [l.split()[0] for l in _log_lines(log)] == [
+        "fetch", "categorize", "convert", "convert", "analyzer", "convert",
+        "convert", "analyzer", "compare"]
+    text = "\n".join(_log_lines(log))
+    assert text.index("mine_edits.py") < text.index("tools.sheet_sync") < text.index("push_edits.py")
+    assert text.index("push_edits.py") < text.index("--url-file")
+    assert text.index("--url-file") < text.index("export_budget_rows.py") < text.index("--three-way")
+
+    out = capsys.readouterr().out
+    assert "Drive sync ON + data git push + Sheet upload + Sheet sync" in out
+    assert _remote_commits(origin) == 1
+
+
+def given_sheet_sync_substep_fails_when_main_then_rest_of_sync_skipped_and_run_continues(
+        with_converter, capsys):
+    cfg, log = with_converter
+    # Fail only the apply step. Export and the UI share no fail file with this.
+    _write_exe(cfg.analyzer_python, textwrap.dedent(f"""\
+        #!/usr/bin/env python3
+        import pathlib, sys
+        pathlib.Path({str(log)!r}).open("a").write(
+            "analyzer " + " ".join(sys.argv[1:]) + chr(10))
+        if "tools.sheet_sync" in sys.argv:
+            sys.exit(4)
+        sys.exit(0)
+        """))
+
+    main(["--no-push-data", "--no-sheet", "--no-browser"], cfg=cfg)  # does NOT raise
+
+    lines = _log_lines(log)
+    text = "\n".join(lines)
+    assert "mine_edits.py" in text                 # earlier substep ran
+    assert "tools.sheet_sync" in text              # the failing substep ran
+    assert "push_edits.py" not in text             # the rest of 2d was skipped
+    assert "export_budget_rows.py" in text         # the run continued to 2e
+    assert "--three-way" in text
+    assert lines[-1].startswith("streamlit")      # and on to the UI
+    out = capsys.readouterr().out
+    assert "sheet sync: tools.sheet_sync exited 4" in out
+    assert "skipping the rest of sheet sync" in out
+    assert "✓ sheet sync finished" not in out
+    assert "+ Sheet sync" in out                   # 2d was going to run
+
+
+def given_export_fails_when_main_then_compare_skipped_and_run_continues(
+        with_converter, capsys):
+    cfg, log = with_converter
+    _write_exe(cfg.analyzer_python, textwrap.dedent(f"""\
+        #!/usr/bin/env python3
+        import pathlib, sys
+        pathlib.Path({str(log)!r}).open("a").write(
+            "analyzer " + " ".join(sys.argv[1:]) + chr(10))
+        if "export_budget_rows.py" in " ".join(sys.argv[1:]):
+            sys.exit(9)
+        sys.exit(0)
+        """))
+
+    main(["--no-drive", "--no-push-data", "--no-sheet", "--no-ui"], cfg=cfg)
+
+    text = "\n".join(_log_lines(log))
+    assert "export_budget_rows.py" in text
+    assert "sheet_compare.py" not in text
+    assert "mine_edits.py" not in text             # --no-drive skipped 2d
+    out = capsys.readouterr().out
+    assert "export_budget_rows.py exited 9" in out
+    assert "skipping the compare" in out
+    assert "Data pipeline complete" in out
+
+
+def given_no_sheet_sync_when_main_then_sync_and_crosscheck_skipped(with_converter, capsys):
+    cfg, log = with_converter
+
+    # Drive stays on, so 2d would run if the flag didn't suppress it.
+    main(["--no-sheet-sync", "--no-push-data", "--no-ui", "--no-sheet"], cfg=cfg)
+
+    text = "\n".join(_log_lines(log))
+    for needle in ("mine_edits.py", "tools.sheet_sync", "push_edits.py",
+                   "export_budget_rows.py", "sheet_compare.py"):
+        assert needle not in text, needle
+    assert [l.split()[0] for l in _log_lines(log)] == ["fetch", "categorize", "convert"]
+    out = capsys.readouterr().out
+    assert "+ Sheet sync" not in out
+    assert "━━━ sheet sync ━━━" not in out
+    assert "━━━ cross-check" not in out
+
+
+def given_no_drive_when_main_then_sheet_sync_skipped_but_crosscheck_runs(
+        with_converter, capsys):
+    cfg, log = with_converter
+
+    main(["--no-drive", "--no-push-data", "--no-ui", "--no-sheet"], cfg=cfg)
+
+    text = "\n".join(_log_lines(log))
+    assert "mine_edits.py" not in text
+    assert "tools.sheet_sync" not in text
+    assert "push_edits.py" not in text
+    assert "export_budget_rows.py" in text
+    assert "--three-way" in text and "--app-csv" in text
+    out = capsys.readouterr().out
+    assert "+ Sheet sync" not in out
+    assert "━━━ sheet sync ━━━" not in out
+    assert "━━━ cross-check (master workbook) ━━━" in out
+    assert "✓ cross-check finished" in out
+
+
+def given_no_converter_when_main_then_sheet_sync_and_crosscheck_skipped(fake_world, capsys):
+    cfg, log = fake_world
+
+    main(["--no-push-data", "--no-drive", "--no-ui"], cfg=cfg)
+
+    text = "\n".join(_log_lines(log))
+    for needle in ("mine_edits.py", "tools.sheet_sync", "push_edits.py",
+                   "export_budget_rows.py", "sheet_compare.py"):
+        assert needle not in text, needle
+    assert [l.split()[0] for l in _log_lines(log)] == ["fetch", "categorize"]
+    assert "+ Sheet sync" not in capsys.readouterr().out
+
+
+def given_sheet_sync_without_converter_when_preflight_then_stops(fake_world):
+    cfg, log = fake_world
+
+    with pytest.raises(SystemExit) as exc:
+        main(["--no-push-data", "--no-drive", "--no-ui", "--sheet-sync"], cfg=cfg)
+
+    assert "--sheet-sync" in str(exc.value)
+    assert "configured converter" in str(exc.value)
+    assert _log_lines(log) == []
+
+
+def given_sheet_sync_with_missing_converter_venv_when_preflight_then_stops(with_converter):
+    cfg, log = with_converter
+    cfg.converter_python.unlink()
+
+    with pytest.raises(SystemExit) as exc:
+        main(["--no-sheet", "--sheet-sync", "--no-push-data", "--no-drive", "--no-ui"],
+             cfg=cfg)
+
+    assert "--sheet-sync" in str(exc.value)
+    assert "converter venv python missing" in str(exc.value)
+    assert _log_lines(log) == []
