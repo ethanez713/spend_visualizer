@@ -5,7 +5,7 @@ Everything is synthetic: workbooks are built in tmp_path and no real data is rea
 import json
 import os
 import stat
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 
@@ -251,3 +251,283 @@ def given_no_write_flag_when_cli_runs_then_nothing_is_written(tmp_path, capsys):
              "--data-root", str(data_root), "--no-write"])
 
     assert not (data_root / "sheet_compare").exists()
+
+
+ANCHORS = [
+    ("Bob", D(2026, 4, 1), "Anchor", "Rent", 1.0),
+    ("Bob", D(2026, 4, 30), "End", "Rent", 2.0),
+]
+
+
+def _workbook(path, years):
+    sheets = {}
+    for year, rows in years.items():
+        grid = [["Source", "Date", "Description", "Category", "Debit", "Credit", "Net", "Note"]]
+        for source, day, desc, cat, net in rows:
+            grid.append([source, day, desc, cat, None, None, float(net), ""])
+        sheets[str(year)] = grid
+    make_xlsx(path, sheets)
+
+
+def _csv_line(source, day, desc, cat, net, note=""):
+    debit = f"${net:,.2f}" if net > 0 else ""
+    credit = f"${-net:,.2f}" if net < 0 else ""
+    signed = f"-${-net:,.2f}" if net < 0 else f"${net:,.2f}"
+    return f"{source},{day:%m/%d/%Y},{desc},{cat},{debit},{credit},{signed},,{note}"
+
+
+def _lines(rows):
+    return [_csv_line(*row) for row in rows]
+
+
+def _touch(path, day):
+    stamp = datetime(day.year, day.month, day.day, 12).timestamp()
+    os.utime(path, (stamp, stamp))
+
+
+def _run_three(tmp_path, capsys, years, plaid_lines, app_lines, *, mtime=None, extra=(),
+               snapshots=None, downloads=False):
+    data = tmp_path / "data"
+    book_dir = tmp_path / "downloads" if downloads else tmp_path
+    book_dir.mkdir(parents=True, exist_ok=True)
+    book = book_dir / "Financials.xlsx"
+    _workbook(book, years)
+    if mtime is not None:
+        _touch(book, mtime)
+    plaid_dir = tmp_path / "snapshots"
+    plaid_dir.mkdir()
+    for name, lines in snapshots or [("one.head.csv", plaid_lines)]:
+        _ledger_csv(plaid_dir / name, *lines)
+    app = tmp_path / "app.csv"
+    _ledger_csv(app, *app_lines)
+    argv = ["--three-way", "--app-csv", str(app), "--plaid-dir", str(plaid_dir),
+            "--data-root", str(data), *extra]
+    if downloads:
+        argv.extend(["--downloads", str(book_dir)])
+    else:
+        argv.extend(["--xlsx", str(book)])
+    code = sc.main(argv)
+    printed = capsys.readouterr().out
+    folder = data / "sheet_compare"
+    written = sorted(folder.glob("*.jsonl")) if folder.exists() else []
+    found = [json.loads(line) for line in written[0].read_text().splitlines()] if written else []
+    return code, printed, found, written
+
+
+def given_row_only_on_the_master_when_three_way_then_only_one_side_finding(tmp_path, capsys):
+    master = ANCHORS + [("Bob", D(2026, 4, 15), "Only Here", "Groceries", 20.0)]
+    code, printed, found, written = _run_three(
+        tmp_path, capsys, {2026: master}, _lines(ANCHORS), _lines(ANCHORS))
+
+    assert code == 0
+    assert "M-P  only_one_side 1  category_disagreement 0  total_diff 1" in printed
+    assert "M-A  only_one_side 1  category_disagreement 0  total_diff 1" in printed
+    assert "P-A  only_one_side 0  category_disagreement 0  total_diff 0" in printed
+    assert {(row["pair"], row["side"], row["description"])
+            for row in found if row["kind"] == "only_one_side"} == {
+                ("M-P", "M", "Only Here"), ("M-A", "M", "Only Here")}
+    assert stat.S_IMODE(os.stat(written[0]).st_mode) == 0o600
+    assert stat.S_IMODE(os.stat(written[0].parent).st_mode) == 0o700
+
+
+def given_paired_rows_in_different_categories_when_three_way_then_category_disagreement(
+        tmp_path, capsys):
+    master = ANCHORS + [("Bob", D(2026, 4, 15), "Cafe", "Dining Out", 40.0)]
+    plaid = ANCHORS + [("Bob", D(2026, 4, 15), "Cafe", "Entertainment", 40.0)]
+    _code, printed, found, _written = _run_three(
+        tmp_path, capsys, {2026: master}, _lines(plaid), _lines(master))
+
+    disagree = [row for row in found if row["kind"] == "category_disagreement" and row["pair"] == "M-P"]
+    assert [(row["left_category"], row["right_category"], row["net"]) for row in disagree] == [
+        ("Dining Out", "Entertainment", 40.0)]
+    assert "M-P  only_one_side 0  category_disagreement 1  total_diff 2" in printed
+
+
+def given_category_month_off_by_a_dollar_when_three_way_then_no_total_finding(tmp_path, capsys):
+    master = ANCHORS + [("Bob", D(2026, 4, 15), "Cafe", "Groceries", 10.0)]
+    plaid = ANCHORS + [("Bob", D(2026, 4, 15), "Cafe", "Groceries", 11.0)]
+    _code, printed, _found, _written = _run_three(
+        tmp_path, capsys, {2026: master}, _lines(plaid), _lines(master))
+
+    assert "M-P  only_one_side 2  category_disagreement 0  total_diff 0" in printed
+    assert "P-A  only_one_side 2  category_disagreement 0  total_diff 0" in printed
+
+
+def given_category_month_off_by_more_than_a_dollar_when_three_way_then_total_finding(
+        tmp_path, capsys):
+    master = ANCHORS + [("Bob", D(2026, 4, 15), "Cafe", "Groceries", 10.0)]
+    plaid = ANCHORS + [("Bob", D(2026, 4, 15), "Cafe", "Groceries", 11.01)]
+    _code, printed, found, _written = _run_three(
+        tmp_path, capsys, {2026: master}, _lines(plaid), _lines(master))
+
+    diffs = [row for row in found if row["kind"] == "total_diff" and row["pair"] == "M-P"]
+    assert len(diffs) == 1
+    assert diffs[0]["category"] == "Groceries" and diffs[0]["month"] == "2026-04"
+    assert diffs[0]["left"] == 10
+    assert diffs[0]["right"] == pytest.approx(11.01)
+    assert diffs[0]["difference"] == pytest.approx(-1.01)
+    assert "M-P  only_one_side 2  category_disagreement 0  total_diff 1" in printed
+
+
+def given_many_total_differences_when_three_way_then_five_largest_are_printed(tmp_path, capsys):
+    extra = [("Bob", D(2026, 4, 15), f"Band{amount}", f"Band{amount}", float(amount))
+             for amount in (10, 20, 30, 40, 50, 60)]
+    _code, printed, _found, _written = _run_three(
+        tmp_path, capsys, {2026: ANCHORS + extra}, _lines(ANCHORS), _lines(ANCHORS))
+
+    detail = printed.split("Largest total differences\n", 1)[1].split("\n\n", 1)[0].splitlines()
+    assert detail == [
+        "  M-A  Band60  2026-04  60.00 vs 0.00  (+60.00)",
+        "  M-P  Band60  2026-04  60.00 vs 0.00  (+60.00)",
+        "  M-A  Band50  2026-04  50.00 vs 0.00  (+50.00)",
+        "  M-P  Band50  2026-04  50.00 vs 0.00  (+50.00)",
+        "  M-A  Band40  2026-04  40.00 vs 0.00  (+40.00)",
+    ]
+
+
+def given_several_downloads_when_three_way_then_newest_financials_workbook_is_used(tmp_path, capsys):
+    downloads = tmp_path / "dl"
+    downloads.mkdir()
+    old, new, other = (downloads / "Financials_old.xlsx", downloads / "Financials_new.xlsx",
+                       downloads / "Budget.xlsx")
+    _workbook(old, {2026: ANCHORS + [("Bob", D(2026, 4, 15), "Old Book Only", "Groceries", 20.0)]})
+    _workbook(new, {2026: ANCHORS})
+    _workbook(other, {2026: ANCHORS + [("Bob", D(2026, 4, 15), "Not A Financials", "Groceries", 20.0)]})
+    _touch(old, D(2026, 1, 1))
+    _touch(new, D(2026, 2, 1))
+    _touch(other, D(2026, 3, 1))
+    plaid_dir, app, data = tmp_path / "snapshots", tmp_path / "app.csv", tmp_path / "data"
+    plaid_dir.mkdir()
+    _ledger_csv(plaid_dir / "one.head.csv", *_lines(ANCHORS))
+    _ledger_csv(app, *_lines(ANCHORS))
+
+    code = sc.main(["--three-way", "--downloads", str(downloads), "--app-csv", str(app),
+                    "--plaid-dir", str(plaid_dir), "--data-root", str(data)])
+    printed = capsys.readouterr().out
+
+    assert code == 0
+    assert "Financials_new.xlsx modified 2026-02-01" in printed
+    assert "M-P  only_one_side 0  category_disagreement 0  total_diff 0" in printed
+    assert "Old Book Only" not in printed and "Not A Financials" not in printed
+
+
+def given_no_financials_workbook_when_three_way_then_prints_the_search_path_and_exits_zero(
+        tmp_path, capsys):
+    downloads = tmp_path / "empty-downloads"
+    downloads.mkdir()
+
+    code = sc.main(["--three-way", "--downloads", str(downloads), "--data-root", str(tmp_path / "data"),
+                    "--no-write"])
+
+    printed = capsys.readouterr().out
+    assert code == 0
+    assert printed.strip() == f"no Financials workbook in {downloads} (looked for Financials*.xlsx)"
+    assert not (tmp_path / "data" / "sheet_compare").exists()
+
+
+def given_workbook_more_than_a_week_behind_when_three_way_then_stale_master_line(tmp_path, capsys):
+    _code, printed, _found, _written = _run_three(
+        tmp_path, capsys, {2026: ANCHORS}, _lines(ANCHORS), _lines(ANCHORS), mtime=D(2026, 4, 22))
+
+    assert "modified 2026-04-22" in printed
+    assert "master is 8 days old" in printed
+    assert "M-P  only_one_side 0  category_disagreement 0  total_diff 0" in printed
+
+
+def given_workbook_a_week_behind_when_three_way_then_no_stale_line(tmp_path, capsys):
+    _code, printed, _found, _written = _run_three(
+        tmp_path, capsys, {2026: ANCHORS}, _lines(ANCHORS), _lines(ANCHORS), mtime=D(2026, 4, 23))
+
+    assert "modified 2026-04-23" in printed
+    assert "master is" not in printed
+
+
+def given_pending_and_warning_notes_when_three_way_then_those_plaid_rows_are_dropped(
+        tmp_path, capsys):
+    plaid = _lines(ANCHORS) + [
+        _csv_line("Bob", D(2026, 4, 15), "Pending Shop", "Dining Out", 9.0, "PENDING"),
+        _csv_line("Bob", D(2026, 4, 16), "Stale Row", "Dining Out", 8.0, "⚠ REMOVED SINCE LAST EXECUTION"),
+    ]
+    _code, printed, found, _written = _run_three(
+        tmp_path, capsys, {2026: ANCHORS}, plaid, _lines(ANCHORS))
+
+    assert "M-P  only_one_side 0  category_disagreement 0  total_diff 0" in printed
+    assert "Pending Shop" not in printed and "Stale Row" not in json.dumps(found)
+
+
+def given_two_year_tabs_when_three_way_then_both_years_are_compared(tmp_path, capsys):
+    rows = {2025: [("Bob", D(2025, 6, 1), "Last Year", "Groceries", 15.0)], 2026: ANCHORS}
+    lines = _lines(rows[2025] + rows[2026])
+    _code, printed, _found, _written = _run_three(tmp_path, capsys, rows, lines, lines)
+
+    assert "M-P  only_one_side 0  category_disagreement 0  total_diff 0" in printed
+
+
+def given_two_snapshot_files_when_three_way_then_rows_from_both_are_compared(tmp_path, capsys):
+    north = ("Bob", D(2026, 4, 10), "North Shop", "Groceries", 15.0)
+    south = ("Bob", D(2026, 4, 20), "South Shop", "Groceries", 16.0)
+    everyone = ANCHORS + [north, south]
+    _code, printed, _found, _written = _run_three(
+        tmp_path, capsys, {2026: everyone}, [], _lines(everyone),
+        snapshots=[("a.head.csv", _lines(ANCHORS + [north])), ("b.head.csv", _lines([south]))])
+
+    assert "M-P  only_one_side 0  category_disagreement 0  total_diff 0" in printed
+
+
+def given_no_write_when_three_way_then_nothing_is_written(tmp_path, capsys):
+    _code, _printed, _found, written = _run_three(
+        tmp_path, capsys, {2026: ANCHORS}, _lines(ANCHORS), _lines(ANCHORS), extra=("--no-write",))
+
+    assert written == []
+
+
+def given_plaid_covering_one_month_and_app_covering_two_years_when_three_way_then_earlier_app_rows_are_not_findings(
+        tmp_path, capsys):
+    june = [
+        ("Bob", D(2026, 6, 1), "Boundary Cafe", "Dining Out", 12.0),
+        ("Bob", D(2026, 6, 15), "Mid Groceries", "Groceries", 20.0),
+        ("Bob", D(2026, 6, 30), "End", "Rent", 2.0),
+    ]
+    # Authorized date six days before the posted date, inside the edge slack.
+    app = [
+        ("Bob", D(2024, 7, 4), "Summer Market", "Groceries", 25.0),
+        ("Bob", D(2025, 1, 15), "Winter Rent", "Rent", 100.0),
+        ("Bob", D(2025, 11, 20), "November Shop", "Dining Out", 18.0),
+        ("Bob", D(2026, 5, 26), "Boundary Cafe", "Dining Out", 12.0),
+        ("Bob", D(2026, 6, 15), "Mid Groceries", "Groceries", 20.0),
+        ("Bob", D(2026, 6, 20), "June Extra", "Groceries", 30.0),
+        ("Bob", D(2026, 6, 30), "End", "Rent", 2.0),
+    ]
+    _code, _printed, found, _written = _run_three(
+        tmp_path, capsys, {2026: june}, _lines(june), _lines(app))
+
+    early_only = [row for row in found if row["kind"] == "only_one_side" and row["side"] == "A"
+                  and row["date"] < "2026-06-01"]
+    early_totals = [row for row in found if row["kind"] == "total_diff" and row["month"] < "2026-06"]
+    assert early_only == [] and early_totals == []
+    assert not any(row["kind"] == "only_one_side" and row["description"] == "Boundary Cafe"
+                   for row in found)
+    assert any(row["kind"] == "only_one_side" and row["side"] == "A"
+               and row["description"] == "June Extra" for row in found)
+
+
+def given_pair_dates_do_not_overlap_when_three_way_then_pair_is_skipped(tmp_path, capsys):
+    master = [
+        ("Bob", D(2026, 4, 15), "April Bill", "Rent", 10.0),
+        ("Bob", D(2026, 5, 20), "May Bill", "Rent", 11.0),
+    ]
+    plaid = [
+        ("Bob", D(2026, 4, 1), "April Bill", "Rent", 10.0),
+        ("Bob", D(2026, 4, 30), "April End", "Rent", 2.0),
+    ]
+    app = [
+        ("Bob", D(2026, 5, 5), "May Bill", "Rent", 11.0),
+        ("Bob", D(2026, 5, 31), "May End", "Rent", 2.0),
+    ]
+    code, printed, found, _written = _run_three(
+        tmp_path, capsys, {2026: master}, _lines(plaid), _lines(app))
+
+    assert code == 0
+    assert printed.count("P-A skipped (no overlap)") == 1
+    assert "M-P skipped" not in printed and "M-A skipped" not in printed
+    assert not any(row["pair"] == "P-A" for row in found)

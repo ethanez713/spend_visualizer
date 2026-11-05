@@ -26,11 +26,14 @@ two machines legitimately write it — see the transformer's CLAUDE.md).
 - `tools/migrate_multiuser.py`: one-off owner back-fill for pre-multi-user data
   (scan-then-apply, idempotent, aborts on foreign owners). Operates on tokens.json
   (repo .secrets) + the stores under the data root (`--data-root` to override).
-- `tools/sheet_compare.py`: offline instrument for the side-by-side period — compares
-  the Financials workbook's year tab (a downloaded .xlsx) with a converter-schema
-  ledger CSV. Stdlib only; reads no network and no secrets; its output holds personal
-  data and goes under `<data_root>/sheet_compare/`, never this repo. The matcher's
-  tiers and detectors are the contract, tested in `tests/test_sheet_compare.py`.
+- `tools/sheet_compare.py`: offline instrument. Default: the Financials workbook's year
+  tab against one converter-schema ledger CSV. `--three-way` cross-checks that workbook
+  (M; `--xlsx`, else the newest `~/downloads/Financials*.xlsx`), the household-edited
+  plaid Sheet snapshots `<data_root>/sheet_edits/snapshots/*.head.csv` (P), and the
+  analyzer budget-row export (A, `--app-csv`) through the same matcher, each pair
+  over the dates both sides cover (no overlap skips that pair). Stdlib only; no
+  network and no secrets; findings go under `<data_root>/sheet_compare/` (0600), never
+  this repo. Tiers and detectors are the contract, tested in `tests/test_sheet_compare.py`.
 - `tools/import_sheet_history.py`: one-time, offline copy of the workbook's year tabs and
   historic goals into `<data_root>/spend_analyzer/data/` (`legacy_ledger.csv`,
   `legacy_goals.json`) for the analyzer's Budget tab. Re-running replaces both files; the

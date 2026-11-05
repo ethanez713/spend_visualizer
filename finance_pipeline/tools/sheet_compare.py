@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare the Financials sheet's year tab with the app's ledger, row by row.
+"""Compare the Financials workbook with a ledger, or --three-way across the workbook, the plaid Sheets and the app.
 
 The month-by-month comparison while both workflows run: which transactions only one side
 has, where the categories or people differ, what the totals and monthly averages come to
@@ -7,13 +7,22 @@ on each side, and which differences look like one repeatable rule.
 
     python3 tools/sheet_compare.py --xlsx ~/downloads/Financials.xlsx
     python3 tools/sheet_compare.py --xlsx F.xlsx --ledger other_ledger.csv --year 2026 --top 40
+    python3 tools/sheet_compare.py --three-way --app-csv budget_rows.csv
+    python3 tools/sheet_compare.py --three-way --xlsx F.xlsx --plaid-dir snapshots --app-csv A.csv
 
 Download the Sheet as .xlsx first (File > Download); nothing here touches the network. The
-app side is any converter-schema ledger CSV, by default the Budget tab's
+two-way app side is any converter-schema ledger CSV, by default the Budget tab's
 ``<data root>/spend_analyzer/data/budget_ledger.csv``. The comparison window starts at the
 ledger's first row and ends at the sheet's last, since neither side covers more. Output is
 printed and also written under ``<data root>/sheet_compare/`` (0600), one JSON line per
 finding; it holds personal data, so it stays in the data root.
+
+``--three-way`` runs the same matcher on three pairs. M is every year tab of the workbook
+(``--xlsx``, else the newest ``~/downloads/Financials*.xlsx``). P is every
+``<data root>/sheet_edits/snapshots/*.head.csv`` with pending and warning rows left out.
+A is the analyzer's budget-row export (``--app-csv``). Each pair uses the overlap of
+the two date spans, with ``SLACK_DAYS`` past either edge so a posted date and its
+authorized date still pair. A pair with no overlap is skipped.
 """
 from __future__ import annotations
 
@@ -32,13 +41,22 @@ from typing import NamedTuple
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.config import _data_root  # noqa: E402
-from tools.sheet_ledger import Row, budget_tab, ledger_rows, year_tab_rows  # noqa: E402
+from tools.sheet_ledger import (Row, WARNING_MARK, budget_tab, ledger_rows,  # noqa: E402
+                                year_tab_rows)
+from tools.xlsx_read import sheet_names  # noqa: E402
 
 # (day tolerance, minimum description similarity, label): tried in order, so a row takes
 # its closest counterpart before a looser rule can steal it.
 TIERS = ((0, 0.0, "exact"), (3, 0.25, "near"), (7, 0.45, "fuzzy"), (10, 0.0, "amount-only"))
 SLACK_DAYS = 10
 MASKED_SIMILARITY = 0.5
+# Master workbook, household-edited plaid Sheets, app budget rows.
+PAIRS = (("M-P", "M", "P"), ("M-A", "M", "A"), ("P-A", "P", "A"))
+FINDING_KINDS = ("only_one_side", "category_disagreement", "total_diff")
+STALE_MASTER_DAYS = 7
+TOTAL_DIFF_LIMIT = 1.0
+LARGEST_TOTALS = 5
+DEFAULT_DOWNLOADS = Path("~/downloads")
 
 
 class Comparison(NamedTuple):
@@ -83,18 +101,30 @@ def match_rows(sheet: list[Row], ledger: list[Row]):
     return pairs, sheet_left, ledger_left
 
 
-def compare(sheet: list[Row], ledger: list[Row], warnings: int = 0) -> Comparison:
+def compare(sheet: list[Row], ledger: list[Row], warnings: int = 0,
+            window: tuple[date, date] | None = None) -> Comparison:
+    """Match ``sheet`` against ``ledger``.
+
+    ``window`` is ``(first, last)``. Omitted, the window runs from the ledger's first
+    row to the sheet's last — the two-way report. Rows within ``SLACK_DAYS`` of either
+    edge still pair: a posted date and its authorized date can sit on opposite sides
+    of the boundary. The default window already starts at the earliest ledger row and
+    ends at the latest sheet row, so those extra edges are empty there.
+    """
     if not sheet or not ledger:
         raise ValueError("both the sheet tab and the ledger need at least one transaction")
-    first, last = min(r.date for r in ledger), max(r.date for r in sheet)
+    if window is None:
+        first, last = min(r.date for r in ledger), max(r.date for r in sheet)
+    else:
+        first, last = window
     slack = timedelta(days=SLACK_DAYS)
     pairs, sheet_left, ledger_left = match_rows(
-        [r for r in sheet if first - slack <= r.date <= last],
-        [r for r in ledger if first <= r.date <= last + slack])
+        [r for r in sheet if first - slack <= r.date <= last + slack],
+        [r for r in ledger if first - slack <= r.date <= last + slack])
     return Comparison(
         first, last, pairs,
-        sheet_only=[r for r in sheet_left if r.date >= first],
-        ledger_only=[r for r in ledger_left if r.date <= last],
+        sheet_only=[r for r in sheet_left if first <= r.date <= last],
+        ledger_only=[r for r in ledger_left if first <= r.date <= last],
         ledger_after_sheet=[r for r in ledger if r.date > last and r not in
                             [p[1] for p in pairs]],
         sheet_rows=[r for r in sheet if first <= r.date <= last],
@@ -295,6 +325,89 @@ def records(c: Comparison, published: dict[str, float]) -> list[dict]:
     return found
 
 
+def master_rows(workbook: Path) -> list[Row]:
+    """Every year tab. The master dates a row by its posted date."""
+    years = sorted(int(name) for name in sheet_names(workbook) if re.fullmatch(r"\d{4}", name))
+    return [row for year in years for row in year_tab_rows(workbook, year)]
+
+
+def _plaid_kept(row: Row) -> bool:
+    # The converter marks an unsettled charge PENDING and a stale row with a leading ⚠.
+    return row.note != "PENDING" and not row.note.startswith(WARNING_MARK)
+
+
+def snapshot_rows(directory: Path) -> list[Row]:
+    """Every ``*.head.csv`` under ``directory``, pending and warning rows left out."""
+    if not directory.is_dir():
+        return []
+    rows: list[Row] = []
+    for path in sorted(directory.glob("*.head.csv")):
+        got, _warnings = ledger_rows(path)
+        rows.extend(row for row in got if _plaid_kept(row))
+    return rows
+
+
+def discover_workbook(downloads: Path) -> Path | None:
+    """The newest ``Financials*.xlsx`` in ``downloads``, or None."""
+    if not downloads.is_dir():
+        return None
+    found = [path for path in downloads.glob("Financials*.xlsx") if path.is_file()]
+    if not found:
+        return None
+    return max(found, key=lambda path: (path.stat().st_mtime, path.name))
+
+
+def _row_dict(row: Row) -> dict:
+    return {"date": row.date.isoformat(), "source": row.source, "description": row.desc,
+            "category": row.category, "net": row.net, "note": row.note, "ref": row.ref}
+
+
+def _month_totals(rows: list[Row]) -> dict[tuple[str, str], float]:
+    totals: dict[tuple[str, str], float] = defaultdict(float)
+    for row in rows:
+        totals[(row.category, row.date.strftime("%Y-%m"))] += row.net
+    return {key: round(value, 2) for key, value in totals.items()}
+
+
+def findings_for(pair: str, left_name: str, right_name: str, compared: Comparison) -> list[dict]:
+    """Rows only one side has, category disagreements, and category × month totals that
+    differ by more than a dollar. ``compared`` is one ``compare()`` of this pair."""
+    found = [{"kind": "only_one_side", "pair": pair, "side": left_name, **_row_dict(row)}
+             for row in compared.sheet_only]
+    found += [{"kind": "only_one_side", "pair": pair, "side": right_name, **_row_dict(row)}
+              for row in compared.ledger_only]
+    found += [{"kind": "category_disagreement", "pair": pair, "tier": tier,
+               "left_side": left_name, "right_side": right_name,
+               "left_category": left.category, "right_category": right.category,
+               "net": left.net, "left": _row_dict(left), "right": _row_dict(right)}
+              for left, right, tier in compared.pairs if left.category != right.category]
+    left_totals, right_totals = _month_totals(compared.sheet_rows), _month_totals(compared.ledger_rows)
+    for category, month in sorted(set(left_totals) | set(right_totals)):
+        left_total = left_totals.get((category, month), 0.0)
+        right_total = right_totals.get((category, month), 0.0)
+        difference = round(left_total - right_total, 2)
+        if abs(difference) > TOTAL_DIFF_LIMIT:
+            found.append({"kind": "total_diff", "pair": pair, "category": category, "month": month,
+                          "left_side": left_name, "right_side": right_name,
+                          "left": left_total, "right": right_total, "difference": difference})
+    return found
+
+
+def render_three_way(found: list[dict]) -> str:
+    lines = []
+    for pair, _left, _right in PAIRS:
+        counts = Counter(item["kind"] for item in found if item["pair"] == pair)
+        lines.append(f"{pair}  " + "  ".join(f"{kind} {counts[kind]}" for kind in FINDING_KINDS))
+    lines += ["", "Largest total differences"]
+    ranked = sorted((item for item in found if item["kind"] == "total_diff"),
+                    key=lambda item: (-abs(item["difference"]), item["pair"],
+                                      item["category"], item["month"]))
+    lines += [f"  {item['pair']}  {item['category']}  {item['month']}  "
+              f"{item['left']:,.2f} vs {item['right']:,.2f}  ({item['difference']:+,.2f})"
+              for item in ranked[:LARGEST_TOTALS]]
+    return "\n".join(lines)
+
+
 def write_records(directory: Path, found: list[dict]) -> Path:
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     path = directory / f"{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}.jsonl"
@@ -304,18 +417,39 @@ def write_records(directory: Path, found: list[dict]) -> Path:
     return path
 
 
-def main(argv=None) -> int:
-    root = Path(__file__).resolve().parent.parent.parent
+def _parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--xlsx", required=True, type=Path, help="the downloaded Financials workbook")
+    ap.add_argument("--xlsx", type=Path, help="the downloaded Financials workbook")
     ap.add_argument("--year", type=int, default=date.today().year, help="year tab to compare")
     ap.add_argument("--ledger", type=Path, help="ledger CSV (default: the Budget tab's)")
     ap.add_argument("--data-root", type=Path, help="override the data root")
     ap.add_argument("--top", type=int, default=25, help="rows listed per section")
     ap.add_argument("--no-write", action="store_true", help="print only; write no JSONL")
-    args = ap.parse_args(argv)
+    ap.add_argument("--three-way", action="store_true",
+                    help="cross-check the workbook, plaid Sheet snapshots, and the app export")
+    ap.add_argument("--downloads", type=Path,
+                    help="where to look for Financials*.xlsx when --xlsx is omitted (default: ~/downloads)")
+    ap.add_argument("--plaid-dir", type=Path,
+                    help="plaid Sheet snapshots (default: <data root>/sheet_edits/snapshots)")
+    ap.add_argument("--app-csv", type=Path, help="budget rows exported by the analyzer")
+    return ap
 
-    data_root = args.data_root or _data_root(root)
+
+def _data(args) -> Path:
+    return args.data_root or _data_root(Path(__file__).resolve().parent.parent.parent)
+
+
+def _overlap(left: list[Row], right: list[Row]) -> tuple[date, date] | None:
+    """Later start through earlier end, or None when the spans miss."""
+    first = max(min(r.date for r in left), min(r.date for r in right))
+    last = min(max(r.date for r in left), max(r.date for r in right))
+    if first > last:
+        return None
+    return first, last
+
+
+def run_two_way(args) -> int:
+    data_root = _data(args)
     ledger_path = args.ledger or data_root / "spend_analyzer" / "data" / "budget_ledger.csv"
     ledger, warnings = ledger_rows(ledger_path)
     published = {cat: avg for cat, avg, _ in budget_tab(args.xlsx)}
@@ -325,6 +459,68 @@ def main(argv=None) -> int:
     if not args.no_write:
         print(f"\nWrote {write_records(data_root / 'sheet_compare', records(result, published))}")
     return 0
+
+
+def run_three_way(args) -> int:
+    if args.xlsx is not None:
+        workbook = args.xlsx
+    else:
+        downloads = (args.downloads or DEFAULT_DOWNLOADS).expanduser()
+        workbook = discover_workbook(downloads)
+        if workbook is None:
+            print(f"no Financials workbook in {downloads} (looked for Financials*.xlsx)")
+            return 0
+    if args.app_csv is None:
+        print("--three-way needs --app-csv", file=sys.stderr)
+        return 2
+    if not args.app_csv.is_file():
+        print(f"no app export at {args.app_csv}", file=sys.stderr)
+        return 1
+
+    data_root = _data(args)
+    modified = datetime.fromtimestamp(workbook.stat().st_mtime).date()
+    print(f"{workbook} modified {modified.isoformat()}")
+    sides = {
+        "M": master_rows(workbook),
+        "P": snapshot_rows(args.plaid_dir or data_root / "sheet_edits" / "snapshots"),
+        "A": app_rows(args.app_csv),
+    }
+    newest = max((row.date for rows in (sides["P"], sides["A"]) for row in rows), default=None)
+    # An old download still gets compared: the household may not have saved a fresh copy.
+    if newest is not None and (newest - modified).days > STALE_MASTER_DAYS:
+        print(f"master is {(newest - modified).days} days old")
+
+    found: list[dict] = []
+    for pair, left_name, right_name in PAIRS:
+        left, right = sides[left_name], sides[right_name]
+        if not left or not right:
+            print(f"{pair} skipped ({left_name} {len(left)} rows, {right_name} {len(right)} rows)")
+            continue
+        window = _overlap(left, right)
+        if window is None:
+            print(f"{pair} skipped (no overlap)")
+            continue
+        found.extend(findings_for(pair, left_name, right_name,
+                                  compare(left, right, window=window)))
+    print(render_three_way(found))
+    if not args.no_write:
+        print(f"\nWrote {write_records(data_root / 'sheet_compare', found)}")
+    return 0
+
+
+def app_rows(path: Path) -> list[Row]:
+    rows, _warnings = ledger_rows(path)
+    return rows
+
+
+def main(argv=None) -> int:
+    ap = _parser()
+    args = ap.parse_args(argv)
+    if args.three_way:
+        return run_three_way(args)
+    if args.xlsx is None:
+        ap.error("--xlsx is required")
+    return run_two_way(args)
 
 
 if __name__ == "__main__":

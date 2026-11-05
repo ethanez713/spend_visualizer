@@ -30,7 +30,10 @@ it never edits records — category fixes append INTENTS to the transformer's lo
   ignores them, so a budget edit never changes a Plaid category. Adjustments are
   applied in the Budget tab only, never to the cube. The Budget tab's `budget_amount`
   is the signed amount of any row that has a `budget_cat`, whatever its flow, which is
-  how an edit counts a transfer.
+  how an edit counts a transfer. `tools/export_budget_rows.py --out PATH` writes that
+  frame's settled rows (a budget category after household edits; pending and excluded
+  dropped) as a converter-schema ledger for the pipeline's three-way sheet compare.
+  Debit Less Credit is the signed budget amount.
 - Budget offsets apply under either actuals source: the converter ledger has no source
   rows (it drops transfers), so it borrows them from the archive. Toggled off, the
   source rows are left out of both.

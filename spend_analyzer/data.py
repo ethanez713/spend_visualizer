@@ -67,15 +67,23 @@ def build_cube(
     accounts_path: str | Path = PERSONAL_CONFIG_DIR / "accounts.yaml",
     budget_model: BudgetModel | None = None,
     mirror_csv: str | Path = MIRROR_CSV,
+    edits_path: str | None = None,
 ) -> BuildResult:
     app = app or load_app_config()
     taxonomy = load_taxonomy(taxonomy_path)
     accounts = load_accounts(accounts_path)
 
-    res = ingest(app.resolved_archive_paths, overlay=manual_edits.overlay,
+    res = ingest(app.resolved_archive_paths,
+                 overlay=lambda records: manual_edits.overlay(records, edits_path),
                  live_ids=load_live_ids(mirror_csv))
-    overrides = budget_edits.overrides_for([t.raw for t in res.transactions if t.raw])
-    aliases = merchant_merge.resolve(merchant_merge.load_entries()) if manual_edits.status() is None else {}
+    raws = [t.raw for t in res.transactions if t.raw]
+    overrides = budget_edits.overrides_for(raws, edits_path)
+    if manual_edits.status() is None:
+        manual, _ = manual_edits._import()
+        aliases = merchant_merge.resolve(
+            manual.load_intents(edits_path or manual_edits.edits_path()))
+    else:
+        aliases = {}
     df = annotate(enrich(res.transactions, taxonomy, accounts, aliases),
                   budget_model or load_budget_model(), overrides)
     qc = _qc(df, taxonomy, res.qc)
