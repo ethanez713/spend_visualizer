@@ -18,8 +18,10 @@ outside the repo** (see "Data root").
    - `--persist`/Drive-enabled runs, and `categorize.py` without `--no-drive` — push to
      Google Drive.
    - `run.py` — by default ALSO pushes the data repo to GitHub and, when a converter is
-     configured, uploads a new Google Sheet (`--no-push-data` / `--no-sheet` turn them
-     off). `deploy/bin/finance-daily.sh` pushes the data repo too.
+     configured, uploads a new Google Sheet and syncs edits with the uploaded Sheets
+     (reads them, writes cells and deletes rows in them; `--no-push-data` /
+     `--no-sheet` / `--no-sheet-sync` turn them off). `deploy/bin/finance-daily.sh`
+     pushes the data repo too.
    - `deploy/install.sh` — enables live timers.
 
    *Default to* verifying with the offline test suites and synthetic data, and handing
@@ -144,5 +146,16 @@ review, follow the project-local `audit-transactions` skill
   the rest of `run.py` (golden rule 1). The converter owns the bookkeeping (what each
   Sheet held, pending-row reconciliation, warning rows) in
   `<data_root>/sheet_exports/manifest.jsonl` — the orchestrator passes no window.
+- **Sheet sync (step 2d, inside the lock; 2e cross-check outside it)**: a household
+  edit in a `plaid_*` Sheet becomes a transaction-scope budget edit (`source: "sheet"`),
+  and a household budget edit made in the analyzer is written into the Sheet holding
+  that row, located by the hidden `ID` column. The analyzer's `tools/sheet_sync.py`
+  decides per cell against the last value both sides agreed on
+  (`<data_root>/sheet_sync/base.jsonl`): only one side moved → copy it across; both
+  moved differently → report in `conflicts.jsonl`, touch neither. Only household
+  decisions count as the app's side — a rule change or re-audit never rewrites a
+  Sheet; the 2e three-way report (master workbook, plaid Sheets, app) surfaces those.
+  It never generalizes an edit into a merchant or phrase rule. Converter halves:
+  `mine_edits.py` (read), `push_edits.py` (write, manifest Sheets only).
 - `PLAN.md` files are historical design docs; READMEs are the current truth.
 - Component-level `CLAUDE.md` files hold per-component specifics.

@@ -53,3 +53,9 @@ two machines legitimately write it — see the transformer's CLAUDE.md).
   is the converter's `sheet_state` module's decision, tracked in
   `<data_root>/sheet_exports/manifest.jsonl`. Don't re-add window flags or pending
   handling here.
+- Sheet sync (2d, `--sheet-sync`, default-on with a converter) is more egress of the same
+  kind: it reads every uploaded Sheet and writes cells and deletes rows in them. It runs
+  INSIDE the lock, before the data push, because it appends intents that the push must
+  commit; `--no-drive` skips it. The master cross-check (2e) is local and reports only,
+  so it runs outside the lock and under `--no-drive`. Both are non-fatal. Verification
+  runs pass `--no-sheet-sync` along with `--no-push-data --no-sheet`.
