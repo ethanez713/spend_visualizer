@@ -539,7 +539,7 @@ def test_format_plan_lists_changes_and_conflicts_by_sheet():
         "cross-sheet",
         "  07/09/2026  $1.00  Split  note  conflict: July: cash ≠ August: card",
     ])
-    footer = "".join(f"{kind}: {counts[kind]}\n" for kind in tool.KINDS)
+    footer = tool.format_counts(counts)
 
     assert tool.format_plan(plan) == listed + "\n" + footer
     assert tool.format_plan(plan, dry_run=True) == "dry-run\n" + listed + "\n" + footer
@@ -631,7 +631,7 @@ def test_execute_pulls_once_and_a_rerun_writes_nothing(tmp_path, capsys):
 
     assert tool.main(["--data-root", str(root), "--accept-backfill"]) == 0
     printed = capsys.readouterr().out
-    assert "July\n" in printed and "Groceries → Dining Out" in printed and "pulled: 1" in printed
+    assert "July\n" in printed and "Groceries → Dining Out" in printed and "pulled 1" in printed
     log = (root / "plaid_category_transformer" / "data" / "manual_edits.jsonl").read_text(encoding="utf-8")
     base = (root / "sheet_sync" / "base.jsonl").read_text(encoding="utf-8")
     assert log.count("\n") == 1 and "Dining Out" in log
@@ -645,7 +645,7 @@ def test_execute_pulls_once_and_a_rerun_writes_nothing(tmp_path, capsys):
     assert (root / "sheet_sync" / "base.jsonl").read_text(encoding="utf-8") == base
     assert (root / "sheet_sync" / "outbox.jsonl").read_text(encoding="utf-8") == ""
     assert (root / "sheet_sync" / "conflicts.jsonl").read_text(encoding="utf-8") == ""
-    assert "pulled: 0" in capsys.readouterr().out
+    assert "sheet sync: nothing to do" in capsys.readouterr().out
 
 
 def test_outputs_are_private_and_replaced(tmp_path):
@@ -673,7 +673,7 @@ def test_dry_run_prints_counts_and_writes_nothing(tmp_path, capsys):
     assert printed.startswith("dry-run\n")
     assert "July\n" in printed
     assert "07/06/2026  $10.00  Market  category  Groceries → Dining Out" in printed
-    assert "pulled: 1" in printed
+    assert "pulled 1" in printed
     assert not (root / "sheet_sync").exists()
     assert not (root / "plaid_category_transformer" / "data" / "manual_edits.jsonl").exists()
     assert _real_log_sig() == real
@@ -690,3 +690,10 @@ def test_a_category_already_on_a_sheet_is_known_without_a_goal(tmp_path):
     log = (root / "plaid_category_transformer" / "data" / "manual_edits.jsonl").read_text(encoding="utf-8")
     assert json.loads(log)["set"]["budget_category"] == "From The Sheet"
     assert (root / "sheet_sync" / "conflicts.jsonl").read_text(encoding="utf-8") == ""
+
+
+def test_the_summary_names_only_counts_that_moved():
+    counts = {kind: 0 for kind in tool.KINDS}
+    assert tool.format_counts(counts) == "sheet sync: nothing to do\n"
+    counts.update(pulled=2, skipped_ambiguous=1)
+    assert tool.format_counts(counts) == "sheet sync: pulled 2, skipped_ambiguous 1\n"

@@ -144,7 +144,7 @@ class _Index:
 
     def is_latest(self, txn: str, file_id: str, row_id: str) -> bool:
         loc = self.by_txn.get(txn)
-        return bool(loc) and loc[0] == file_id and loc[1] == row_id
+        return loc is not None and loc[0] == file_id and loc[1] == row_id
 
     def shown(self) -> dict[tuple[str, str], str]:
         """The transaction a sheet row currently stands for (latest alias wins)."""
@@ -571,21 +571,24 @@ def _merge(cells: dict[tuple[str, str], _Cell], *, index: _Index, raw: dict[str,
                 # intent. Leave the previous note where it is.
                 if name == "note" and not agreed:
                     continue
+                assert agreed is not None
                 marker = (cell.txn, name, agreed)
+                if marker in pulled:
+                    base[field_key] = agreed
+                    continue
                 record = _record_for(raw, cell)
-                if marker not in pulled and record is None:
+                if record is None:
                     counts["skipped_missing_record"] += 1
                     continue
                 base[field_key] = agreed
-                if marker not in pulled:
-                    try:
-                        intents.append(_intent(record, name, agreed, cell))
-                    except ValueError:
-                        _restore(base, original, field_key)
-                        counts["skipped_incomplete"] += 1
-                        continue
-                    pulled.add(marker)
-                    counts["pulled"] += 1
+                try:
+                    intents.append(_intent(record, name, agreed, cell))
+                except ValueError:
+                    _restore(base, original, field_key)
+                    counts["skipped_incomplete"] += 1
+                    continue
+                pulled.add(marker)
+                counts["pulled"] += 1
                 continue
             if action != "push":
                 continue
@@ -594,6 +597,7 @@ def _merge(cells: dict[tuple[str, str], _Cell], *, index: _Index, raw: dict[str,
             # Leave base. The next mine shows the write if it landed (then the
             # two sides agree); if it did not, the sheet still shows the upload
             # and this push is planned again.
+            assert agreed is not None
             outbox.append(_outbox(cell, name, agreed))
             counts["pushed"] += 1
 
@@ -643,9 +647,9 @@ def plan(edits: list[dict], manifest: list[dict], base_rows: list[dict],
 
 
 def format_counts(counts: dict[str, int], *, dry_run: bool = False) -> str:
-    lines = ["dry-run"] if dry_run else []
-    lines += [f"{kind}: {counts.get(kind, 0)}" for kind in KINDS]
-    return "\n".join(lines) + "\n"
+    """One summary line naming only the counts that are not zero."""
+    moved = ", ".join(f"{kind} {counts[kind]}" for kind in KINDS if counts.get(kind))
+    return ("dry-run\n" if dry_run else "") + f"sheet sync: {moved or 'nothing to do'}\n"
 
 
 def _show_date(value) -> str:
@@ -784,7 +788,7 @@ def format_plan(plan: SyncPlan, *, dry_run: bool = False) -> str:
                                  conflict.get("field") or "", f"conflict: {shown}")
             cross.append((_sort_date((facts or {}).get("date") or ""), text))
             continue
-        facts = by_id.get((conflict.get("file_id"), conflict.get("row_id")))
+        facts = by_id.get((conflict.get("file_id") or "", conflict.get("row_id") or ""))
         field = conflict.get("field") or ""
         if kind == "value_conflict":
             change = f"conflict: sheet {conflict.get('sheet') or ''} ≠ app {conflict.get('app') or ''}"
@@ -897,9 +901,9 @@ def categories_for(root: Path, manifest: list[dict], overrides: dict[str, dict])
             if category:
                 present.add(category)
     for override in overrides.values():
-        category = override.get("category")
-        if isinstance(category, str) and _clean(category):
-            present.add(_clean(category))
+        chosen = override.get("category")
+        if isinstance(chosen, str) and _clean(chosen):
+            present.add(_clean(chosen))
     return budget_table.known_categories(budget, present)
 
 
