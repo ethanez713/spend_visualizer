@@ -74,6 +74,33 @@ def test_given_overlapping_scopes_when_matched_then_transaction_beats_merchant_a
     assert "t9" not in found
 
 
+def test_given_an_edit_on_a_pending_row_when_it_settles_then_the_settled_row_keeps_it(tmp_path):
+    pending = {**UNRELATED, "transaction_id": "p1"}
+    settled = {**UNRELATED, "transaction_id": "s1", "pending_transaction_id": "p1"}
+    path = _log(tmp_path, _edit(pending, category="Travel", note="trip"))
+
+    found = budget_edits.overrides_for([settled], path)
+
+    assert found["s1"]["category"] == "Travel" and found["s1"]["note"] == "trip"
+
+
+def test_given_edits_on_both_ids_when_matched_then_the_settled_rows_own_edit_wins(tmp_path):
+    pending = {**UNRELATED, "transaction_id": "p1"}
+    settled = {**UNRELATED, "transaction_id": "s1", "pending_transaction_id": "p1"}
+    path = _log(tmp_path, _edit(settled, category="Groceries"), _edit(pending, category="Travel"))
+
+    assert budget_edits.overrides_for([settled], path)["s1"]["category"] == "Groceries"
+
+
+def test_given_a_merchant_edit_and_a_pending_row_edit_when_settled_then_the_row_edit_wins(tmp_path):
+    pending = {**VENMO, "transaction_id": "p1"}
+    settled = {**VENMO, "transaction_id": "s1", "pending_transaction_id": "p1"}
+    path = _log(tmp_path, _edit(pending, category="Travel"),
+                _edit(scope="merchant", category="Dining Out"))
+
+    assert budget_edits.overrides_for([settled], path)["s1"]["category"] == "Travel"
+
+
 def test_given_a_note_added_after_a_category_when_matched_then_the_category_is_kept(tmp_path):
     chosen = _edit(category="Travel")
     noted = _edit(note="Europe")

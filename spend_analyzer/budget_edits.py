@@ -67,6 +67,16 @@ def current(path: str | None = None) -> list[dict]:
     return resolve(manual.load_intents(path or manual_edits.edits_path()))
 
 
+def _match(index, record: dict) -> dict | None:
+    """The row's own transaction edit, else one made while it was pending (Plaid gives a
+    settled row a new id and names the pending one in ``pending_transaction_id``), else
+    the merchant and phrase scopes."""
+    found = index.match(record)
+    if found is not None and found.get("scope") == "transaction":
+        return found
+    return index.by_txn.get(record.get("pending_transaction_id") or "") or found
+
+
 def overrides_for(raw_records: list[dict], path: str | None = None) -> dict[str, dict]:
     """``{transaction_id: {"category", "edit", "note"}}`` for every record a budget edit
     covers. ``category`` is the chosen budget category, ``None`` when the edit excludes
@@ -80,7 +90,7 @@ def overrides_for(raw_records: list[dict], path: str | None = None) -> dict[str,
     annotate = manual.ManualIndex([e for e in edits if e.get("note")])
     found = {}
     for record in raw_records:
-        chose, noted = decide.match(record), annotate.match(record)
+        chose, noted = _match(decide, record), _match(annotate, record)
         if chose is None and noted is None:
             continue
         found[record["transaction_id"]] = {
