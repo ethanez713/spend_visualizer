@@ -48,7 +48,7 @@ cd finance_pipeline
 - **Honest ML evaluation** — the LLM auditor was *measured*, not assumed: see
   [`LLM_ASSESSMENT.md`](LLM_ASSESSMENT.md), where the model's flag precision is quantified at
   23%, root-caused (it read Plaid's amount-sign convention backwards), and given a fix plan.
-- **442 offline tests** across six components, each pinned + hash-locked and isolated in its
+- **Offline test suites** for all six components, each pinned + hash-locked and isolated in its
   own virtualenv. Supply-chain hardened: exact pins, `--require-hashes` installs, CSV
   formula-injection escaping, least-privilege OAuth scopes.
 
@@ -70,7 +70,7 @@ flowchart LR
     classDef ext fill:#eef,stroke:#88a,color:#225;
 ```
 
-> Plaid and Drive (dashed) are the only things that ever touch the network, and both are
+> Plaid and Drive are the only things that ever touch the network, and both are
 > opt-in. Everything in between is local-only by default.
 
 ## Screenshots
