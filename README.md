@@ -3,154 +3,65 @@
 [![CI](https://github.com/ethanez713/spend_visualizer/actions/workflows/ci.yml/badge.svg)](https://github.com/ethanez713/spend_visualizer/actions/workflows/ci.yml)
 ![Python 3.12](https://img.shields.io/badge/python-3.12-blue)
 
-Personal finance pipeline: fetch bank/card transactions from Plaid, audit and correct
-their categories (deterministic rules, with periodic deep review by Claude — the local
-LLM reviewer is off by default), and explore spending in a local Streamlit UI.
-Multi-user: each Plaid Item is owned by a named person and every transaction is stamped
-with its owner; the UI renders everyone's data as one dataset with per-person attribution
-and filtering.
+**See where the money goes without handing your bank data to a budgeting service.** It
+pulls transactions from your banks through Plaid, fixes their categories with rules you
+control, and shows spending, budgets and cash flow in a local web app. The data stays on
+your machine.
 
-**Privacy by construction:** this repo contains code only. All personal financial data
-lives OUTSIDE it under a configurable **data root** (see below), and all credentials
-live in gitignored `.secrets/` directories — so the repo can be shared without exposing
-anything. The core path is **offline**; Plaid is only called by the collector, Google
-Drive sync is local/opt-in, and the local LLM reviewer is off by default (periodic deep
-review is the opt-in Claude ritual — step 2 below).
+<table>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/img/overview.png" alt="Overview"><br><b>Overview.</b> Spending, income, net and savings rate, this month's pace against last, and the categories that moved most.</td>
+    <td width="50%" valign="top"><img src="docs/img/drilldown.png" alt="Spending"><br><b>Spending.</b> By necessity, category, subcategory or merchant, with a wheel that zooms on click and filters the transactions below it.</td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/img/budget.png" alt="Budget"><br><b>Budget.</b> Each category against its monthly goal, as a year-to-date and trailing three-month average.</td>
+    <td width="50%" valign="top"><img src="docs/img/merchants.png" alt="Merchants"><br><b>Merchants.</b> The largest merchants, one merchant's history, and recurring charges with their next expected date.</td>
+  </tr>
+</table>
 
-## Run the entire pipeline
+Every figure is synthetic: invented people, banks and merchants from
+[`gen_demo_data.py`](spend_analyzer/tools/gen_demo_data.py). More views (cash flow, the
+review queue, rules, pipeline checks) are in [`docs/img/`](docs/img).
 
-One command runs everything — fetch → categorize → budget ledger → Streamlit UI in
-your browser (setup: see "Full setup for a new user" below):
+## Try it with demo data
+
+No bank account or Plaid key needed:
 
 ```bash
-cd finance_pipeline
-./run.py                                  # entire pipeline + open the UI
-
-# …with the incremental Google-Sheet export (optional external converter; uploads
-# everything not yet exported, pending rows included, and also opens the fresh
-# Sheet + your pinned tabs as extra browser tabs):
-./run.py --sheet
+cd spend_analyzer
+python3 -m venv venv && ./venv/bin/pip install --require-hashes -r requirements.lock.txt
+./venv/bin/python -m tools.gen_demo_data            # prints SPEND_VISUALIZER_DATA=<a temp dir>
+SPEND_VISUALIZER_DATA=<that dir> ./venv/bin/streamlit run app.py
 ```
 
-## Highlights
+## What it does
 
-- **Real integrations, not a toy** — live Plaid sync, Google Drive replication, a Streamlit
-  analysis UI, and an unattended systemd deployment.
-- **A durable, reconciled data layer** (`persister/`) — incremental cursor-based sync,
-  content-hash dedup, append-only intent logs, and a conflict-reconciliation engine with a
-  *"Plaid is golden but never deletes"* policy so history that ages out of the API is
-  preserved.
-- **Multi-user by construction** — every transaction is owner-stamped at the fetch boundary;
-  the UI renders everyone's data as one dataset with per-person attribution and filtering.
-- **Offline & private by default** — code-only repo; all financial data and credentials live
-  *outside* it. The core path makes zero network calls; Plaid, Drive, and the LLM are each
-  opt-in behind explicit flags.
-- **Honest ML evaluation** — the LLM auditor was *measured*, not assumed: see
-  [`LLM_ASSESSMENT.md`](LLM_ASSESSMENT.md), where the model's flag precision is quantified at
-  23%, root-caused (it read Plaid's amount-sign convention backwards), and given a fix plan.
-- **Offline test suites** for all six components, each pinned + hash-locked and isolated in its
-  own virtualenv. Supply-chain hardened: exact pins, `--require-hashes` installs, CSV
-  formula-injection escaping, least-privilege OAuth scopes.
+- **Syncs incrementally.** Cursor-based Plaid sync with a 90-day re-fetch as a safety net,
+  so a late correction from the bank is picked up on the next run.
+- **Never loses history.** Stores are append-only. Plaid is treated as the source of
+  truth for what it returns, but a row that ages out of the API is kept, and a conflict
+  stops the run before anything is written.
+- **Categorizes with rules first.** Deterministic rules overwrite; an optional local LLM
+  only flags rows for review; your manual corrections are the highest authority and are
+  replayed on every run.
+- **Handles a household.** Every transaction is stamped with the person whose bank link
+  produced it, and every view can be filtered by person.
+- **Works offline.** The core path makes no network calls. Plaid, Google Drive backup and
+  the LLM are each opt-in.
 
-## Architecture
-
-Five components, each self-contained (own venv, README, tests, `.secrets/`), wired together
-by an orchestrator. Code lives in this repo; **all personal data lives outside it** under a
-configurable data root.
+## How it is put together
 
 ```mermaid
 flowchart LR
-    Plaid([Plaid API]):::ext -->|cursor sync| RAW[(raw xz store)]
+    Plaid([Plaid API]):::ext -->|cursor sync| RAW[(raw store)]
     RAW -->|persist + reconcile| TXN[(transactions.jsonl)]
-    RAW -->|"categorize<br/>(rules + LLM flag)"| CAT[(categorized store)]
+    RAW -->|"categorize<br/>(rules, LLM flags)"| CAT[(categorized store)]
     TXN --> DRIVE([Google Drive]):::ext
     CAT --> DRIVE
     CAT -->|read-only| UI[Streamlit UI]
 
     classDef ext fill:#eef,stroke:#88a,color:#225;
 ```
-
-> Plaid and Drive are the only things that ever touch the network, and both are
-> opt-in. Everything in between is local-only by default.
-
-## Screenshots
-
-Every figure is **synthetic demo data**: invented people, banks and merchants from
-[`spend_analyzer/tools/gen_demo_data.py`](spend_analyzer/tools/gen_demo_data.py). No real
-financial data appears anywhere in this repo.
-[`spend_analyzer/tools/screenshots.py`](spend_analyzer/tools/screenshots.py) regenerates every
-image below from that data.
-
-<table>
-  <tr>
-    <td width="50%" valign="top"><img src="docs/img/overview.png" alt="Overview"><br><b>Overview.</b> Spending, income, net and savings rate for the period, this month's pace against last month, and the categories that moved most.</td>
-    <td width="50%" valign="top"><img src="docs/img/drilldown.png" alt="Spending"><br><b>Spending.</b> Spend by necessity, category, subcategory or merchant, and a hierarchy wheel (or treemap) that zooms on click and filters the transactions below it.</td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top"><img src="docs/img/budget.png" alt="Budget"><br><b>Budget.</b> Each category against its monthly goal as a year-to-date and trailing three-month average, over a stacked monthly trend.</td>
-    <td width="50%" valign="top"><img src="docs/img/cashflow.png" alt="Cash flow"><br><b>Cash flow.</b> Monthly income against spending, with net, savings rate and a cumulative running total; partial months drawn lighter.</td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top"><img src="docs/img/merchants.png" alt="Merchants"><br><b>Merchants.</b> The largest merchants, one merchant's monthly history and transactions, and recurring charges detected from history with each one's next expected date.</td>
-    <td width="50%" valign="top"><img src="docs/img/review.png" alt="Review"><br><b>Review.</b> The sign-off queue: rows grouped by budget category, corrected in place and signed off a group at a time. A correction appends an intent to a log; it never edits the store.</td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top"><img src="docs/img/rules.png" alt="Rules"><br><b>Rules.</b> The categorizer's pattern rules: each rule's match, target category, and whether it overwrites (<code>auto</code>) or only flags, with live match counts.</td>
-    <td width="50%" valign="top"><img src="docs/img/checks.png" alt="Checks"><br><b>Checks.</b> Pipeline health over the loaded archive: excluded rows, taxonomy coverage, and a tie-out showing every grouping sums to the same total, so nothing is double counted.</td>
-  </tr>
-</table>
-
-## How this was built
-
-Designed and built by me, using AI coding agents (Claude Code) as a force multiplier: I
-drove the architecture, the data-integrity invariants, the security model, and the LLM
-evaluation; the agent accelerated implementation and tests. The categorization *audit
-ritual* (`/audit-transactions`, step 2 below) is itself an AI-in-the-loop workflow I
-designed — an LLM proposes category flags, a deterministic guard rejects impossible ones,
-and a human adjudicates. I treat model output as a draft to review, not to trust:
-[`LLM_ASSESSMENT.md`](LLM_ASSESSMENT.md) is the receipt — I measured the local model,
-found it useful only ~23% of the time, and root-caused the failure rather than shipping it
-on faith.
-
-## Everyday workflow
-
-The end-to-end loop, in order. Steps are independent — run only what you need. Each
-component runs under its **own** venv (build them once — see "Full setup"). The local LLM
-is **off by default**, so categorization is purely deterministic rules unless you pass
-`--llm`. (The raw Plaid store is INPUT only — no categorizer step ever writes it.)
-
-**1 · Refresh data** — fetch new transactions → deterministic categorize → push to Drive:
-```bash
-cd finance_pipeline && ./run.py --no-ui          # add --push-data to also git-push the data repo; --no-drive to stay local
-```
-
-**2 · Audit with Claude** — in a Claude Code session at the repo, review records and flag
-suspicious ones, run the quality sweeps, and propose rules (writes flags locally; pushes
-nothing):
-```bash
-/audit-transactions          # new/unreviewed records only (default)
-/audit-transactions full     # re-review the ENTIRE history (e.g. after a category/rule change)
-```
-
-**3 · Apply edits** — adjudicate and/or codify, which updates + uploads the categorized
-store (Drive). Run whichever apply:
-```bash
-cd plaid_category_transformer
-./.venv/bin/python categorize.py --review        # adjudicate Claude's flags: accept / reject / re-pick
-./.venv/bin/python categorize.py --edit          # one-off manual fix (sticky intent), applied now
-# systemic rule update: paste the audit's proposed rules into src/config.py, then:
-./.venv/bin/python categorize.py --full          # re-categorize everything with the new rules
-```
-
-**4 · Open the UI** — read-only spending explorer over the categorized store:
-```bash
-cd spend_analyzer && ./venv/bin/streamlit run app.py   # binds 127.0.0.1:8501
-```
-
-> **One-shot** (no audit in between): `cd finance_pipeline && ./run.py` does **1 + 4** —
-> refresh the data, then open the UI.
-
-## Components
 
 | Directory | Role |
 |---|---|
@@ -164,203 +75,22 @@ cd spend_analyzer && ./venv/bin/streamlit run app.py   # binds 127.0.0.1:8501
 Components locate each other by sibling-relative paths; don't rename the directories
 independently. Each component has its own README with full details, and its own venv.
 
-## Command reference (everyday use)
+Code lives in this repo and **all personal data lives outside it**, under a data root you
+choose; credentials stay in gitignored `.secrets/` directories. Dependencies are pinned
+and hash-locked per component, and CSV output is escaped against formula injection.
 
-All paths are relative to the repo root; every component runs under its **own
-venv** (build them once — see "Full setup" below). Each component's README has
-the full flag list.
+The local LLM reviewer was measured before it was trusted:
+[`LLM_ASSESSMENT.md`](LLM_ASSESSMENT.md) puts its flag precision at 23%, traces that to
+one misread sign convention, and is why it only ever flags.
 
-### The pipeline (one command, end to end)
+## Using it for real
 
-| Task | Command |
-|---|---|
-| Full run: fetch → deterministic categorize → open the UI | `cd finance_pipeline && ./run.py` |
-| Data steps only, no UI (refresh + push to Drive) | `./run.py --no-ui` |
-| …also git-push the data-root repo to its remote | `./run.py --no-ui --push-data` |
-| Fully offline (no Drive pull/push) | `./run.py --no-drive` |
-| Opt IN to the local LLM reviewer (off by default; needs Ollama) | `./run.py --llm` |
-| …plus the incremental Google-Sheet export + extra tabs (optional converter) | `./run.py --sheet` |
-
-### Transactions (Plaid collector)
-
-| Task | Command |
-|---|---|
-| Link a new bank (one Flask session per user) | `cd transactions && ./venv/bin/python app.py --user <name>` |
-| Fetch/sync only (incremental + Drive persist) | `cd transactions && ./venv/bin/python fetch_transactions.py` |
-| Same, fully offline | `./venv/bin/python fetch_transactions.py --no-drive` |
-| Re-link after a bank forces re-auth | same as linking; from a server: `ssh -L 5000:127.0.0.1:5000`, then run it there |
-
-### Categorization (rules + LLM auditor)
-
-| Task | Command |
-|---|---|
-| Categorize only (delta; deterministic rules, LLM off) | `cd plaid_category_transformer && ./.venv/bin/python categorize.py` |
-| Claude audit ritual (export → judge → apply) | `/audit-transactions` skill, or `categorize.py --claude-export` / `--claude-apply` |
-| Work the review queue — adjudicate flags (interactive) | `./.venv/bin/python categorize.py --review` |
-| Capture a manual one-off edit (interactive) | `./.venv/bin/python categorize.py --edit` |
-| Full re-audit (after editing `src/config.py` rules) | `./.venv/bin/python categorize.py --full` |
-| Opt IN to the local LLM for this run | `./.venv/bin/python categorize.py --llm` |
-| Mine manual edits for rule improvements | `./.venv/bin/python analyze_edits.py` |
-
-### The UI (spend analyzer)
-
-| Task | Command |
-|---|---|
-| Launch the UI alone, locally | `cd spend_analyzer && ./venv/bin/streamlit run app.py` |
-| (it binds `127.0.0.1:8501` and reads the categorized store read-only) | |
-
-### Run it as a service (server)
-
-Bring-up is the ordered runbook: [`deploy/RUNBOOK.md`](deploy/RUNBOOK.md). Day-to-day:
-
-| Task | Command |
-|---|---|
-| Install + enable UI service & daily timer | `./deploy/install.sh` (on the server, after RUNBOOK §§1–7) |
-| What the timer runs each morning | `deploy/bin/finance-daily.sh` → `run.py --no-ui --no-llm --push-data` |
-| Open the UI | `https://<server>.<tailnet>.ts.net` (tailscale serve → loopback 8501) |
-| Did last night's run work? | `journalctl --user -u finance-daily -n 50` |
-| Pause / resume the schedule | `systemctl --user stop finance-daily.timer` / `start` |
-| Remove the service | `./deploy/uninstall.sh` |
-
-**Two-machine rule of thumb:** the categorized store and intent log rebase onto
-the Drive head at every run start, so the server's daily job and an occasional
-desktop Claude audit/review run coexist safely — just don't run both at the same
-moment, and only the server pushes `finance_data` to GitHub (RUNBOOK §12).
-
-## Where the data lives (the data root)
-
-All stores, state, and personal config resolve to one external directory — the
-**data root** — found via, in priority order:
-
-1. the `SPEND_VISUALIZER_DATA` environment variable,
-2. the first non-comment line of the [`data_root`](data_root) file at this repo's root,
-3. the default `~/finance_data`.
-
-Inside, it mirrors the monorepo layout (`transactions/data/…`,
-`plaid_category_transformer/data/…`, `spend_analyzer/config/…`). Make it a **private
-git repo** so pipeline runs get a local audit history:
-
-```bash
-mkdir -p -m 700 ~/finance_data && cd ~/finance_data && git init
-```
-
-Secrets do **not** live there: Plaid credentials/tokens and Drive credentials stay in
-each component's gitignored `.secrets/` (0700, files 0600), machine-local only.
-
-## Full setup for a new user
-
-### 0. Clone + per-component venvs
-
-Every component installs from its **hash-locked** `requirements.lock.txt`
-(`--require-hashes` verifies each downloaded artifact against pinned SHA-256s —
-supply-chain hardening). The sibling `persister` library is installed editable in a
-separate `--no-deps` step because editables can't be hash-pinned; its dependencies
-are already in each consumer's lock.
-
-```bash
-git clone <this repo> spend_visualizer && cd spend_visualizer
-
-(cd persister && python3 -m venv .venv && ./.venv/bin/pip install --require-hashes -r requirements.lock.txt && ./.venv/bin/pip install --no-deps -e .)
-(cd transactions && python3 -m venv venv && ./venv/bin/pip install --require-hashes -r requirements.lock.txt && ./venv/bin/pip install --no-deps -e ../persister)
-(cd plaid_category_transformer && python3 -m venv .venv && ./.venv/bin/pip install --require-hashes -r requirements.lock.txt && ./.venv/bin/pip install --no-deps -e ../persister)
-(cd spend_analyzer && python3 -m venv venv && ./venv/bin/pip install --require-hashes -r requirements.lock.txt)
-(cd finance_pipeline && python3 -m venv venv && ./venv/bin/pip install --require-hashes -r requirements.lock.txt)
-```
-
-After a deliberate pin bump in a component's `requirements*.txt`, regenerate its lock:
-`pip install pip-tools && pip-compile --generate-hashes --allow-unsafe
-<the component's requirements*.txt files> -o requirements.lock.txt`.
-
-Create the data root (step above), or edit `data_root` to point somewhere else.
-
-### 1. Plaid account (required)
-
-Plaid is the bank-data API; you need your own (free) developer account:
-
-1. Sign up at **<https://dashboard.plaid.com/signup>** (choose "personal project" /
-   any team name — no company needed).
-2. In the dashboard, grab your **client_id** and the **Sandbox secret** from
-   *Developers → Keys*.
-3. For real banks, request **Production access** (*Settings → Activate Production*).
-   You'll answer a short questionnaire (use case: personal finance, data: Transactions).
-   Approval is typically quick; pay-as-you-go pricing has a free monthly allotment
-   that personal use stays well inside. Note: the number of bank connections
-   ("Items") is capped — link only banks you need, and know that **deleting an Item
-   does not free its slot**.
-4. Put the credentials in `transactions/.secrets/.env` (format in
-   `transactions/.env.example`); `chmod 700 transactions/.secrets`, `chmod 600` the file:
-
-   ```
-   PLAID_CLIENT_ID=...
-   PLAID_SECRET=...          # Sandbox secret first; switch to Production when approved
-   PLAID_ENV=sandbox         # then: production
-   ```
-
-To dry-run the entire pipeline on fake data first, keep `PLAID_ENV=sandbox`, link any
-bank with Plaid's test credentials `user_good` / `pass_good`, and point
-`SPEND_VISUALIZER_DATA` at a throwaway dir (see `transactions/README.md` → "Testing in
-sandbox first").
-
-### 2. Google Drive sync (optional but recommended)
-
-Gives the two durable stores an off-machine, append-only revision history. Skip it
-entirely by always running with `--no-drive`.
-
-1. <https://console.cloud.google.com> → create a project → *Enable APIs* → **Google
-   Drive API**.
-2. *OAuth consent screen*: External, add yourself as a **Test user**.
-3. *Credentials → Create credentials → OAuth client ID → Desktop app* → download the
-   JSON → save as `transactions/.secrets/client_secret.json` (0600).
-4. First Drive-enabled run prints an auth URL; open it, approve, done — the token is
-   cached. The pipeline copies the credentials to the transformer's `.secrets/`
-   automatically. Scope is `drive.file` (least privilege: the app only ever sees files
-   it created).
-
-### 3. Link banks (one server per user)
-
-```bash
-cd transactions && ./venv/bin/python app.py --user <name>     # e.g. --user Alice
-```
-
-Open <http://127.0.0.1:5000/>, connect each of that person's banks, Ctrl+C. Re-run
-with the other `--user` for the second person's banks. Every Item linked belongs to
-that user; all of their transactions are stamped with it (`txn_owner`), and the
-initial sync pulls the full 24 months of history.
-
-### 4. First run
-
-```bash
-cd finance_pipeline && ./run.py        # or --no-drive / --no-llm to start simpler
-```
-
-Then map accounts to friendly names in `<data root>/spend_analyzer/config/accounts.yaml`
-(bootstrap it with `cd spend_analyzer && ./venv/bin/python -m tools.gen_accounts`;
-`person` is pre-seeded from the owner stamps) and optionally set budget goals in
-`<data root>/spend_analyzer/config/budget.yaml`.
-
-For the LLM review stage, install [Ollama](https://ollama.com) and `ollama pull
-qwen2.5:7b`; without it the pipeline still runs (mechanical rules only, warning printed).
-
-## Tests
-
-Every component is offline-tested under its own venv:
-
-```bash
-(cd persister && ./.venv/bin/python -m pytest)
-(cd transactions && ./venv/bin/python -m pytest)
-(cd plaid_category_transformer && ./.venv/bin/python -m pytest)
-(cd spend_analyzer && ./venv/bin/python -m pytest)            # + browser e2e: pytest tests/e2e -m e2e
-(cd finance_pipeline && ./venv/bin/python -m pytest)
-(cd deploy && ./.venv/bin/python -m pytest)                   # server-artifact sanity checks
-```
-
-No test ever touches the network, Plaid, Drive, or your real data (the analyzer's UI
-suite reads the live archive read-only and guards it with before/after digests).
-
-## For AI agents
-
-See [`CLAUDE.md`](CLAUDE.md) — architecture map, invariants, conventions, and the
-rules for working in this repo without touching live data.
+- [docs/SETUP.md](docs/SETUP.md): environments, a Plaid account, optional Drive sync,
+  linking banks, tests.
+- [docs/USAGE.md](docs/USAGE.md): the everyday loop, every command, and running it as a
+  scheduled service.
+- [`CLAUDE.md`](CLAUDE.md): the invariants and conventions, written for AI agents working
+  in the repo.
 
 ## License
 
